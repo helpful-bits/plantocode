@@ -1,15 +1,16 @@
 use log::{debug, error, info, warn};
 use serde_json::json;
-use std::path::Path;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::fs;
 
+use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::processors::utils::path_resolution_utils::to_absolute_path;
 use crate::jobs::processors::utils::{parsing_utils, prompt_utils};
 use crate::jobs::processors::{LlmPromptContext, LlmTaskConfigBuilder, LlmTaskRunner};
+use std::sync::Arc;
 use crate::jobs::types::{
     ExtendedPathFinderPayload, Job, JobPayload, JobProcessResult, JobResultData,
 };
@@ -134,10 +135,10 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             }
         }
 
-        // Setup LLM task configuration
+        // Setup LLM task configuration - use streaming to avoid Cloudflare timeouts
         let llm_config =
             LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
-                .stream(false)
+                .stream(true)
                 .build();
 
         // Create LLM task runner
@@ -175,9 +176,16 @@ impl JobProcessor for ExtendedPathFinderProcessor {
             ));
         }
 
-        // Execute LLM task using the task runner
+        // Get Arc reference to repo for streaming handler - clone the inner Arc
+        let repo_arc: Arc<BackgroundJobRepository> = app_handle
+            .try_state::<Arc<BackgroundJobRepository>>()
+            .ok_or_else(|| AppError::JobError("BackgroundJobRepository not found".to_string()))?
+            .inner()
+            .clone();
+
+        // Execute streaming LLM task using the task runner (streaming avoids Cloudflare timeouts)
         let llm_result = match task_runner
-            .execute_llm_task(prompt_context, &settings_repo)
+            .execute_streaming_llm_task(prompt_context, &settings_repo, &repo_arc, &job.id)
             .await
         {
             Ok(result) => result,

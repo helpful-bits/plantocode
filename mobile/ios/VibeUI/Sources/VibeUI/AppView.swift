@@ -10,6 +10,15 @@ public struct AppView: View {
       fatalError("Invalid server URL in Config: \(Config.serverURL)")
     }
     let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+
+    // CRITICAL: Initialize core BEFORE creating AppContainer to ensure single DataServicesManager.
+    // Without this, AppContainer creates a fallback manager, then core creates another,
+    // resulting in multiple TerminalDataService instances that duplicate terminal data.
+    if !PlanToCodeCore.shared.isInitialized {
+      let cfg = CoreConfiguration(desktopAPIURL: serverURL, deviceId: deviceId)
+      PlanToCodeCore.shared.initialize(with: cfg)
+    }
+
     _container = StateObject(wrappedValue: AppContainer(baseURL: serverURL, deviceId: deviceId))
   }
 
@@ -19,13 +28,5 @@ public struct AppView: View {
     }
     .ignoresSafeArea(.keyboard, edges: .bottom)
     .environmentObject(container)
-    .onAppear {
-      if !PlanToCodeCore.shared.isInitialized {
-        if let url = URL(string: Config.serverURL) {
-          let cfg = CoreConfiguration(desktopAPIURL: url, deviceId: DeviceManager.shared.getOrCreateDeviceID())
-          PlanToCodeCore.shared.initialize(with: cfg)
-        }
-      }
-    }
   }
 }

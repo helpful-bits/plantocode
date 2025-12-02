@@ -156,7 +156,7 @@ public class TerminalDataService: ObservableObject {
 
                         do {
                             self.logger.info("terminal.rebind sid=\(sessionId) after reconnect")
-                            try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: true)
+                            try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: false)
                             self.readinessBySession[sessionId] = true
                         } catch {
                             self.logger.error("Failed to rebind session \(sessionId): \(error)")
@@ -742,7 +742,9 @@ public class TerminalDataService: ObservableObject {
         }
 
         // Ready now - bind immediately
-        attachLiveBinary(for: jobId, includeSnapshot: true)
+        // Don't request massive historical snapshot on initial load - prevents endless scrolling
+        // The terminal will show live output going forward
+        attachLiveBinary(for: jobId, includeSnapshot: false)
     }
 
     /// Get terminal output stream for a specific job

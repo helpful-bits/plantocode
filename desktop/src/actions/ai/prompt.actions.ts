@@ -4,6 +4,15 @@ import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
 import { type TaskType } from "@/types/task-type-defs";
 
+// Debounce state for token estimation
+let lastEstimateCallTs = 0;
+let inFlightEstimate: Promise<ActionState<{
+  estimatedTokens: number;
+  systemPromptTokens: number;
+  userPromptTokens: number;
+  totalTokens: number;
+}>> | null = null;
+
 export async function estimatePromptTokensAction(params: {
   sessionId: string;
   taskDescription: string;
@@ -19,41 +28,56 @@ export async function estimatePromptTokensAction(params: {
   userPromptTokens: number;
   totalTokens: number;
 }>> {
-  try {
-    const result = await invoke<{
-      estimatedTokens: number;
-      systemPromptTokens: number;
-      userPromptTokens: number;
-      totalTokens: number;
-    }>("estimate_prompt_tokens_command", {
-      sessionId: params.sessionId,
-      taskDescription: params.taskDescription,
-      projectDirectory: params.projectDirectory,
-      relevantFiles: params.relevantFiles,
-      selectedRootDirectories: params.selectedRootDirectories,
-      taskType: params.taskType,
-      model: params.model,
-      includeProjectStructure: params.includeProjectStructure,
-    });
+  const now = performance.now();
+  const MIN_INTERVAL_MS = 250;
 
-    return {
-      isSuccess: true,
-      message: "Token estimation completed successfully",
-      data: {
-        estimatedTokens: result.estimatedTokens,
-        systemPromptTokens: result.systemPromptTokens,
-        userPromptTokens: result.userPromptTokens,
-        totalTokens: result.totalTokens,
-      },
-    };
-  } catch (error) {
-    return handleActionError(error) as ActionState<{
-      estimatedTokens: number;
-      systemPromptTokens: number;
-      userPromptTokens: number;
-      totalTokens: number;
-    }>;
+  // Return existing in-flight request if called too frequently
+  if (inFlightEstimate && now - lastEstimateCallTs < MIN_INTERVAL_MS) {
+    return inFlightEstimate;
   }
+
+  lastEstimateCallTs = now;
+  inFlightEstimate = (async () => {
+    try {
+      const result = await invoke<{
+        estimatedTokens: number;
+        systemPromptTokens: number;
+        userPromptTokens: number;
+        totalTokens: number;
+      }>("estimate_prompt_tokens_command", {
+        sessionId: params.sessionId,
+        taskDescription: params.taskDescription,
+        projectDirectory: params.projectDirectory,
+        relevantFiles: params.relevantFiles,
+        selectedRootDirectories: params.selectedRootDirectories,
+        taskType: params.taskType,
+        model: params.model,
+        includeProjectStructure: params.includeProjectStructure,
+      });
+
+      return {
+        isSuccess: true,
+        message: "Token estimation completed successfully",
+        data: {
+          estimatedTokens: result.estimatedTokens,
+          systemPromptTokens: result.systemPromptTokens,
+          userPromptTokens: result.userPromptTokens,
+          totalTokens: result.totalTokens,
+        },
+      };
+    } catch (error) {
+      return handleActionError(error) as ActionState<{
+        estimatedTokens: number;
+        systemPromptTokens: number;
+        userPromptTokens: number;
+        totalTokens: number;
+      }>;
+    } finally {
+      inFlightEstimate = null;
+    }
+  })();
+
+  return inFlightEstimate;
 }
 
 export async function getPromptAction(params: {

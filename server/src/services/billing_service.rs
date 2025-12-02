@@ -2496,4 +2496,70 @@ impl BillingService {
 
         Ok(())
     }
+
+    /// Check if user has any blocking billing state that prevents account deletion
+    /// Returns true if account deletion should be blocked, false otherwise
+    pub async fn has_blocking_billing_state(&self, user_id: &Uuid) -> Result<bool, AppError> {
+        // For now, we'll return false (no blocking state)
+        // In the future, this could check for:
+        // - Active subscriptions
+        // - Pending invoices
+        // - Outstanding balances
+        // - Active payment disputes
+        //
+        // Note: We skip the customer_billing lookup here because:
+        // 1. We currently allow deletion even with a Stripe customer
+        // 2. The customer_billing_repository uses the user pool which requires
+        //    RLS context, but account deletion happens outside the normal request flow
+        // 3. When we need to actually check billing state, we should use the system pool
+
+        info!("Checking blocking billing state for user {}", user_id);
+
+        // TODO: When implementing actual blocking checks, use system pool:
+        // let customer_billing = sqlx::query_as!(...)
+        //     .fetch_optional(&self.db_pools.system_pool)
+        //     .await?;
+
+        Ok(false)
+    }
+
+    /// Delete all billing-related data for a user
+    /// This should be called within a transaction before deleting the user
+    pub async fn delete_user_billing_data(
+        &self,
+        user_id: &Uuid,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    ) -> Result<(), AppError> {
+        info!("Deleting billing data for user_id: {}", user_id);
+
+        // Most billing data will be deleted automatically via CASCADE:
+        // - customer_billing (CASCADE)
+        // - credit_transactions (CASCADE)
+        // - user_credits (CASCADE)
+        // - api_usage (CASCADE)
+
+        // If there's a Stripe customer, we could optionally delete it from Stripe
+        // For now, we'll just let it remain in Stripe (orphaned)
+        // Future enhancement: delete Stripe customer if needed
+
+        let customer_billing_repo = CustomerBillingRepository::new(self.get_system_db_pool());
+
+        if let Some(customer_billing) = customer_billing_repo.get_by_user_id(user_id).await? {
+            if let Some(stripe_customer_id) = customer_billing.stripe_customer_id {
+                info!(
+                    "User {} has Stripe customer {}, leaving it in Stripe for audit purposes",
+                    user_id, stripe_customer_id
+                );
+                // Optionally, we could delete the Stripe customer here:
+                // if let Some(stripe_service) = &self.stripe_service {
+                //     stripe_service.delete_customer(&stripe_customer_id).await?;
+                // }
+            }
+        }
+
+        // All CASCADE deletions will happen automatically when the user is deleted
+        info!("Billing data cleanup completed for user_id: {}", user_id);
+
+        Ok(())
+    }
 }

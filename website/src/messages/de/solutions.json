@@ -642,6 +642,29 @@
         "title": "Legacy-Code-Refactoring - Sichere KI-Modernisierung",
         "description": "Refactoren Sie Legacy-Code sicher mit KI-Planung. Mappen Sie Abhängigkeiten, generieren Sie Migrationsstrategien und modernisieren Sie 100K+-Zeilen-Codebasen, ohne die Produktion zu brechen."
       },
+      "badge": "Code-Modernisierung",
+      "sections": {
+        "dependencyMapping": {
+          "title": "Versteckte Abhängigkeiten mappen",
+          "description": "Der 4-Stufen FileFinderWorkflow entdeckt Import-Ketten, zirkuläre Abhängigkeiten und modul-übergreifende Referenzen, bevor Sie Code berühren. Kennen Sie die Blast-Radius jeder Änderung.",
+          "link": "File Discovery erkunden"
+        },
+        "multiModelPlanning": {
+          "title": "Multi-Modell-Migrationspläne",
+          "description": "Generieren Sie Migrationsstrategien von GPT-5.1, Claude Sonnet 4.5 und Gemini. Jedes Modell bringt eine andere Perspektive—kombinieren Sie die besten Ansätze mit menschlicher Review.",
+          "link": "Über Planung erfahren"
+        },
+        "safeRefactoring": {
+          "title": "Merge-Anweisungen für Sicherheit",
+          "description": "Schreiben Sie Klartext-Merge-Anweisungen: \"Bevorzuge GPT-5.1 Rollback-Strategie, nutze Gemini Testabdeckung.\" Kontrollieren Sie genau, wie Änderungen synthetisiert werden.",
+          "link": "Merge-Anweisungen ansehen"
+        },
+        "incrementalMigration": {
+          "title": "Inkrementelle Ausführung",
+          "description": "Führen Sie Migrationspläne schrittweise im integrierten Terminal aus. Jede Änderung ist einzeln deploybar und testbar. Feature-Flags und Rollback-Pläne in jeder Stufe.",
+          "link": "Terminal-Workflows"
+        }
+      },
       "challenge": {
         "description": "Sie haben die Aufgabe, eine 5 Jahre alte Codebasis zu modernisieren: veraltete Frameworks, keine Tests, undokumentierte Patterns und kritische Geschäftslogik, die Sie nicht vollständig verstehen. Direktes KI-Refactoring wäre Chaos. Planung gibt Ihnen einen Fahrplan.",
         "title": "Die Legacy-Code-Herausforderung"
@@ -651,8 +674,12 @@
           "download": "PlanToCode herunterladen",
           "learnMapping": "Über Dependency-Mapping erfahren"
         },
-        "description": "PlanToCode hilft Ihnen, Abhängigkeiten zu mappen, Migrationspläne zu generieren und zu refactoren, ohne die Produktion zu brechen.",
-        "title": "Legacy-Code sicher modernisieren"
+        "description": "Abhängigkeiten entdecken, Migrationen planen und mit Vertrauen ausführen.",
+        "links": {
+          "discovery": "File Discovery erkunden",
+          "plans": "Über Migrationspläne erfahren"
+        },
+        "title": "Beginnen Sie mit der Modernisierung Ihres Legacy-Codes"
       },
       "description": "Legacy-Code ist dort, wo KI-gestütztes Refactoring gefährlich wird. Ein falscher Schritt bricht die Produktion. Hier erfahren Sie, wie Sie 100K+ Zeilen-Codebasen sicher mit KI-Planung modernisieren.",
       "furtherReading": {

@@ -26,11 +26,22 @@ public final class SessionDataService: ObservableObject {
     private var sessionsIndex: [String: Int] = [:]
     private var sessionsFetchInFlight: [String: Task<[Session], Error>] = [:]
     private var lastSessionsFetch: [String: Date] = [:]
+    private var lastSessionsFetchSuccess: [String: Bool] = [:] // Track if last fetch succeeded
     private var lastHistoryVersionBySession: [String: Int64] = [:]
     private var lastHistoryChecksumBySession: [String: String] = [:] // projectDirectory -> timestamp
+    private var pendingRetryTasks: [String: Task<Void, Never>] = [:] // Pending retry tasks by project
+    private var lastKnownDeviceId: String? // Stable device ID for cache key
+    private var sessionFetchInFlight: [String: Task<Session?, Error>] = [:]
 
-    private var deviceKey: String {
-        MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
+    /// Stable device key that persists across connection transitions
+    /// Uses the last known device ID to prevent cache key changes during reconnection
+    private var stableDeviceKey: String {
+        if let activeId = MultiConnectionManager.shared.activeDeviceId?.uuidString {
+            lastKnownDeviceId = activeId
+            return activeId
+        }
+        // Fall back to last known ID during connection transitions
+        return lastKnownDeviceId ?? "default"
     }
 
     /// Safely get a valid index for a session ID, checking bounds and ID match
@@ -41,6 +52,23 @@ public final class SessionDataService: ObservableObject {
             return nil
         }
         return index
+    }
+
+    private func makeSessionFetchKey(id: String, projectDirectory: String?) -> String {
+        return "\(id)::\(projectDirectory ?? "nil-project")"
+    }
+
+    /// Adds a session to the list if it doesn't already exist.
+    /// Updates both the sessions array and sessionsIndex atomically.
+    /// Returns true if the session was added, false if it already existed.
+    @discardableResult
+    private func addSessionIfNotExists(_ session: Session) -> Bool {
+        guard !sessions.contains(where: { $0.id == session.id }) else {
+            return false
+        }
+        sessions.append(session)
+        sessionsIndex[session.id] = sessions.count - 1
+        return true
     }
 
     public init() {
@@ -214,9 +242,22 @@ public final class SessionDataService: ObservableObject {
     }
 
     /// Reset session state when active device changes
+    /// Preserves cached sessions during transition to avoid empty state flicker
     @MainActor
     public func onActiveDeviceChanged() {
-        sessions.removeAll()
+        // Cancel any pending retry tasks
+        for (_, task) in pendingRetryTasks {
+            task.cancel()
+        }
+        pendingRetryTasks.removeAll()
+
+        // Clear fetch timestamps to allow fresh fetch, but preserve sessions
+        // This prevents "no sessions" flicker during device transitions
+        lastSessionsFetch.removeAll()
+        lastSessionsFetchSuccess.removeAll()
+
+        // Only clear current session selection, not the full sessions list
+        // Sessions will be replaced when fresh data arrives
         currentSession = nil
         currentSessionId = nil
         hasLoadedOnce = false
@@ -229,6 +270,14 @@ public final class SessionDataService: ObservableObject {
 
     public func resetState() {
         Task { @MainActor in
+            // Cancel pending retries
+            for (_, task) in self.pendingRetryTasks {
+                task.cancel()
+            }
+            self.pendingRetryTasks.removeAll()
+            self.lastSessionsFetch.removeAll()
+            self.lastSessionsFetchSuccess.removeAll()
+
             self.sessions = []
             self.currentSession = nil
             self.currentSessionId = nil
@@ -271,16 +320,44 @@ public final class SessionDataService: ObservableObject {
     }
 
     public func fetchSessions(projectDirectory: String) async throws -> [Session] {
-        // Check if we fetched sessions for this project recently (within 15s)
+        let cacheKey = "sessions_\(stableDeviceKey)_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+
+        // Deduplication: Skip if we recently fetched successfully
+        // Use shorter window (3s) after failure to allow faster retry
+        let dedupWindow: TimeInterval = (lastSessionsFetchSuccess[projectDirectory] == true) ? 15.0 : 3.0
         if let lastFetch = lastSessionsFetch[projectDirectory],
-           Date().timeIntervalSince(lastFetch) < 15.0 {
-            // Return cached sessions without network call
+           Date().timeIntervalSince(lastFetch) < dedupWindow {
             return await MainActor.run { self.sessions }
         }
 
         // Check if there's already an in-flight request for this project
         if let existing = sessionsFetchInFlight[projectDirectory] {
             return try await existing.value
+        }
+
+        // Check connection state - if not connected, try to serve from cache immediately
+        let isConnected = MultiConnectionManager.shared.activeDeviceId != nil &&
+            MultiConnectionManager.shared.connectionStates.values.contains { state in
+                if case .connected = state { return true }
+                return false
+            }
+
+        if !isConnected {
+            // Not connected - serve from cache if available
+            if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
+                await MainActor.run {
+                    if self.sessions.isEmpty {
+                        self.sessions = cached
+                        self.sessionsIndex = Dictionary(uniqueKeysWithValues: cached.enumerated().map { ($1.id, $0) })
+                    }
+                    self.hasLoadedOnce = true
+                }
+                // Schedule retry when connection is restored
+                scheduleRetryOnReconnect(projectDirectory: projectDirectory)
+                return cached
+            }
+            // No cache and not connected - throw offline error
+            throw DataServiceError.offline
         }
 
         // Create new task for this fetch
@@ -291,6 +368,8 @@ public final class SessionDataService: ObservableObject {
                 }
             }
 
+            // Cache-first: Show existing sessions while loading fresh data
+            // This prevents empty state flicker
             await MainActor.run {
                 self.isLoading = true
                 self.error = nil
@@ -356,12 +435,15 @@ public final class SessionDataService: ObservableObject {
                             self.sessionsIndex = Dictionary(uniqueKeysWithValues: sessionList.enumerated().map { ($1.id, $0) })
                             self.isLoading = false
                             self.hasLoadedOnce = true
-                        }
-                        let cacheKey = "dev_\(self.deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
-                        CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
-                        await MainActor.run {
+                            self.error = nil
+                            // Mark fetch as successful
                             self.lastSessionsFetch[projectDirectory] = Date()
+                            self.lastSessionsFetchSuccess[projectDirectory] = true
                         }
+                        // Update cache with fresh data
+                        CacheManager.shared.set(sessionList, forKey: cacheKey, ttl: 300)
+                        // Cancel any pending retry since we succeeded
+                        self.cancelPendingRetry(for: projectDirectory)
                         return sessionList
                     }
 
@@ -378,19 +460,36 @@ public final class SessionDataService: ObservableObject {
                 }
                 return await MainActor.run { self.sessions }
             } catch {
-                let cacheKey = "dev_\(self.deviceKey)_sessions_\(projectDirectory.replacingOccurrences(of: "/", with: "_"))"
+                // On failure, try cache fallback
                 if let cached: [Session] = CacheManager.shared.get(key: cacheKey) {
                     await MainActor.run {
-                        self.sessions = cached
+                        // Only update sessions if currently empty to avoid replacing newer data
+                        if self.sessions.isEmpty {
+                            self.sessions = cached
+                            self.sessionsIndex = Dictionary(uniqueKeysWithValues: cached.enumerated().map { ($1.id, $0) })
+                        }
                         self.isLoading = false
                         self.hasLoadedOnce = true
+                        // Clear error since we have cached data to show
+                        self.error = nil
+                        // Mark fetch as failed for shorter dedup window
+                        self.lastSessionsFetch[projectDirectory] = Date()
+                        self.lastSessionsFetchSuccess[projectDirectory] = false
                     }
+                    // Schedule automatic retry
+                    self.scheduleRetry(for: projectDirectory, delay: 5.0)
                     return cached
                 }
+
                 await MainActor.run {
                     self.error = DataServiceError.networkError(error)
                     self.isLoading = false
+                    // Mark fetch as failed
+                    self.lastSessionsFetchSuccess[projectDirectory] = false
+                    // Don't set lastSessionsFetch timestamp so next attempt isn't blocked
                 }
+                // Schedule retry even if no cache
+                self.scheduleRetry(for: projectDirectory, delay: 5.0)
                 throw error
             }
         }
@@ -400,8 +499,60 @@ public final class SessionDataService: ObservableObject {
         return try await task.value
     }
 
+    /// Schedule an automatic retry for session fetch after a delay
+    private func scheduleRetry(for projectDirectory: String, delay: TimeInterval) {
+        // Cancel any existing retry for this project
+        pendingRetryTasks[projectDirectory]?.cancel()
+
+        let task = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+
+            // Check if task was cancelled
+            guard !Task.isCancelled else { return }
+
+            // Check if we're now connected
+            let isConnected = MultiConnectionManager.shared.activeDeviceId != nil &&
+                MultiConnectionManager.shared.connectionStates.values.contains { state in
+                    if case .connected = state { return true }
+                    return false
+                }
+
+            guard isConnected else {
+                // Still not connected, schedule another retry with backoff
+                self.scheduleRetry(for: projectDirectory, delay: min(delay * 2, 30.0))
+                return
+            }
+
+            // Retry the fetch
+            _ = try? await self.fetchSessions(projectDirectory: projectDirectory)
+        }
+
+        pendingRetryTasks[projectDirectory] = task
+    }
+
+    /// Schedule retry when connection is restored
+    private func scheduleRetryOnReconnect(projectDirectory: String) {
+        // This will be triggered by connection state change handler
+        // For now, schedule a short-delay retry
+        scheduleRetry(for: projectDirectory, delay: 2.0)
+    }
+
+    /// Cancel pending retry task for a project
+    private func cancelPendingRetry(for projectDirectory: String) {
+        pendingRetryTasks[projectDirectory]?.cancel()
+        pendingRetryTasks.removeValue(forKey: projectDirectory)
+    }
+
+    /// Check if sessions were recently fetched successfully
+    /// Returns false if the last fetch failed, to allow retry on reconnection
     public func hasRecentSessionsFetch(for projectDirectory: String, within interval: TimeInterval) -> Bool {
         guard let lastFetch = lastSessionsFetch[projectDirectory] else {
+            return false
+        }
+        // If last fetch failed, don't consider it as recent to allow retry
+        if lastSessionsFetchSuccess[projectDirectory] == false {
             return false
         }
         return Date().timeIntervalSince(lastFetch) < interval
@@ -442,10 +593,26 @@ public final class SessionDataService: ObservableObject {
     }
 
     public func getSession(id: String) async throws -> Session? {
-        isLoading = true
-        error = nil
+        let key = makeSessionFetchKey(id: id, projectDirectory: nil)
 
-        do {
+        // Check if there's already an in-flight request for this session
+        if let existing = sessionFetchInFlight[key] {
+            return try await existing.value
+        }
+
+        // Create new task for this fetch
+        let task = Task<Session?, Error> {
+            defer {
+                Task { @MainActor in
+                    self.sessionFetchInFlight.removeValue(forKey: key)
+                }
+            }
+
+            await MainActor.run {
+                self.isLoading = true
+                self.error = nil
+            }
+
             let stream = CommandRouter.sessionGet(id: id)
 
             for try await response in stream {
@@ -493,13 +660,11 @@ public final class SessionDataService: ObservableObject {
                 self.isLoading = false
             }
             return nil
-        } catch {
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
-            }
-            throw error
         }
+
+        // Store the task in the in-flight dictionary
+        sessionFetchInFlight[key] = task
+        return try await task.value
     }
 
     public func createSession(name: String, projectDirectory: String, taskDescription: String?) async throws -> Session {
@@ -548,10 +713,7 @@ public final class SessionDataService: ObservableObject {
                         await MainActor.run {
                             self.currentSession = session
                             self.currentSessionId = session.id
-                            // Add to sessions list if not already present
-                            if !self.sessions.contains(where: { $0.id == session.id }) {
-                                self.sessions.append(session)
-                            }
+                            self.addSessionIfNotExists(session)
                             self.isLoading = false
                         }
                         Task { [weak self] in
@@ -737,7 +899,7 @@ public final class SessionDataService: ObservableObject {
                         )
 
                         await MainActor.run {
-                            self.sessions.append(session)
+                            self.addSessionIfNotExists(session)
                             self.isLoading = false
                         }
                         return session
@@ -1147,6 +1309,11 @@ public final class SessionDataService: ObservableObject {
         await offlineQueue.processPending(with: self)
     }
 
+    /// Check if there are pending offline actions
+    public var hasPendingOfflineActions: Bool {
+        return offlineQueue.hasPendingActions
+    }
+
     public func updateSessionFilesInMemory(
         sessionId: String,
         includedFiles: [String],
@@ -1216,11 +1383,30 @@ public final class SessionDataService: ObservableObject {
     }
 
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else { return }
-        let request = RpcRequest(method: "session.get", params: ["sessionId": sessionId])
-        var resolvedSession: Session? = nil
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        let key = makeSessionFetchKey(id: sessionId, projectDirectory: projectDirectory)
+
+        // Check if there's already an in-flight request for this session
+        if let existing = sessionFetchInFlight[key] {
+            _ = try await existing.value
+            return
+        }
+
+        // Create new task for this fetch
+        let task = Task<Session?, Error> {
+            defer {
+                Task { @MainActor in
+                    self.sessionFetchInFlight.removeValue(forKey: key)
+                }
+            }
+
+            guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+                  let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+                throw DataServiceError.connectionError("No active device connection")
+            }
+
+            let request = RpcRequest(method: "session.get", params: ["sessionId": sessionId])
+            var resolvedSession: Session? = nil
+            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let result = response.result?.value as? [String: Any],
                let sessionDict = result["session"] as? [String: Any] {
                 if let id = sessionDict["id"] as? String,
@@ -1245,9 +1431,16 @@ public final class SessionDataService: ObservableObject {
             }
             if response.isFinal { break }
         }
+
         if let s = resolvedSession {
             await MainActor.run { self.currentSession = s }
         }
+        return resolvedSession
+        }
+
+        // Store the task in the in-flight dictionary
+        sessionFetchInFlight[key] = task
+        _ = try await task.value
     }
 
     // MARK: - Incremental Event Updates
@@ -1283,14 +1476,13 @@ public final class SessionDataService: ObservableObject {
 
     private func handleSessionCreated(dict: [String: Any]) {
         guard let sessionData = dict["session"] as? [String: Any],
-              let session = parseSession(from: sessionData),
-              sessionsIndex[session.id] == nil else {
+              let session = parseSession(from: sessionData) else {
             return
         }
 
-        // Add new session to list and index
-        sessions.append(session)
-        sessionsIndex[session.id] = sessions.count - 1
+        guard addSessionIfNotExists(session) else {
+            return
+        }
 
         // Sort by createdAt (newest first) to maintain consistent ordering
         sessions.sort { $0.createdAt > $1.createdAt }

@@ -277,36 +277,69 @@ public struct SessionSelectionView: View {
             return
         }
 
-        isLoading = true
-        errorMessage = nil
-
         Task {
+            guard let dataServices = PlanToCodeCore.shared.dataServices else {
+                await MainActor.run {
+                    errorMessage = "App not initialized"
+                    isLoading = false
+                }
+                return
+            }
+
+            // Check if we have a recent fetch
+            if dataServices.sessionService.hasRecentSessionsFetch(for: projectDirectory, within: 10.0) {
+                await MainActor.run {
+                    self.sessions = dataServices.sessionService.sessions.sorted { $0.updatedAt > $1.updatedAt }
+                    self.isLoading = false
+                    self.errorMessage = nil
+                }
+                return
+            }
+
+            await MainActor.run {
+                isLoading = true
+                errorMessage = nil
+            }
+
+            // Cache-first loading: render cached sessions immediately
+            let cached = dataServices.sessionService.sessions
+            if !cached.isEmpty {
+                await MainActor.run {
+                    self.sessions = cached.sorted { $0.updatedAt > $1.updatedAt }
+                    // Keep loading true to show we're fetching fresh data
+                }
+            }
+
             do {
-                guard let dataServices = PlanToCodeCore.shared.dataServices else {
-                    await MainActor.run {
-                        errorMessage = "App not initialized"
-                        isLoading = false
-                    }
-                    return
-                }
-
-                // Cache-first loading: render cached sessions immediately
-                let cached = dataServices.sessionService.sessions
-                if !cached.isEmpty {
-                    await MainActor.run {
-                        self.sessions = cached
-                        self.isLoading = false
-                    }
-                }
-
                 let sessionsList = try await dataServices.sessionService.fetchSessions(projectDirectory: projectDirectory)
                 await MainActor.run {
                     sessions = sessionsList.sorted { $0.updatedAt > $1.updatedAt }
+                    errorMessage = nil
+                    isLoading = false
+                }
+            } catch DataServiceError.offline {
+                // Offline - use cached sessions from service
+                await MainActor.run {
+                    let serviceSessions = dataServices.sessionService.sessions
+                    if !serviceSessions.isEmpty {
+                        sessions = serviceSessions.sorted { $0.updatedAt > $1.updatedAt }
+                        errorMessage = nil // Don't show error if we have cached data
+                    } else if sessions.isEmpty {
+                        errorMessage = "Offline - no cached sessions available"
+                    }
                     isLoading = false
                 }
             } catch {
+                // Other errors - still try to show service's sessions if available
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    let serviceSessions = dataServices.sessionService.sessions
+                    if !serviceSessions.isEmpty && sessions.isEmpty {
+                        sessions = serviceSessions.sorted { $0.updatedAt > $1.updatedAt }
+                    }
+                    // Only show error if we have no sessions to display
+                    if sessions.isEmpty {
+                        errorMessage = error.localizedDescription
+                    }
                     isLoading = false
                 }
             }
@@ -436,11 +469,24 @@ struct NewSessionFormView: View {
     @State private var isCreating = false
     @State private var errorMessage: String?
     @Environment(\.presentationMode) var presentationMode
+    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
 
     init(projectDirectory: String, onSessionCreated: @escaping (Session) -> Void, onCancel: @escaping () -> Void) {
         self.projectDirectory = projectDirectory
         self.onSessionCreated = onSessionCreated
         self.onCancel = onCancel
+    }
+
+    private var isConnected: Bool {
+        guard let deviceId = multiConnectionManager.activeDeviceId,
+              let state = multiConnectionManager.connectionStates[deviceId] else {
+            return false
+        }
+        return state.isConnected
+    }
+
+    private var isReconnecting: Bool {
+        multiConnectionManager.isActivelyReconnecting
     }
 
     var body: some View {
@@ -458,7 +504,9 @@ struct NewSessionFormView: View {
                         .cornerRadius(10)
                 }
 
-                if let errorMessage = errorMessage {
+                if isReconnecting {
+                    StatusAlertView(variant: .warning, title: "Reconnecting", message: "Restoring connection to desktop...")
+                } else if let errorMessage = errorMessage {
                     StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
                 }
 
@@ -477,7 +525,7 @@ struct NewSessionFormView: View {
                     }
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                .disabled(sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating)
+                .disabled(sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isCreating || isReconnecting)
 
                 Spacer()
             }
@@ -493,6 +541,12 @@ struct NewSessionFormView: View {
                 .buttonStyle(ToolbarButtonStyle())
                 .disabled(isCreating)
             )
+            .onChange(of: isConnected) { connected in
+                // Clear error when connection is restored
+                if connected && errorMessage != nil {
+                    errorMessage = nil
+                }
+            }
         }
     }
 
@@ -524,11 +578,61 @@ struct NewSessionFormView: View {
                 }
             } catch {
                 await MainActor.run {
-                    errorMessage = error.localizedDescription
+                    errorMessage = Self.userFriendlyErrorMessage(for: error)
                     isCreating = false
                 }
             }
         }
+    }
+
+    /// Convert error to user-friendly message with actionable guidance
+    private static func userFriendlyErrorMessage(for error: Error) -> String {
+        let nsError = error as NSError
+
+        // Check for network-related errors
+        if nsError.domain == NSURLErrorDomain {
+            switch nsError.code {
+            case NSURLErrorNotConnectedToInternet:
+                return "No internet connection. Please check your network and try again."
+            case NSURLErrorNetworkConnectionLost:
+                return "Connection lost. Please check your network and try again."
+            case NSURLErrorTimedOut:
+                return "Request timed out. Please check your connection to the desktop app."
+            case NSURLErrorCannotFindHost, NSURLErrorCannotConnectToHost:
+                return "Cannot reach the server. Please ensure the desktop app is running."
+            default:
+                return "Network error. Please check your connection and try again."
+            }
+        }
+
+        // Check for relay/connection errors
+        if let relayError = error as? ServerRelayError {
+            return ConnectivityDiagnostics.userFriendlyMessage(for: relayError)
+        }
+
+        // Check for data service errors
+        if let dataError = error as? DataServiceError {
+            switch dataError {
+            case .offline:
+                return "You're offline. Please connect to a network and try again."
+            case .networkError:
+                return "Network error. Please check your connection and try again."
+            case .serverError(let message):
+                return "Server error: \(message)"
+            case .validation(let message):
+                return message
+            default:
+                return dataError.localizedDescription
+            }
+        }
+
+        // Fallback: check for common network error patterns in the description
+        let description = error.localizedDescription.lowercased()
+        if description.contains("network") || description.contains("connection") || description.contains("offline") {
+            return "Connection issue. Please check your network and try again."
+        }
+
+        return error.localizedDescription
     }
 }
 

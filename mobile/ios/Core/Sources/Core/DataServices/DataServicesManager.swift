@@ -19,6 +19,7 @@ public class DataServicesManager: ObservableObject {
     public let settingsService: SettingsDataService
     public let subscriptionManager: SubscriptionManager
     public let onboardingService: OnboardingContentService
+    public let accountService: AccountDataService
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
@@ -43,6 +44,7 @@ public class DataServicesManager: ObservableObject {
     private var orchestratorTriggerInFlight = false
     private var authStateCancellable: AnyCancellable?
     private var lastReconnectionSyncAt: Date?
+    private var lastBroadcastedSessionId: String? = nil
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -73,6 +75,7 @@ public class DataServicesManager: ObservableObject {
         self.settingsService = SettingsDataService()
         self.subscriptionManager = SubscriptionManager()
         self.onboardingService = OnboardingContentService()
+        self.accountService = AccountDataService()
 
         Task { [weak settingsService] in
             try? await settingsService?.loadNotificationSettings()
@@ -180,6 +183,9 @@ public class DataServicesManager: ObservableObject {
 
         taskSyncService.tasks.removeAll()
         taskSyncService.conflicts.removeAll()
+
+        // Reset account service state
+        accountService.clearError()
 
         NotificationCenter.default.post(name: Notification.Name("connection-hard-reset-completed"), object: nil)
     }
@@ -471,8 +477,14 @@ public class DataServicesManager: ObservableObject {
 
                 guard !self.isPerformingLiveBootstrap else { return }
 
-                // Enable background event processing for jobs
-                // setActiveSession() already does an internal fetch, no need for duplicate request
+                // Guard to prevent repeated preloads for the same session
+                if s.id == self.lastBroadcastedSessionId {
+                    return
+                }
+                self.lastBroadcastedSessionId = s.id
+
+                // Defensive guard: ensure JobsDataService has correct session context
+                // Primary sync happens via startSessionScopedSync() in SessionWorkspaceViewModel.loadSession()
                 self.jobsService.setActiveSession(sessionId: s.id, projectDirectory: s.projectDirectory)
 
                 // Unified preloads for immediacy across tabs
@@ -514,9 +526,24 @@ public class DataServicesManager: ObservableObject {
                 switch eventType {
                 case "device-status":
                     // Handle device status changes
-                    self.logger.info("Received device-status event")
+                    let statusStr = dict["status"] as? String ?? "unknown"
+                    let deviceIdStr = dict["deviceId"] as? String
+                    self.logger.info("Received device-status event: device=\(deviceIdStr ?? "nil"), status=\(statusStr)")
+
                     Task { @MainActor in
+                        // If this is an offline status for our active device, disconnect immediately
+                        if statusStr == "offline",
+                           let deviceIdStr = deviceIdStr,
+                           let deviceId = UUID(uuidString: deviceIdStr),
+                           MultiConnectionManager.shared.activeDeviceId == deviceId {
+                            self.logger.warning("Active device went offline, disconnecting")
+                            MultiConnectionManager.shared.removeConnection(deviceId: deviceId)
+                        }
+
+                        // Always refresh device list to update statuses
                         await DeviceDiscoveryService.shared.refreshDevices()
+
+                        // Also check if active device was removed from list
                         if let activeId = MultiConnectionManager.shared.activeDeviceId {
                             let ids = DeviceDiscoveryService.shared.devices.map { $0.deviceId }
                             if !ids.contains(activeId) {
@@ -580,19 +607,8 @@ public class DataServicesManager: ObservableObject {
                         Task {
                             await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
 
-                            // Wire JobsDataService to accept events for this session
-                            self.jobsService.setActiveSession(sessionId: sessionId, projectDirectory: projectDir)
-
-                            // Prime baseline with initial job list
-                            self.jobsService.listJobs(request: JobListRequest(
-                                projectDirectory: projectDir,
-                                sessionId: sessionId,
-                                pageSize: 100,
-                                sortBy: .createdAt,
-                                sortOrder: .desc
-                            ))
-                            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                            .store(in: &self.cancellables)
+                            // Start session-scoped sync (sets active session, fetches jobs, starts validation timer)
+                            self.jobsService.startSessionScopedSync(sessionId: sessionId, projectDirectory: projectDir)
                         }
                     }
 
@@ -667,21 +683,8 @@ public class DataServicesManager: ObservableObject {
                     return
                 }
 
-                // Ensure JobsDataService accepts job events post-reconnect
-                self.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
-
-                // Trigger a one-time snapshot refresh for the active session to reconcile any missed events
-                if let projectDirectory = self.currentProject?.directory {
-                    self.jobsService.listJobs(request: JobListRequest(
-                        projectDirectory: projectDirectory,
-                        sessionId: session.id,
-                        pageSize: 100,
-                        sortBy: .createdAt,
-                        sortOrder: .desc
-                    ))
-                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                    .store(in: &self.cancellables)
-                }
+                // Start session-scoped sync to reconcile any missed events post-reconnect
+                self.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
                 self.filesService.performSearch(query: self.filesService.currentSearchTerm)
                 if let projectDirectory = self.currentProject?.directory {
                     self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(

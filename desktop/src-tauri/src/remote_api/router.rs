@@ -104,7 +104,7 @@ pub async fn dispatch(
                 let result = handlers::workflows::dispatch(app_handle.clone(), request.clone()).await;
                 into_response(request.correlation_id.clone(), result)
             }
-            "actions" => {
+            "actions" | "plan" => {
                 let result = handlers::actions::dispatch(app_handle.clone(), request.clone()).await;
                 into_response(request.correlation_id.clone(), result)
             }
@@ -114,6 +114,10 @@ pub async fn dispatch(
             }
             "speech" => {
                 let result = handlers::speech::dispatch(app_handle.clone(), request.clone()).await;
+                into_response(request.correlation_id.clone(), result)
+            }
+            "account" => {
+                let result = handlers::account::dispatch(app_handle.clone(), request.clone()).await;
                 into_response(request.correlation_id.clone(), result)
             }
 
