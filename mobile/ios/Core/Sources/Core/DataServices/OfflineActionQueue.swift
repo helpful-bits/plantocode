@@ -39,6 +39,10 @@ public class OfflineActionQueue {
         save()
     }
 
+    public var hasPendingActions: Bool {
+        return !queue.isEmpty
+    }
+
     private func load() {
         guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
               let decoded = try? JSONDecoder().decode([QueuedAction].self, from: data) else {

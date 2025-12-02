@@ -17,7 +17,8 @@ public struct JobsMonitoringView: View {
     @State private var refreshToken = UUID()
     @State private var successMessage: String?
     @State private var showingSuccess = false
-    
+    @State private var hasDoneInitialLoad = false
+
     public init(jobsService: JobsDataService) {
         self._jobsService = ObservedObject(wrappedValue: jobsService)
     }
@@ -159,8 +160,12 @@ public struct JobsMonitoringView: View {
 
             // CRITICAL: Do an initial full fetch of ALL jobs (not just active ones)
             // before starting session-scoped event sync that monitors active jobs
+            // Only do this once per view lifecycle
             Task {
-                await loadJobs()
+                if !hasDoneInitialLoad {
+                    hasDoneInitialLoad = true
+                    await loadJobs()
+                }
             }
 
             jobsService.startSessionScopedSync(

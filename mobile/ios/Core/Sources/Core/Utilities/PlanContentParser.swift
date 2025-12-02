@@ -218,27 +218,33 @@ public class PlanContentParser {
            let metadataData = metadataString.data(using: .utf8),
            let metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {
 
-            // Check direct keys
+            // Check direct keys (these match the desktop's metadata structure)
+            if let planTitle = metadataDict["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if let generatedTitle = metadataDict["generated_title"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             if let uiTitle = metadataDict["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return uiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if let title = metadataDict["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return title.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            if let planTitle = metadataDict["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
 
-            // Check nested under taskData
+            // Check nested under taskData (used by some metadata structures)
             if let taskData = metadataDict["taskData"] as? [String: Any] {
+                if let planTitle = taskData["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let generatedTitle = taskData["generated_title"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
                 if let uiTitle = taskData["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return uiTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 if let title = taskData["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return title.trimmingCharacters(in: .whitespacesAndNewlines)
-                }
-                if let planTitle = taskData["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 if let sessionName = taskData["sessionName"] as? String, !sessionName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return sessionName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -261,8 +267,37 @@ public class PlanContentParser {
 
         // Try extracting from response content
         if let responseContent = response, !responseContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            // Check if response is JSON - extract actual plan content from it
+            var actualContent = responseContent
+            if responseContent.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"),
+               let responseData = responseContent.data(using: .utf8),
+               let responseDict = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any] {
+                // Try common keys for nested plan content
+                if let content = responseDict["content"] as? String {
+                    actualContent = content
+                } else if let content = responseDict["planContent"] as? String {
+                    actualContent = content
+                } else if let content = responseDict["plan"] as? String {
+                    actualContent = content
+                } else if let content = responseDict["result"] as? String {
+                    actualContent = content
+                } else if let content = responseDict["data"] as? String {
+                    actualContent = content
+                }
+                // Also check for title directly in response JSON
+                if let title = responseDict["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return title.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let title = responseDict["planTitle"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return title.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                if let title = responseDict["uiTitle"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return title.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            }
+
             // Try <title>...</title> tags
-            if let titleFromTag = extractTagContent("title", from: responseContent),
+            if let titleFromTag = extractTagContent("title", from: actualContent),
                !titleFromTag.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return titleFromTag.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -270,11 +305,11 @@ public class PlanContentParser {
             // Try first Markdown H1
             let h1Pattern = #"^#\s+(.+)$"#
             if let h1Regex = try? NSRegularExpression(pattern: h1Pattern, options: .anchorsMatchLines),
-               let match = h1Regex.firstMatch(in: responseContent, options: [], range: NSRange(location: 0, length: (responseContent as NSString).length)),
+               let match = h1Regex.firstMatch(in: actualContent, options: [], range: NSRange(location: 0, length: (actualContent as NSString).length)),
                match.numberOfRanges >= 2 {
                 let titleRange = match.range(at: 1)
                 if titleRange.location != NSNotFound {
-                    let title = (responseContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let title = (actualContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !title.isEmpty {
                         return title
                     }
@@ -284,11 +319,11 @@ public class PlanContentParser {
             // Try "Title: ..." lines
             let titleLinePattern = #"^Title:\s*(.+)$"#
             if let titleLineRegex = try? NSRegularExpression(pattern: titleLinePattern, options: [.anchorsMatchLines, .caseInsensitive]),
-               let match = titleLineRegex.firstMatch(in: responseContent, options: [], range: NSRange(location: 0, length: (responseContent as NSString).length)),
+               let match = titleLineRegex.firstMatch(in: actualContent, options: [], range: NSRange(location: 0, length: (actualContent as NSString).length)),
                match.numberOfRanges >= 2 {
                 let titleRange = match.range(at: 1)
                 if titleRange.location != NSNotFound {
-                    let title = (responseContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
+                    let title = (actualContent as NSString).substring(with: titleRange).trimmingCharacters(in: .whitespacesAndNewlines)
                     if !title.isEmpty {
                         return title
                     }

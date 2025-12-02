@@ -208,6 +208,7 @@ public struct SubscriptionPaywallView: View {
                     .padding(.horizontal, Theme.Spacing.lg)
             }
         }
+        .padding(.bottom, Theme.Spacing.md)
     }
 
     // MARK: - Status/Intro Section
@@ -277,6 +278,7 @@ public struct SubscriptionPaywallView: View {
         .subscriptionStoreButtonLabel(.multiline)
         .subscriptionStorePickerItemBackground(Color.card)
         .backgroundStyle(Color.background)
+        .storeButton(.hidden, for: .cancellation) // Hide native close button - we use our own topBar
         .tint(Color.primary)
         .onInAppPurchaseCompletion { _, result in
             // Handle purchase completion - transition to next screen on success

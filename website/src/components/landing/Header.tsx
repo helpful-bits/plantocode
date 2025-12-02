@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from '@/i18n/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench, Mic, Search, FileSearch, Copy } from 'lucide-react';
+import { Menu, X, Sparkles, ChevronDown, Terminal, GitMerge, Code2, Bug, Package, Wrench, Mic, Search, FileSearch, Copy, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DownloadButton } from '@/components/ui/DownloadButton';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
@@ -93,6 +93,7 @@ export function Header() {
       items: [
         { href: '/solutions/large-features', label: t('solution.largeFeatures.label', 'Large Features'), icon: Code2, description: t('solution.largeFeatures.description', 'Planning multi-file features') },
         { href: '/solutions/hard-bugs', label: t('solution.hardBugs.label', 'Complex Bugs'), icon: Bug, description: t('solution.hardBugs.description', 'Visual debugging with screen capture') },
+        { href: '/solutions/legacy-code-refactoring', label: t('solution.legacyCodeRefactoring.label', 'Legacy Code Refactoring'), icon: RefreshCw, description: t('solution.legacyCodeRefactoring.description', 'Modernize legacy codebases safely') },
         { href: '/solutions/maintenance-enhancements', label: t('solution.maintenance.label', 'Maintenance'), icon: Wrench, description: t('solution.maintenance.description', 'Technical debt cleanup') },
         { href: '/solutions/library-upgrades', label: t('solution.libraryUpgrades.label', 'Library Upgrades'), icon: Package, description: t('solution.libraryUpgrades.description', 'Dependency management') },
       ]

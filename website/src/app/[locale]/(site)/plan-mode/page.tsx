@@ -271,7 +271,7 @@ export default async function HirePage({ params }: { params: Promise<{ locale: L
                 </p>
                 <p className="text-base sm:text-lg text-foreground/80 mb-8">
                   <strong>{t['planMode.hero.insight'] || 'The complete planning pipeline:'}</strong><br/>
-                  {t['planMode.hero.guidance'] || 'Voice → Text Improvement → Task Refinement → File Discovery (Root selection, Regex, AI Relevance, Extended Pathfinder) → Generate multiple plans (GPT-5/GPT-5.1, Gemini 3 Pro) → Merge → Execute in agents (Aider, Cursor, Claude Code, Codex)'}
+                  {t['planMode.hero.guidance'] || 'Voice → Text Improvement → Task Refinement → File Discovery (Root selection, Regex, AI Relevance, Extended Pathfinder) → Generate multiple plans (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) → Merge → Execute in agents (Aider, Cursor, Claude Code, Codex)'}
                 </p>
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                   <Button variant="cta" size="lg" asChild>

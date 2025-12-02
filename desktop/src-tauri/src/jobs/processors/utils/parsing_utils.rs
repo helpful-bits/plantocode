@@ -1,7 +1,29 @@
 use crate::error::{AppError, AppResult};
 use crate::jobs::types::{StructuredImplementationPlan, StructuredImplementationPlanStep};
 use log::{debug, warn};
+use regex::Regex;
 use std::collections::HashSet;
+
+// ============================================================================
+// XML Step Extraction (regex-based, robust)
+// ============================================================================
+
+/// Extract raw <step>...</step> XML blocks from implementation plan XML
+/// Returns each step as a complete XML string including the step tags
+pub fn extract_steps_from_xml(xml_content: &str) -> Vec<String> {
+    let re = Regex::new(r"(?s)<step[^>]*>.*?</step>").unwrap();
+    re.find_iter(xml_content)
+        .map(|m| m.as_str().to_string())
+        .collect()
+}
+
+/// Extract agent instructions content from implementation plan XML
+pub fn extract_agent_instructions_from_xml(xml_content: &str) -> Option<String> {
+    let re = Regex::new(r"(?s)<agent_instructions>\s*(.*?)\s*</agent_instructions>").unwrap();
+    re.captures(xml_content)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().trim().to_string())
+}
 
 // Common words that indicate natural language sentences rather than paths
 const COMMON_WORDS: &[&str] = &[

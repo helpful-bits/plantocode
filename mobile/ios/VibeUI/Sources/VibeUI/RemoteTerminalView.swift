@@ -115,7 +115,7 @@ public struct RemoteTerminalView: View {
 
         Task {
             do {
-                try await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
+                try await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
             } catch {
             }
         }
@@ -676,10 +676,6 @@ class SwiftTermController: NSObject, ObservableObject {
     // Escape sequence buffering to avoid flushing mid-sequence
     private static let escapeChar: UInt8 = 0x1B // ESC
 
-    // Scroll pinning: only auto-scroll when user is at bottom
-    // Prevents "endless scrolling" when user scrolls up to read history
-    private var isPinnedToBottom: Bool = true
-
     // Background/foreground handling: pause feeding when app is backgrounded
     private var isFeedingPaused: Bool = false
     private var backgroundBuffer: [Data] = []
@@ -701,7 +697,6 @@ class SwiftTermController: NSObject, ObservableObject {
         backgroundBuffer.removeAll(keepingCapacity: false)
         burstStartedAt = nil
         isFeedingPaused = false
-        isPinnedToBottom = true
         lastSentCols = 0
         lastSentRows = 0
         terminalView = nil
@@ -729,8 +724,6 @@ class SwiftTermController: NSObject, ObservableObject {
                 }
             }
             backgroundBuffer.removeAll()
-            // Ensure we scroll to bottom after bulk feed
-            scrollToBottomIfPinned()
         }
 
         // Resume display link if we have pending data
@@ -743,19 +736,6 @@ class SwiftTermController: NSObject, ObservableObject {
         guard let terminalView = terminalView, !data.isEmpty else { return }
         let buffer = ArraySlice([UInt8](data))
         terminalView.feed(byteArray: buffer)
-    }
-
-    private func scrollToBottomIfPinned() {
-        guard isPinnedToBottom, let terminalView = terminalView else { return }
-
-        let contentHeight = terminalView.contentSize.height
-        let frameHeight = terminalView.bounds.height
-        let targetOffsetY = max(contentHeight - frameHeight, 0)
-
-        // Avoid tiny corrections that cause visual jumping
-        if abs(terminalView.contentOffset.y - targetOffsetY) > 1.0 {
-            terminalView.contentOffset = CGPoint(x: 0, y: targetOffsetY)
-        }
     }
 
     private func setupDisplayLinkIfNeeded() {
@@ -896,10 +876,6 @@ class SwiftTermController: NSObject, ObservableObject {
                 batchBuffer.append(holdback)
             }
         }
-
-        // Only scroll to bottom if user was already at the bottom
-        // This prevents "endless scrolling" when user scrolls up to read history
-        scrollToBottomIfPinned()
     }
 
     /// Extract incomplete escape sequence from end of buffer to avoid mid-sequence flush
@@ -1026,9 +1002,7 @@ extension SwiftTermController: TerminalViewDelegate {
     }
 
     func scrolled(source: TerminalView, position: Double) {
-        // Track if user is pinned to bottom (position 1.0 = bottom, 0.0 = top)
-        // Consider "pinned" if within 1% of bottom to handle floating point imprecision
-        isPinnedToBottom = position >= 0.99
+        // Let SwiftTerm handle scrolling naturally
     }
 }
 

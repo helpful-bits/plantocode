@@ -376,6 +376,29 @@
         "title": "Legacy Code Refactoring - AI Safe Modernization",
         "description": "Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production."
       },
+      "badge": "Code modernization",
+      "sections": {
+        "dependencyMapping": {
+          "title": "Map hidden dependencies",
+          "description": "4-stage FileFinderWorkflow discovers import chains, circular dependencies, and cross-module references before you touch any code. Know the blast radius of every change.",
+          "link": "Explore file discovery"
+        },
+        "multiModelPlanning": {
+          "title": "Multi-model migration plans",
+          "description": "Generate migration strategies from GPT-5.1, Claude Sonnet 4.5, and Gemini. Each model brings a different perspective—merge the best approaches with human review.",
+          "link": "Learn about planning"
+        },
+        "safeRefactoring": {
+          "title": "Merge instructions for safety",
+          "description": "Write plain-English merge instructions to combine plans: \"Prefer GPT-5.1 rollback strategy, use Gemini test coverage.\" Control exactly how changes are synthesized.",
+          "link": "See merge instructions"
+        },
+        "incrementalMigration": {
+          "title": "Incremental execution",
+          "description": "Execute migration plans step-by-step in the integrated terminal. Each change is deployable and testable. Feature flags and rollback plans built into every stage.",
+          "link": "Terminal workflows"
+        }
+      },
       "challenge": {
         "description": "You're tasked with modernizing a 5-year-old codebase: outdated frameworks, no tests, undocumented patterns, and critical business logic you don't fully understand. Direct AI refactoring would be chaos. Planning gives you a roadmap.",
         "title": "The Legacy Code Challenge"
@@ -385,8 +408,12 @@
           "download": "Download PlanToCode",
           "learnMapping": "Learn About Dependency Mapping"
         },
-        "description": "PlanToCode helps you map dependencies, generate migration plans, and refactor without breaking production.",
-        "title": "Modernize Legacy Code Safely"
+        "description": "Discover dependencies, plan migrations, and execute with confidence.",
+        "links": {
+          "discovery": "Explore file discovery",
+          "plans": "Learn about migration plans"
+        },
+        "title": "Start Modernizing Your Legacy Code"
       },
       "description": "Legacy code is where AI-assisted refactoring becomes dangerous. One wrong move breaks production. Here's how to modernize 100K+ line codebases safely with AI planning.",
       "furtherReading": {

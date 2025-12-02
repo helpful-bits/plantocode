@@ -355,6 +355,7 @@ pub fn validate_all_task_types_have_configs(
     runtime_config: &RuntimeAIConfig,
 ) -> Result<(), AppError> {
     // Get ALL TaskType variants that require LLM configuration
+    // DO NOT include TaskType::Unknown - it's a fallback variant for unknown task types
     let required_task_types = [
         TaskType::ImplementationPlan,
         TaskType::ImplementationPlanMerge,
@@ -370,7 +371,6 @@ pub fn validate_all_task_types_have_configs(
         TaskType::RootFolderSelection,
         TaskType::VideoAnalysis,
         TaskType::Streaming,
-        TaskType::Unknown,
     ];
 
     let mut missing_configs = Vec::new();
@@ -397,32 +397,24 @@ pub fn validate_all_task_types_have_configs(
         }
     }
 
-    // Build comprehensive error message
-    let mut error_messages = Vec::new();
-
+    // CRITICAL: Missing required configs is a fatal error
     if !missing_configs.is_empty() {
-        error_messages.push(format!(
-            "CRITICAL: Missing configurations for required TaskType variants: {}. \
+        return Err(AppError::ConfigError(format!(
+            "TaskType configuration validation FAILED: Missing configurations for required TaskType variants: {}. \
             Every TaskType enum variant that requires LLM MUST have a corresponding configuration.",
             missing_configs.join(", ")
-        ));
+        )));
     }
 
+    // WARNING: Extra unknown keys are logged but not treated as errors
+    // This allows the server to add new task types without breaking older clients
     if !invalid_task_keys.is_empty() {
-        error_messages.push(format!(
-            "CRITICAL: Invalid task configurations found: {}. \
-            These configurations exist but don't correspond to any known TaskType enum variant. \
-            Remove these configurations or add corresponding TaskType variants.",
+        tracing::warn!(
+            "Runtime AI config has unknown task keys that will be ignored: {}. \
+            These may be new task types added by the server that this client version doesn't recognize yet.",
             invalid_task_keys.join(", ")
-        ));
-    }
-
-    if !error_messages.is_empty() {
-        let full_error = format!(
-            "TaskType configuration validation FAILED:\n{}",
-            error_messages.join("\n")
         );
-        return Err(AppError::ConfigError(full_error));
+        // Do NOT return Err here; just log and continue
     }
 
     Ok(())

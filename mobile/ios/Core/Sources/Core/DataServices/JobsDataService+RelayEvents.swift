@@ -240,7 +240,10 @@ extension JobsDataService {
             } else {
                 scheduleCoalescedListJobsForActiveSession()
             }
-        case "job:status-changed":
+        case "job:status-changed", "job:finalized":
+            // Handle both status-changed and finalized events - both can contain status updates
+            // that transition jobs from active to inactive state
+
             // Extract jobId (may be wrapped in AnyCodable)
             var jobId: String?
             if let id = payload["jobId"] as? String {
@@ -353,7 +356,10 @@ extension JobsDataService {
                     }
                 }
             }
-        case "job:status-changed":
+        case "job:status-changed", "job:finalized":
+            // Handle both status-changed and finalized events - both can contain status updates
+            // that transition jobs from active to inactive state
+
             // Extract jobId (may be wrapped in AnyCodable)
             var jobId: String?
             if let id = payload["jobId"] as? String {
@@ -510,7 +516,17 @@ extension JobsDataService {
             var job = jobs[index]
             guard shouldIgnore(job: job) == false else { return }
 
-            if let metadataPatch = payload["metadataPatch"] as? [String: Any] {
+            // Desktop sends metadataPatch nested under payload.payload
+            // Check both locations for compatibility
+            let metadataPatch: [String: Any]? = {
+                if let nestedPayload = payload["payload"] as? [String: Any],
+                   let patch = nestedPayload["metadataPatch"] as? [String: Any] {
+                    return patch
+                }
+                return payload["metadataPatch"] as? [String: Any]
+            }()
+
+            if let metadataPatch = metadataPatch {
                 if let existingMetadata = job.metadata,
                    let metadataData = existingMetadata.data(using: .utf8),
                    var metadataDict = try? JSONSerialization.jsonObject(with: metadataData) as? [String: Any] {

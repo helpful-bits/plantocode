@@ -1,17 +1,17 @@
-use chrono;
-use futures::future;
 use log::{debug, error, info, warn};
 use serde_json::json;
-use std::collections::HashMap;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::fs;
 
+use crate::db_utils::BackgroundJobRepository;
 use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::processors::abstract_llm_processor::{
     LlmPromptContext, LlmTaskConfig, LlmTaskConfigBuilder, LlmTaskRunner,
 };
+use crate::jobs::processors::utils::parsing_utils;
+use std::sync::Arc;
 use crate::jobs::types::{
     FileRelevanceAssessmentPayload, FileRelevanceAssessmentProcessingDetails,
     FileRelevanceAssessmentQualityDetails, FileRelevanceAssessmentResponse, Job, JobPayload,
@@ -67,34 +67,6 @@ impl FileRelevanceAssessmentProcessor {
         }
 
         Ok(total_tokens)
-    }
-
-    /// Parse paths from LLM text response using newline separation (as instructed in system prompt)
-    fn parse_paths_from_text_response(
-        response_text: &str,
-        _project_directory: &str,
-    ) -> AppResult<Vec<String>> {
-        // Parse newline-separated paths as instructed in system prompt
-        let paths: Vec<String> = response_text
-            .lines()
-            .map(|line| line.trim())
-            .filter(|line| !line.is_empty())
-            .map(|line| line.to_string())
-            .collect();
-
-        Ok(Self::deduplicate_paths(paths))
-    }
-
-    /// Remove duplicates while preserving order
-    fn deduplicate_paths(paths: Vec<String>) -> Vec<String> {
-        let mut unique_paths = Vec::new();
-        let mut seen = std::collections::HashSet::new();
-        for path in paths {
-            if seen.insert(path.clone()) {
-                unique_paths.push(path);
-            }
-        }
-        unique_paths
     }
 
     /// Create intelligent chunks based on ACTUAL file sizes - no fallbacks!
@@ -199,6 +171,7 @@ impl FileRelevanceAssessmentProcessor {
         task_runner: &LlmTaskRunner,
         settings_repo: &crate::db_utils::SettingsRepository,
         repo: &crate::db_utils::BackgroundJobRepository,
+        repo_arc: &Arc<BackgroundJobRepository>,
         job_id: &str,
     ) -> AppResult<(
         Vec<String>,
@@ -237,11 +210,9 @@ impl FileRelevanceAssessmentProcessor {
             directory_tree: None, // Not needed for relevance assessment
         };
 
-        // Log the system prompt being used for this chunk
-
-        // Execute LLM task for this chunk
+        // Execute streaming LLM task for this chunk (streaming avoids Cloudflare timeouts)
         let llm_result = task_runner
-            .execute_llm_task(prompt_context, settings_repo)
+            .execute_streaming_llm_task(prompt_context, settings_repo, repo_arc, job_id)
             .await
             .map_err(|e| {
                 AppError::JobError(format!(
@@ -251,9 +222,13 @@ impl FileRelevanceAssessmentProcessor {
                 ))
             })?;
 
-        // Parse the LLM response for this chunk
+        // Debug: write raw LLM response to file
+        let debug_path = format!("/tmp/file_relevance_chunk_{}_{}.txt", job_id, chunk_index);
+        let _ = std::fs::write(&debug_path, &llm_result.response);
+
+        // Parse the LLM response for this chunk using robust shared parser
         let chunk_relevant_paths =
-            Self::parse_paths_from_text_response(&llm_result.response, project_directory).map_err(
+            parsing_utils::parse_paths_from_text_response(&llm_result.response, project_directory).map_err(
                 |e| {
                     AppError::JobError(format!(
                         "Failed to parse chunk {} results: {}",
@@ -337,10 +312,10 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             ));
         }
 
-        // Initialize LlmTaskRunner with appropriate model settings
+        // Initialize LlmTaskRunner with appropriate model settings - use streaming to avoid Cloudflare timeouts
         let task_config =
             LlmTaskConfigBuilder::new(model_used.clone(), temperature, max_output_tokens)
-                .stream(false)
+                .stream(true)
                 .build();
 
         let task_runner = LlmTaskRunner::new(app_handle.clone(), job.clone(), task_config);
@@ -358,21 +333,46 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                     ))
                 })?;
 
-        // Create content-aware chunks based on ACTUAL file sizes using INPUT context window
-        // Use 60% of INPUT context window for aggressive chunking while leaving room for response
-        let chunk_token_limit = (model_context_window as f64 * 0.6) as u32;
-        let chunks = match Self::create_content_aware_chunks(
-            &payload.locally_filtered_files,
-            project_directory,
-            chunk_token_limit,
-        )
-        .await
-        {
-            Ok(chunks) => chunks,
-            Err(e) => {
-                let error_msg = format!("Failed to create chunks using actual file sizes: {}", e);
-                error!("{}", error_msg);
-                return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+        // Estimate total tokens for all files first
+        let mut total_estimated_tokens = 0u32;
+        for file_path in &payload.locally_filtered_files {
+            let full_path = std::path::Path::new(project_directory).join(file_path);
+            if let Ok(content) = fs::read_to_string(&full_path).await {
+                total_estimated_tokens += Self::estimate_tokens(&content, 4); // ~4 chars per token average
+            }
+        }
+
+        // Only chunk if total content exceeds 90k tokens, otherwise process all at once
+        const CHUNKING_THRESHOLD: u32 = 90_000;
+        let chunks = if total_estimated_tokens < CHUNKING_THRESHOLD {
+            info!(
+                "Total content ~{} tokens (< {}), processing all {} files in single request",
+                total_estimated_tokens,
+                CHUNKING_THRESHOLD,
+                payload.locally_filtered_files.len()
+            );
+            vec![payload.locally_filtered_files.clone()]
+        } else {
+            info!(
+                "Total content ~{} tokens (>= {}), chunking {} files",
+                total_estimated_tokens,
+                CHUNKING_THRESHOLD,
+                payload.locally_filtered_files.len()
+            );
+            // Use 90k as chunk limit for consistency
+            match Self::create_content_aware_chunks(
+                &payload.locally_filtered_files,
+                project_directory,
+                CHUNKING_THRESHOLD,
+            )
+            .await
+            {
+                Ok(chunks) => chunks,
+                Err(e) => {
+                    let error_msg = format!("Failed to create chunks using actual file sizes: {}", e);
+                    error!("{}", error_msg);
+                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+                }
             }
         };
 
@@ -391,6 +391,13 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
         // PARALLEL PROCESSING - Process ALL chunks concurrently for maximum speed!
         let start_time = std::time::Instant::now();
 
+        // Get Arc reference to repo for streaming handler - clone the inner Arc
+        let repo_arc: Arc<BackgroundJobRepository> = app_handle
+            .try_state::<Arc<BackgroundJobRepository>>()
+            .ok_or_else(|| AppError::JobError("BackgroundJobRepository not found".to_string()))?
+            .inner()
+            .clone();
+
         // Create futures for all chunks
         let chunk_futures: Vec<_> = chunks
             .iter()
@@ -402,6 +409,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                 let task_runner = task_runner.clone();
                 let settings_repo = settings_repo.clone();
                 let repo = repo.clone();
+                let repo_arc = repo_arc.clone();
                 let job_id = job.id.clone();
                 let total_chunks = chunks.len();
 
@@ -415,6 +423,7 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
                         &task_runner,
                         &settings_repo,
                         &repo,
+                        &repo_arc,
                         &job_id,
                     )
                     .await;
@@ -640,10 +649,10 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             "llmSuggestedFiles": relevant_paths.len(),
             "validatedRelevantFiles": validated_relevant_paths.len(),
             "invalidRelevantFiles": invalid_relevant_paths.len(),
-            "chunkTokenLimit": chunk_token_limit,
+            "chunkTokenLimit": CHUNKING_THRESHOLD,
             "modelContextWindow": model_context_window,
             "maxOutputTokens": max_output_tokens,
-            "contextWindowUtilization": format!("{:.1}%", (chunk_token_limit as f64 / model_context_window as f64) * 100.0),
+            "contextWindowUtilization": format!("{:.1}%", (CHUNKING_THRESHOLD as f64 / model_context_window as f64) * 100.0),
             "parallelProcessing": true,
             "concurrentChunks": chunks.len(),
             "processingDurationSeconds": parallel_duration.as_secs_f64(),
@@ -680,11 +689,11 @@ impl JobProcessor for FileRelevanceAssessmentProcessor {
             processed_files: total_processed_files,
             successful_chunks: successful_chunks_count,
             failed_chunks: chunk_processing_errors.len(),
-            chunk_token_limit: chunk_token_limit as usize,
+            chunk_token_limit: CHUNKING_THRESHOLD as usize,
             model_context_window: model_context_window as usize,
             context_window_utilization: format!(
                 "{:.1}%",
-                (chunk_token_limit as f64 / model_context_window as f64) * 100.0
+                (CHUNKING_THRESHOLD as f64 / model_context_window as f64) * 100.0
             ),
             parallel_processing: true,
             concurrent_chunks: chunks.len(),

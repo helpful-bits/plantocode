@@ -18,6 +18,7 @@ public struct PlanDetailView: View {
 
     @State private var xmlContent: String = ""
     @State private var markdownContent: String = ""
+    @State private var parsedMarkdown: MarkdownContent?
     @State private var isConvertingToMarkdown: Bool = false
     @State private var showingMarkdown: Bool = true
     @State private var isLoading = false
@@ -71,6 +72,7 @@ public struct PlanDetailView: View {
     private enum PlanDisplayStatus {
         case streamingXml
         case convertingToMarkdown
+        case parsingMarkdown
         case ready
     }
 
@@ -80,6 +82,10 @@ public struct PlanDetailView: View {
         }
         if isConvertingToMarkdown || markdownConversionStatus == "pending" {
             return .convertingToMarkdown
+        }
+        // Show parsing state while markdown is being parsed in background
+        if showingMarkdown && !markdownContent.isEmpty && parsedMarkdown == nil {
+            return .parsingMarkdown
         }
         return .ready
     }
@@ -116,6 +122,16 @@ public struct PlanDetailView: View {
                         ProgressView()
                             .tint(Color.primary)
                         Text("Converting to Markdown...")
+                            .font(.body)
+                            .fontWeight(.medium)
+                            .foregroundColor(Color.textSecondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .parsingMarkdown:
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .tint(Color.primary)
+                        Text("Rendering plan...")
                             .font(.body)
                             .fontWeight(.medium)
                             .foregroundColor(Color.textSecondary)
@@ -187,9 +203,14 @@ public struct PlanDetailView: View {
             container.jobsService.setViewedImplementationPlanId(currentJobId)
             hasInitializedContent = false
             xmlContent = ""
+            markdownContent = ""
+            parsedMarkdown = nil
             hasUnsavedChanges = false
             isEditMode = false
             loadPlanContent()
+            if !isStreaming {
+                triggerMarkdownConversionIfNeeded()
+            }
         }
         .onDisappear {
             container.jobsService.setViewedImplementationPlanId(nil)
@@ -197,9 +218,28 @@ public struct PlanDetailView: View {
         .onChange(of: observedJob?.response) { _ in
             loadPlanContent()
         }
+        .onChange(of: observedJob?.metadata) { _ in
+            reloadMarkdownFromJob()
+        }
+        .onChange(of: observedJob?.id) { _ in
+            loadPlanContent()
+        }
         .onChange(of: isStreaming) { newValue in
             if newValue == false {
                 triggerMarkdownConversionIfNeeded()
+            }
+        }
+        .onChange(of: markdownContent) { newContent in
+            // Parse markdown on background thread to avoid blocking UI
+            if !newContent.isEmpty {
+                Task.detached(priority: .userInitiated) {
+                    let parsed = MarkdownContent(newContent)
+                    await MainActor.run {
+                        self.parsedMarkdown = parsed
+                    }
+                }
+            } else {
+                parsedMarkdown = nil
             }
         }
     }
@@ -267,9 +307,46 @@ public struct PlanDetailView: View {
         // Portrait with showingMarkdown == true and markdown exists → markdown view
         else if showingMarkdown && !markdownContent.isEmpty {
             ScrollView {
-                Markdown(markdownContent)
-                    .textSelection(.enabled)
-                    .padding()
+                // Use pre-parsed markdown to avoid re-parsing on every render
+                if let parsed = parsedMarkdown {
+                    Markdown(parsed)
+                        // NOTE: .textSelection(.enabled) removed for performance
+                        // It causes severe lag with complex markdown documents
+                        // Code blocks - smaller font
+                        .markdownBlockStyle(\.codeBlock) { configuration in
+                            configuration.label
+                                .relativeLineSpacing(.em(0.2))
+                                .markdownTextStyle {
+                                    FontFamilyVariant(.monospaced)
+                                    FontSize(.em(0.75))
+                                }
+                                .padding(12)
+                                .background(Color.codeBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                                .markdownMargin(top: 8, bottom: 8)
+                        }
+                        // Inline code - smaller font
+                        .markdownTextStyle(\.code) {
+                            FontFamilyVariant(.monospaced)
+                            FontSize(.em(0.8))
+                            BackgroundColor(Color.inlineCodeBackground)
+                        }
+                        // Lists - tighter indentation for mobile
+                        .markdownBlockStyle(\.listItem) { configuration in
+                            configuration.label
+                                .markdownMargin(top: .em(0.15))
+                        }
+                        .markdownBlockStyle(\.bulletedListMarker) { configuration in
+                            Text("•")
+                                .relativeFrame(minWidth: .em(1.0), alignment: .trailing)
+                        }
+                        .markdownBlockStyle(\.numberedListMarker) { configuration in
+                            Text("\(configuration.itemNumber).")
+                                .relativeFrame(minWidth: .em(1.2), alignment: .trailing)
+                        }
+                        .padding()
+                }
+                // Note: No else branch needed - .parsingMarkdown state handles the nil case
             }
         }
         // Otherwise → XML editor
@@ -483,6 +560,8 @@ public struct PlanDetailView: View {
         container.jobsService.setViewedImplementationPlanId(currentJobId)
         hasInitializedContent = false
         xmlContent = ""
+        markdownContent = ""
+        parsedMarkdown = nil
         hasUnsavedChanges = false
         isEditMode = false
         isEditorFocused = false
@@ -492,35 +571,27 @@ public struct PlanDetailView: View {
 
     // MARK: - Data Loading
 
+    private func reloadMarkdownFromJob() {
+        guard let job = observedJob else { return }
+
+        if let md = PlanContentParser.extractMarkdownResponse(from: job.metadata) {
+            markdownContent = md
+            if !isLandscape && !md.isEmpty {
+                showingMarkdown = true
+            }
+        }
+    }
+
     private func loadPlanContent() {
         guard let job = observedJob else { return }
 
-        // Prevent onChange from marking as unsaved during load
-        isLoadingContent = true
-
-        // Read XML from job.response
-        xmlContent = job.response ?? xmlContent
-
-        // Read markdown from PlanContentParser
-        if let md = PlanContentParser.extractMarkdownResponse(from: job.metadata) {
-            markdownContent = md
+        if !hasInitializedContent {
+            xmlContent = job.response ?? xmlContent
         }
 
-        isLoadingContent = false
+        reloadMarkdownFromJob()
 
-        // Set showingMarkdown based on orientation
-        if isLandscape {
-            showingMarkdown = false
-        } else {
-            // Portrait: show markdown if it exists
-            showingMarkdown = !markdownContent.isEmpty
-        }
-
-        // Mark content as initialized AFTER the current run loop completes
-        // This ensures onChange fires first (with hasInitializedContent still false)
-        DispatchQueue.main.async {
-            self.hasInitializedContent = true
-        }
+        hasInitializedContent = true
     }
 
     private func savePlan() {
@@ -547,35 +618,27 @@ public struct PlanDetailView: View {
     private func triggerMarkdownConversionIfNeeded() {
         guard let job = observedJob else { return }
 
-        // Early return if markdown already exists in metadata
         if PlanContentParser.extractMarkdownResponse(from: job.metadata) != nil {
             return
         }
 
-        // Early return if markdownContent is already populated
         if !markdownContent.isEmpty {
             return
         }
 
         isConvertingToMarkdown = true
+
         Task {
-            // Call generatePlanMarkdown
-            await jobsService.generatePlanMarkdown(jobId: job.id)
+            defer {
+                Task { @MainActor in
+                    self.isConvertingToMarkdown = false
+                }
+            }
+
+            await container.jobsService.generatePlanMarkdown(jobId: job.id)
 
             await MainActor.run {
-                // Refresh markdown from updated job
-                if let updated = self.container.jobsService.jobs.first(where: { $0.id == job.id }) {
-                    let extractedMarkdown = PlanContentParser.extractMarkdownResponse(from: updated.metadata)
-                    if let md = extractedMarkdown {
-                        self.markdownContent = md
-
-                        // In portrait, show markdown when available
-                        if !self.isLandscape {
-                            self.showingMarkdown = true
-                        }
-                    }
-                }
-                self.isConvertingToMarkdown = false
+                self.reloadMarkdownFromJob()
             }
         }
     }

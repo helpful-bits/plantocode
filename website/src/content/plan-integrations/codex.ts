@@ -3,96 +3,106 @@ import type { PlanIntegrationContent } from '@/components/plan/PlanIntegrationLa
 
 export const codexContent: PlanIntegrationContent = {
   meta: {
-    title: 'Codex CLI Planning - Reviewed Approvals',
+    title: 'Codex CLI Planning - Blueprint-First Execution',
     description:
-      'See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
+      'PlanToCode discovers files via 4-stage workflow, generates multi-model plans across GPT-5.1/Claude Sonnet 4.5/Gemini, merges them into XML blueprint, then Codex CLI executes. Stage 5 construction crew for Intelligence-Driven Development.',
     canonical: 'https://www.plantocode.com/plan-mode/codex',
   },
 
   hero: {
     eyebrow: 'Codex CLI × PlanToCode',
-    h1: 'Plan first. Execute with the right approvals.',
+    h1: 'The architect builds blueprints. The construction crew executes.',
     subhead:
-      'See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.',
+      'PlanToCode completes Stages 1-4 (spec capture, file discovery, multi-model planning, human review). Codex CLI is Stage 5: taking the merged XML implementation plan and executing it with approval governance.',
     supporting:
-      '$5 free credits • Pay-as-you-go • Works with Codex CLI (and other CLIs via the built-in terminal)',
+      '$5 free credits • Pay-as-you-go • Intelligence-Driven Development: Blueprint-first execution with monorepo-ready terminal workflows',
   },
 
   intro:
-    "Plan first. Execute with the right approvals. See the exact files that will change, review a concrete per-file plan, then run Codex CLI in the approval mode your team allows.",
+    "Intelligence-Driven Development follows 5 stages: (1) Specification capture via voice/meetings/text, (2) Targeted file discovery using 4-stage FileFinderWorkflow, (3) Multi-model implementation planning across GPT-5.1/Claude Sonnet 4.5/Gemini, (4) Human review and plan merge with merge instructions, (5) Secure execution. Codex CLI is your Stage 5 construction crew—taking the merged implementation_plan XML blueprint and building it with approval governance.",
 
   valueBullets: [
     {
-      title: 'Human-in-the-loop control',
+      title: 'Blueprint-first Codex runs',
       description:
-        'You approve the plan before anything runs. Edit steps, exclude files, and lock constraints. Every action is visible and auditable.',
+        'Stage 4 produces a merged implementation_plan XML with file-by-file edits, dependencies, and constraints. Stage 5 feeds this blueprint directly into Codex CLI for execution—no ambiguity, no surprises.',
     },
     {
-      title: 'Per-file specs with real paths',
+      title: 'Approval modes as governance',
       description:
-        'Plans are expressed as a list of file edits (add/modify/delete) using your repository paths, so you can see exactly what will be touched.',
+        'Auto (workspace freedom, prompts outside scope), Read-Only (plan and chat only), Full Access (unrestricted). Choose the approval mode that matches your risk tolerance and team policy. The blueprint defines scope, Codex enforces boundaries.',
     },
     {
-      title: 'Intelligent file discovery',
+      title: 'File discovery ensures no-surprises changes',
       description:
-        'Before prompting, we surface likely-relevant files using pattern groups + relevance scoring. You can stage, review, and prune the list.',
+        'Stage 2 FileFinderWorkflow (root folder selection, regex file filter, AI relevance assessment, extended path finder) identifies every relevant file before planning. Stage 5 execution touches only what the blueprint declares—no stray edits.',
     },
     {
-      title: 'Integrated terminal',
+      title: 'Monorepo-ready terminal workflows',
       description:
-        'Launch Codex (or any CLI) inside PlanToCode. We detect the Codex binary, preserve environment, and keep long jobs stable with health checks and auto-reconnect.',
+        'Run Codex CLI inside PlanToCode\'s integrated terminal. Navigate monorepo workspaces, execute build scripts, run migrations—all with persistent logs, health checks, and auto-reconnect. The terminal is Stage 5\'s execution environment.',
     },
     {
-      title: 'Persistent sessions & logs',
+      title: 'Multi-model plan synthesis prevents blind spots',
       description:
-        'Terminal output and planning sessions are stored locally. Close the app and pick up right where you left off.',
+        'Stage 3 runs implementation_plan prompts across multiple models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro). Stage 4 merges their outputs with your merge instructions. Codex gets a comprehensive blueprint, not a single model\'s narrow perspective.',
     },
     {
-      title: 'Privacy',
+      title: 'Skyscraper blueprint analogy',
       description:
-        'Sessions live in a local SQLite database. Before any AI call, PlanToCode shows you the request payload. No silent uploads.',
+        'PlanToCode is the architect (Stages 1-4): capturing requirements, surveying the site (file discovery), drafting plans (multi-model), reviewing blueprints (merge). Codex CLI is the construction crew (Stage 5): building exactly what the blueprint specifies.',
     },
   ],
 
   integrationNotes: [
     {
-      title: 'Run Codex from the built-in terminal',
+      title: 'How to use Codex CLI with a merged implementation plan',
       description:
-        'Open a terminal in your repo, review the plan, and start Codex. Keep the plan and terminal side-by-side while Codex executes.',
+        'Complete Stages 1-4 in PlanToCode: (1) Capture specification via voice/text using text_improvement and task_refinement prompts. (2) Run FileFinderWorkflow (root folder selection → regex file filter → AI relevance assessment → extended path finder) to discover all relevant files. (3) Generate multiple implementation plans using different models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) via the implementation_plan prompt. (4) Review plans side-by-side, write merge instructions, run implementation_plan_merge to produce a single XML blueprint.',
     },
     {
-      title: 'Choose the right approval mode',
+      title: 'Stage 5: Feeding the blueprint to Codex CLI',
       description:
-        'Auto (default): Codex can read/edit/run inside the working directory without prompting; asks before leaving the workspace or using network. Read-Only: Plan and chat only—no edits or command execution. Full Access: Edits + commands (incl. network) without approval. Use only when policy allows. Configure via /approvals in the Codex UI or CLI flags.',
+        'Open PlanToCode\'s integrated terminal, navigate to your repo root, start Codex CLI. Paste the merged implementation_plan XML into Codex as context. The XML contains file-by-file edits (add/modify/delete), dependencies, rollback instructions, and constraints. Codex treats this as the execution specification—no improvisation, no scope creep.',
     },
     {
-      title: 'Model note',
+      title: 'Approval modes as risk governance',
       description:
-        'Defaults to GPT-5.1; switch to GPT-5.1-Codex via /model or --model gpt-5-codex',
+        'Auto (default): Codex can read/edit/run inside the working directory without prompting; asks before leaving workspace or using network. Read-Only: Plan and chat only—no edits or command execution. Full Access: Edits + commands (incl. network) without approval. Use only when policy allows. Configure via /approvals in Codex UI or CLI flags. The blueprint defines scope, approval mode enforces boundaries.',
     },
     {
-      title: 'Windows hint',
+      title: 'Real-world scenario: Database migration with schema changes',
       description:
-        'Windows users: WSL recommended for best CLI compatibility',
+        'Stage 1: "Add user_preferences table with JSONB column, migrate existing settings from user_settings." Stage 2: FileFinderWorkflow discovers migrations folder, models, API routes, tests. Stage 3: Generate plans with GPT-5.1 and Gemini 3 Pro—each brings a different perspective. Stage 4: Merge with instruction "Prioritize GPT-5.1 rollback strategy, use Gemini data validation." Stage 5: Codex executes migration, updates models, runs tests—all from the merged blueprint.',
+    },
+    {
+      title: 'Monorepo workflows and build orchestration',
+      description:
+        'PlanToCode terminal supports WSL, persistent sessions, health checks. Run Codex in backend/, then switch to frontend/. The merged plan declares cross-package dependencies—Codex follows them. Terminal logs every step. If Codex crashes, terminal auto-reconnects; resume from last checkpoint.',
+    },
+    {
+      title: 'Model selection and Windows compatibility',
+      description:
+        'Codex CLI defaults to GPT-5.1; switch to GPT-5.1-Codex via /model or --model gpt-5-codex. Windows users: WSL recommended for best CLI compatibility. PlanToCode detects WSL environments and preserves paths across Windows/Linux boundaries.',
     },
   ],
 
   quickstart: [
     {
-      step: 'Install CLI',
-      detail: '',
+      step: 'Stage 1-2: Capture spec and discover files',
+      detail: 'Use text_improvement/task_refinement prompts to clarify "Add rate limiting to API endpoints." Run FileFinderWorkflow to discover routes/, middleware/, tests/, docs/.',
     },
     {
-      step: 'Login and select model (GPT-5.1 or GPT-5.1-Codex)',
-      detail: '',
+      step: 'Stage 3: Generate multi-model plans',
+      detail: `Run implementation_plan prompt with GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Each model brings a different perspective—review each plan's approach to middleware placement, config, tests.`,
     },
     {
-      step: 'Paste approved plan',
-      detail: '',
+      step: 'Stage 4: Merge with human guidance',
+      detail: 'Write merge instructions: "Use GPT-5.1 middleware architecture, Gemini test coverage, Claude Sonnet 4.5 config approach." Run implementation_plan_merge. Review merged XML blueprint.',
     },
     {
-      step: 'Pick approval mode',
-      detail: '',
+      step: 'Stage 5: Execute in Codex with approvals',
+      detail: 'Open PlanToCode terminal, start Codex CLI, paste merged XML. Choose Auto mode (workspace-only edits). Codex reads blueprint, executes file-by-file, logs progress. Review terminal output, verify tests pass.',
     },
   ],
 

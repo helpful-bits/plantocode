@@ -1467,6 +1467,25 @@ public struct CommandRouter {
             params: params
         )
 
+        // Markdown generation can take 2-3 minutes for large plans with many steps
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 180.0)
+    }
+
+    // MARK: - Account
+
+    public static func accountDeleteAccount() -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "account.deleteAccount",
+            params: [:]
+        )
+
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
     }
 }

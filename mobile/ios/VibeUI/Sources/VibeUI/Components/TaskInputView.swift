@@ -285,8 +285,10 @@ public struct TaskInputView: View {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
 
+            // Capture state outside do block so it's accessible in catch for retry
+            let state = await MainActor.run { undoRedoManager.exportState() }
+
             do {
-                let state = undoRedoManager.exportState()
                 let newState = try await container.sessionService.syncHistoryState(
                     sessionId: sessionId,
                     kind: "task",
@@ -302,8 +304,35 @@ public struct TaskInputView: View {
                     }
                 }
             } catch {
+                // Log sync failures for debugging - these were previously silent
+                print("[TaskInputView] Failed to sync task description to desktop: \(error.localizedDescription)")
+
                 await MainActor.run {
                     isEditing = false
+                }
+
+                // Retry sync after a delay if not cancelled
+                // This ensures the task description eventually syncs even if there's a temporary connection issue
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { return }
+
+                // Only retry if the text hasn't changed since original attempt
+                let currentState = await MainActor.run { undoRedoManager.exportState() }
+                if currentState.checksum == state.checksum {
+                    do {
+                        let retryState = try await container.sessionService.syncHistoryState(
+                            sessionId: sessionId,
+                            kind: "task",
+                            state: currentState,
+                            expectedVersion: currentState.version
+                        )
+                        await MainActor.run {
+                            undoRedoManager.applyRemoteHistoryState(retryState, suppressRecording: true)
+                        }
+                        print("[TaskInputView] Retry sync succeeded")
+                    } catch {
+                        print("[TaskInputView] Retry sync also failed: \(error.localizedDescription)")
+                    }
                 }
             }
         }

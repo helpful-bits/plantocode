@@ -159,23 +159,33 @@ public class ServerRelayClient: NSObject, ObservableObject {
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             var cancellable: AnyCancellable?
             var timeoutTimer: Timer?
+            var hasResumed = false
+            let lock = NSLock()
 
-            let cleanup = {
+            let safeResume: (Result<Void, Error>) -> Void = { result in
+                lock.lock()
+                defer { lock.unlock() }
+                guard !hasResumed else { return }
+                hasResumed = true
                 cancellable?.cancel()
                 timeoutTimer?.invalidate()
+                switch result {
+                case .success:
+                    continuation.resume(returning: ())
+                case .failure(let error):
+                    continuation.resume(throwing: error)
+                }
             }
 
             // Check if already ready (optimization)
             if case .connected = connectionState, hasSessionCredentials {
-                cleanup()
-                continuation.resume(returning: ())
+                safeResume(.success(()))
                 return
             }
 
             // Start timeout timer
             timeoutTimer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
-                cleanup()
-                continuation.resume(throwing: ConnectionError.timeout)
+                safeResume(.failure(ConnectionError.timeout))
             }
 
             // Observe BOTH connectionState AND sessionId (for credentials)
@@ -186,19 +196,16 @@ public class ServerRelayClient: NSObject, ObservableObject {
             cancellable = Publishers.CombineLatest(statePublisher, credentialsPublisher)
                 .sink { [weak self] state, _ in
                     guard let self = self else {
-                        cleanup()
-                        continuation.resume(throwing: ConnectionError.terminal(ServerRelayError.invalidState("Client deallocated")))
+                        safeResume(.failure(ConnectionError.terminal(ServerRelayError.invalidState("Client deallocated"))))
                         return
                     }
 
                     switch state {
                     case .connected where self.hasSessionCredentials:
                         // Connected AND has credentials - ready!
-                        cleanup()
-                        continuation.resume(returning: ())
+                        safeResume(.success(()))
                     case .failed(let error):
-                        cleanup()
-                        continuation.resume(throwing: ConnectionError.terminal(error))
+                        safeResume(.failure(ConnectionError.terminal(error)))
                     case .connected, .disconnected, .connecting, .handshaking, .authenticating, .reconnecting, .closing:
                         // Still waiting (either not connected OR connected but no credentials)
                         break

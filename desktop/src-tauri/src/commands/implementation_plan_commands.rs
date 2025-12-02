@@ -764,11 +764,33 @@ pub async fn generate_plan_markdown_command(
         ));
     }
 
-    repo.update_job_metadata(
-        &job_id,
-        &serde_json::json!({"markdownConversionStatus": "pending"}),
-    )
-    .await?;
+    // Check if markdown already exists - return cached version to avoid duplicate generation
+    if let Some(metadata_str) = &job.metadata {
+        if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata_str) {
+            if let Some(existing_markdown) = metadata_json.get("markdownResponse").and_then(|v| v.as_str()) {
+                if !existing_markdown.is_empty() {
+                    info!("Markdown already exists for plan {}, returning cached version", job_id);
+                    return Ok(PlanMarkdownResponse {
+                        job_id: job_id.clone(),
+                        xml_content,
+                        markdown: existing_markdown.to_string(),
+                    });
+                }
+            }
+        }
+    }
+
+    let pending_patch = serde_json::json!({"markdownConversionStatus": "pending"});
+    repo.update_job_metadata(&job_id, &pending_patch).await?;
+
+    crate::events::job_events::emit_job_metadata_updated(
+        &app_handle,
+        crate::events::job_events::JobMetadataUpdatedEvent {
+            job_id: job_id.clone(),
+            session_id: job.session_id.clone(),
+            metadata_patch: pending_patch,
+        },
+    );
 
     let markdown =
         crate::utils::xml_markdown_converter::convert_xml_plan_to_markdown(
@@ -777,14 +799,20 @@ pub async fn generate_plan_markdown_command(
         )
         .await?;
 
-    repo.update_job_metadata(
-        &job_id,
-        &serde_json::json!({
-            "markdownResponse": markdown.clone(),
-            "markdownConversionStatus": "completed"
-        }),
-    )
-    .await?;
+    let completed_patch = serde_json::json!({
+        "markdownResponse": markdown.clone(),
+        "markdownConversionStatus": "completed"
+    });
+    repo.update_job_metadata(&job_id, &completed_patch).await?;
+
+    crate::events::job_events::emit_job_metadata_updated(
+        &app_handle,
+        crate::events::job_events::JobMetadataUpdatedEvent {
+            job_id: job_id.clone(),
+            session_id: job.session_id.clone(),
+            metadata_patch: completed_patch,
+        },
+    );
 
     info!("Successfully generated Markdown for plan: {}", job_id);
 

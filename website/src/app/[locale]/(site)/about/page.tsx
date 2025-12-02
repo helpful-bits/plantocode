@@ -188,32 +188,29 @@ export default async function AboutPage({ params }: { params: Promise<{ locale: 
 
                   <div className="space-y-6">
                     <div>
-                      <h3 className="text-xl font-bold mb-3">Planning Engine</h3>
+                      <h3 className="text-xl font-bold mb-3">{t['about.architecture.planningEngine.title']}</h3>
                       <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
-                        <li>Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)</li>
-                        <li>Structured XML plan generation</li>
-                        <li>Intelligent plan merging with SOLID principles</li>
-                        <li>Source attribution tracking</li>
+                        {(t['about.architecture.planningEngine.items'] as string[])?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
                       </ul>
                     </div>
 
                     <div>
-                      <h3 className="text-xl font-bold mb-3">File Discovery Workflow</h3>
+                      <h3 className="text-xl font-bold mb-3">{t['about.architecture.fileDiscovery.title']}</h3>
                       <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
-                        <li>Root folder selection (hierarchical intelligence)</li>
-                        <li>Regex pattern filtering with path validation</li>
-                        <li>AI-powered relevance assessment</li>
-                        <li>Extended discovery for related files</li>
+                        {(t['about.architecture.fileDiscovery.items'] as string[])?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
                       </ul>
                     </div>
 
                     <div>
-                      <h3 className="text-xl font-bold mb-3">Development Tools</h3>
+                      <h3 className="text-xl font-bold mb-3">{t['about.architecture.devTools.title']}</h3>
                       <ul className="text-foreground/80 leading-relaxed list-disc list-inside space-y-2">
-                        <li>Monaco Editor for plan review and editing</li>
-                        <li>React + TypeScript frontend</li>
-                        <li>SQLite for local persistence</li>
-                        <li>Tauri for cross-platform desktop</li>
+                        {(t['about.architecture.devTools.items'] as string[])?.map((item: string, idx: number) => (
+                          <li key={idx}>{item}</li>
+                        ))}
                       </ul>
                     </div>
 

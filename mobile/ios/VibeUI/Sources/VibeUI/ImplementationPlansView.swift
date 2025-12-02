@@ -16,7 +16,6 @@ public struct ImplementationPlansView: View {
     @State private var isMerging = false
     @State private var currentPlanIndex = 0
     @State private var showingPromptPreview = false
-    @State private var refreshTrigger = UUID()
     @State private var deletingPlans = Set<String>()
     @State private var cancellables = Set<AnyCancellable>()
 
@@ -62,10 +61,10 @@ public struct ImplementationPlansView: View {
             return true
         }
 
-        // Map to PlanSummary and sort by updatedAt/createdAt descending
+        // Map to PlanSummary and sort by createdAt descending (stable sort to prevent jumping during processing)
         return filteredJobs
             .map(PlanSummary.init(from:))
-            .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     private var isLoading: Bool {
@@ -254,9 +253,6 @@ public struct ImplementationPlansView: View {
     }
 
     public var body: some View {
-        // Force view dependency on refresh trigger
-        let _ = refreshTrigger
-
         VStack(spacing: 0) {
             actionBarSection
 
@@ -453,8 +449,7 @@ public struct ImplementationPlansView: View {
                 return
             }
 
-            // Set active session and start session-scoped sync
-            container.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+            // Start session-scoped sync (sets active session, fetches jobs, starts validation timer)
             container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
 
             // Load model settings when session changes
@@ -468,29 +463,11 @@ public struct ImplementationPlansView: View {
                 planCreatorViewModel.loadModelSettings()
             }
         }
-        .onReceive(container.jobsService.$jobs) { _ in
-            refreshTrigger = UUID()
-        }
-        .onReceive(container.sessionService.currentSessionPublisher) { session in
-            if session != nil {
-                refreshTrigger = UUID()
-                if let session = session {
-                    container.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
-                    container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
-                }
-                planCreatorViewModel.loadModelSettings()
-            }
-        }
         .onAppear {
             // Set view active state
             container.setJobsViewActive(true)
 
-            // Seed sync if already connected and session exists
-            if isConnected, let session = container.sessionService.currentSession {
-                container.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
-                container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
-            }
-
+            // Setup view model (sync is handled by .task(id:) below)
             planCreatorViewModel.setup(container: container, currentTaskDescription: currentTaskDescription)
             planCreatorViewModel.requestTokenEstimation()
         }

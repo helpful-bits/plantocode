@@ -385,6 +385,15 @@ pub async fn logout_auth0(
         client.shutdown().await;
     }
 
+    // Clear device ID so next login gets a fresh device registration
+    // This is important for multi-user scenarios on the same machine
+    if let Err(e) = device_id_manager::clear(&app_handle) {
+        tracing::warn!("Failed to clear device ID on logout: {:?}", e);
+    }
+
+    // Clear device link session file so we don't try to resume old session
+    crate::services::device_link_client::clear_session(&app_handle);
+
     // Clear stored app JWT regardless of server response
     token_manager.set(None).await?;
 

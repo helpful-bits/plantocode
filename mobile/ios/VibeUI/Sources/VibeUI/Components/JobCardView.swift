@@ -1,5 +1,6 @@
 import SwiftUI
 import Core
+import Combine
 
 public struct JobCardView: View {
     let job: BackgroundJob
@@ -18,6 +19,10 @@ public struct JobCardView: View {
     @State private var progress: Double = 0
     @State private var progressTimer: Timer?
     @State private var jobStartTime: Date?
+    @State private var timeRefreshTrigger: Int = 0  // Triggers view refresh for time labels
+
+    // Timer publisher for updating time-based UI elements (100ms for smooth second counting)
+    private let refreshTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
 
     public init(
         job: BackgroundJob,
@@ -183,6 +188,9 @@ public struct JobCardView: View {
     // MARK: - Body
 
     public var body: some View {
+        // Use timeRefreshTrigger to force re-evaluation of time-based computed properties
+        let _ = timeRefreshTrigger
+
         VStack(spacing: 0) {
             // Header
             HStack(alignment: .center, spacing: Theme.Spacing.cardSpacing) {
@@ -485,6 +493,11 @@ public struct JobCardView: View {
         .onDisappear {
             progressTimer?.invalidate()
         }
+        .onReceive(refreshTimer) { _ in
+            // Update time labels every second for all job cards
+            // (For running jobs, this supplements the progressTimer update)
+            timeRefreshTrigger += 1
+        }
     }
 
     // MARK: - Helper Methods
@@ -515,16 +528,17 @@ public struct JobCardView: View {
         }
 
         progress = 0
+        let estimatedDuration = getEstimatedDuration()
         progressTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             guard let startTime = jobStartTime else { return }
 
             let elapsed = Date().timeIntervalSince(startTime)
-            let estimatedDuration = getEstimatedDuration()
             let calculatedProgress = min(0.90, elapsed / estimatedDuration)
 
             withAnimation(.linear(duration: 1.0)) {
                 progress = calculatedProgress
             }
+            // Note: timeRefreshTrigger is updated by refreshTimer publisher (100ms interval)
         }
     }
 

@@ -376,6 +376,29 @@
         "title": "Legacy Code Refactoring - AI Safe Modernization",
         "description": "Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production."
       },
+      "badge": "Modernisation de code",
+      "sections": {
+        "dependencyMapping": {
+          "title": "Mapper les dépendances cachées",
+          "description": "Le FileFinderWorkflow en 4 étapes découvre les chaînes d'import, les dépendances circulaires et les références inter-modules avant de toucher au code. Connaissez le rayon d'impact de chaque changement.",
+          "link": "Explorer la découverte de fichiers"
+        },
+        "multiModelPlanning": {
+          "title": "Plans de migration multi-modèles",
+          "description": "Générez des stratégies de migration avec GPT-5.1, Claude Sonnet 4.5 et Gemini. Chaque modèle apporte une perspective différente—fusionnez les meilleures approches avec révision humaine.",
+          "link": "En savoir plus sur la planification"
+        },
+        "safeRefactoring": {
+          "title": "Instructions de merge pour la sécurité",
+          "description": "Écrivez des instructions de merge en langage naturel : \"Préférer la stratégie de rollback GPT-5.1, utiliser la couverture de tests Gemini.\" Contrôlez exactement comment les changements sont synthétisés.",
+          "link": "Voir les instructions de merge"
+        },
+        "incrementalMigration": {
+          "title": "Exécution incrémentale",
+          "description": "Exécutez les plans de migration étape par étape dans le terminal intégré. Chaque changement est déployable et testable indépendamment. Feature flags et plans de rollback à chaque étape.",
+          "link": "Workflows terminal"
+        }
+      },
       "challenge": {
         "description": "On vous confie la modernisation d'une base de code vieille de 5 ans : frameworks obsolètes, pas de tests, modèles non documentés et logique métier critique que vous ne comprenez pas entièrement. La refactorisation directe par IA serait chaotique. La planification vous donne une feuille de route.",
         "title": "Le défi du code legacy"
@@ -385,8 +408,12 @@
           "download": "Télécharger PlanToCode",
           "learnMapping": "En savoir plus sur le mapping des dépendances"
         },
-        "description": "PlanToCode vous aide à mapper les dépendances, générer des plans de migration et refactoriser sans casser la production.",
-        "title": "Modernisez le code legacy en toute sécurité"
+        "description": "Découvrez les dépendances, planifiez les migrations et exécutez en toute confiance.",
+        "links": {
+          "discovery": "Explorer la découverte de fichiers",
+          "plans": "En savoir plus sur les plans de migration"
+        },
+        "title": "Commencez à moderniser votre code legacy"
       },
       "description": "Le code legacy est l'endroit où la refactorisation assistée par IA devient dangereuse. Un faux mouvement casse la production. Voici comment moderniser en toute sécurité des bases de code de plus de 100 000 lignes avec la planification IA.",
       "furtherReading": {

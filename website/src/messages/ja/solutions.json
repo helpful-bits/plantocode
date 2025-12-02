@@ -376,6 +376,29 @@
         "title": "Legacy Code Refactoring - AI Safe Modernization",
         "description": "Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production."
       },
+      "badge": "コード近代化",
+      "sections": {
+        "dependencyMapping": {
+          "title": "隠れた依存関係をマッピング",
+          "description": "4段階のFileFinderWorkflowは、コードに触れる前にインポートチェーン、循環依存、クロスモジュール参照を発見します。すべての変更の影響範囲を把握します。",
+          "link": "ファイル発見を探索"
+        },
+        "multiModelPlanning": {
+          "title": "マルチモデル移行計画",
+          "description": "GPT-5.1、Claude Sonnet 4.5、Geminiから移行戦略を生成。各モデルが異なる視点を提供—人間のレビューで最良のアプローチを統合します。",
+          "link": "計画について学ぶ"
+        },
+        "safeRefactoring": {
+          "title": "安全のためのマージ指示",
+          "description": "平文でマージ指示を書きます:「GPT-5.1のロールバック戦略を優先、Geminiのテストカバレッジを使用」。変更がどのように合成されるかを正確に制御します。",
+          "link": "マージ指示を見る"
+        },
+        "incrementalMigration": {
+          "title": "段階的実行",
+          "description": "統合ターミナルで移行計画をステップバイステップで実行。各変更は個別にデプロイ可能でテスト可能。すべての段階にフィーチャーフラグとロールバック計画。",
+          "link": "ターミナルワークフロー"
+        }
+      },
       "challenge": {
         "description": "5年前のコードベースの近代化を任されています:古いフレームワーク、テストなし、文書化されていないパターン、完全には理解していない重要なビジネスロジック。直接のAIリファクタリングは混沌です。計画はロードマップを提供します。",
         "title": "レガシーコードの課題"
@@ -385,8 +408,12 @@
           "download": "PlanToCodeをダウンロード",
           "learnMapping": "依存関係マッピングについて学ぶ"
         },
-        "description": "PlanToCodeは、依存関係をマッピングし、移行計画を生成し、本番を破壊することなくリファクタリングするのに役立ちます。",
-        "title": "レガシーコードを安全に近代化"
+        "description": "依存関係を発見し、移行を計画し、自信を持って実行します。",
+        "links": {
+          "discovery": "ファイル発見を探索",
+          "plans": "移行計画について学ぶ"
+        },
+        "title": "レガシーコードの近代化を始める"
       },
       "description": "レガシーコードは、AI支援リファクタリングが危険になる場所です。一つの間違いで本番が壊れます。AI計画で10万行以上のコードベースを安全に近代化する方法は次のとおりです。",
       "furtherReading": {

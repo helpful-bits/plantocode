@@ -45,6 +45,11 @@ export default function AccountPage() {
   const [isLoadingRegions, setIsLoadingRegions] = useState(true);
   const [isChangingRegion, setIsChangingRegion] = useState(false);
 
+  // Delete account state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleSignOut = async () => {
     try {
       await signOut();
@@ -139,6 +144,41 @@ export default function AccountPage() {
   const handleCancelRegionChange = () => {
     setShowConfirmDialog(false);
     setPendingRegion(null);
+  };
+
+  // Delete account handler
+  const handleDeleteAccount = async () => {
+    setIsDeletingAccount(true);
+    setDeleteError(null);
+
+    try {
+      await invoke("delete_account_command");
+
+      // Sign out after successful deletion
+      try {
+        await signOut();
+      } catch {
+        // Ignore signout errors as the account is already deleted
+      }
+
+      showNotification({
+        title: "Account Deleted",
+        message: "Your account and associated data have been deleted.",
+        type: "success",
+      });
+    } catch (err: any) {
+      console.error("Account deletion error:", err);
+      const message = typeof err === "string" ? err : err?.message ?? "Account deletion failed.";
+      setDeleteError(message);
+      showNotification({
+        title: "Account Deletion Failed",
+        message,
+        type: "error",
+      });
+    } finally {
+      setIsDeletingAccount(false);
+      setShowDeleteDialog(false);
+    }
   };
 
   // Fetch regions and app version on component mount
@@ -460,14 +500,8 @@ export default function AccountPage() {
                 <LogOut className="h-4 w-4 mr-3" />
                 Sign Out
               </Button>
-              <Button 
-                onClick={() => {
-                  showNotification({
-                    title: "Feature Coming Soon",
-                    message: "Account deletion will be available in a future update.",
-                    type: "info",
-                  });
-                }}
+              <Button
+                onClick={() => setShowDeleteDialog(true)}
                 variant="destructive"
                 size="default"
                 className="justify-start font-medium"
@@ -498,7 +532,7 @@ export default function AccountPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Region Change</AlertDialogTitle>
             <AlertDialogDescription>
-              Changing your server region will sign you out of your account and reset your local session data. 
+              Changing your server region will sign you out of your account and reset your local session data.
               You will need to sign in again after the change is complete.
               {pendingRegion && availableRegions.length > 0 && (
                 <>
@@ -511,17 +545,44 @@ export default function AccountPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel 
+            <AlertDialogCancel
               onClick={handleCancelRegionChange}
               disabled={isChangingRegion}
             >
               Cancel
             </AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={handleConfirmRegionChange}
               disabled={isChangingRegion}
             >
               {isChangingRegion ? "Changing Region..." : "Change Region"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Account Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Account</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deleting your account will permanently remove your PlanToCode account data from our servers, including linked devices, workspaces, and usage data. Some billing and invoice records may be retained as required for legal and financial compliance. This action cannot be undone and will sign you out on all devices.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && (
+            <p className="mt-2 text-sm text-red-500">{deleteError}</p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingAccount}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isDeletingAccount}
+              className="bg-red-600 text-white hover:bg-red-700"
+              onClick={handleDeleteAccount}
+            >
+              {isDeletingAccount ? "Deleting..." : "Delete Account"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -408,14 +408,8 @@ struct FilesTab: View {
                 }
                 .navigationTitle("Files")
                 .navigationBarTitleDisplayMode(.inline)
-                .onAppear {
-                    if let session = container.sessionService.currentSession {
-                        container.jobsService.setActiveSession(
-                            sessionId: session.id,
-                            projectDirectory: session.projectDirectory
-                        )
-                    }
-                }
+                // Note: Session sync handled by SessionWorkspaceViewModel.loadSession() → startSessionScopedSync()
+                // FileManagementView has its own defensive guards for session context
             }
         }
     }
@@ -1037,8 +1031,16 @@ struct SessionUpdateModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { newSession in
-                // Adopt externally switched session
+                let previousSessionId = currentSession?.id
                 currentSession = newSession
+
+                // Only update taskText when switching to a DIFFERENT session.
+                // For same-session updates (e.g., relay events), rely on TaskInputView's
+                // history-state merge logic to handle conflicts properly.
+                guard previousSessionId != newSession.id else {
+                    return
+                }
+
                 let incoming = newSession.taskDescription ?? ""
                 if taskText != incoming {
                     taskText = incoming
@@ -1107,58 +1109,13 @@ struct TaskSyncModifier: ViewModifier {
     let currentSession: Session?
     @Binding var taskText: String
     @Binding var pendingRemoteTaskDescription: String?
-    @State private var isKeyboardVisible = false
 
     func body(content: Content) -> some View {
+        // Task description sync is now handled entirely by TaskInputView via history-state merge logic.
+        // This modifier previously tried to sync taskText from session updates, but that bypassed
+        // the proper 3-way merge and caused user edits to be overwritten by desktop's version.
+        // The pendingRemoteTaskDescription binding is kept for API compatibility but no longer used.
         content
-            .onReceive(container.sessionService.currentSessionPublisher) { updatedSession in
-                // External Update Gate: defer updates while user is actively editing
-                // This prevents cursor jumps during typing (matching desktop behavior)
-                guard let session = updatedSession,
-                      session.id == currentSession?.id,
-                      let updatedTaskDesc = session.taskDescription,
-                      updatedTaskDesc != taskText else {
-                    return
-                }
-
-                let trimmedReceived = updatedTaskDesc.trimmingCharacters(in: .whitespacesAndNewlines)
-                let trimmedCurrent = taskText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                guard !trimmedReceived.isEmpty, trimmedReceived != trimmedCurrent else {
-                    return
-                }
-
-                // Check if keyboard is visible to decide whether to queue or apply update
-                if isKeyboardVisible {
-                    // Queue the update for later to prevent cursor jumps during typing
-                    pendingRemoteTaskDescription = trimmedReceived
-                } else {
-                    // Apply immediately if not actively typing
-                    taskText = trimmedReceived
-                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: trimmedReceived)
-                    pendingRemoteTaskDescription = nil
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                isKeyboardVisible = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                isKeyboardVisible = false
-
-                // Flush pending remote updates when keyboard dismisses
-                if let pending = pendingRemoteTaskDescription,
-                   let session = currentSession {
-                    let trimmedPending = pending.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !trimmedPending.isEmpty, trimmedPending != taskText.trimmingCharacters(in: .whitespacesAndNewlines) else {
-                        pendingRemoteTaskDescription = nil
-                        return
-                    }
-
-                    taskText = trimmedPending
-                    container.taskSyncService.updateLastSyncedText(sessionId: session.id, text: trimmedPending)
-                    pendingRemoteTaskDescription = nil
-                }
-            }
     }
 }
 

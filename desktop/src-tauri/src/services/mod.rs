@@ -1,4 +1,5 @@
 // Module for service-layer functionality
+pub mod account_deletion_service;
 pub mod backup_service;
 pub mod cache_health_monitor;
 pub mod config_cache_service;
@@ -13,6 +14,7 @@ pub mod task_services;
 pub mod terminal_manager;
 
 // Re-export service modules
+pub use account_deletion_service::*;
 pub use backup_service::*;
 pub use cache_health_monitor::*;
 pub use config_cache_service::*;

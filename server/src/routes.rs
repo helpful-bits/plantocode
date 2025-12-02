@@ -15,6 +15,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route(
                 "/logout",
                 web::post().to(handlers::auth::logout_handler::logout),
+            )
+            .route(
+                "/account",
+                web::delete().to(handlers::auth::delete_account_handler::delete_account),
             ),
     );
     cfg.service(

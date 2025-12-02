@@ -507,13 +507,15 @@ async fn handle_job_success(
                 false
             };
 
-            if !is_workflow_job
-                && matches!(
-                    TaskType::from_str(&completed_job.task_type).ok(),
-                    Some(TaskType::ImplementationPlan) | Some(TaskType::ImplementationPlanMerge)
-                )
-            {
+            // Check if this is an implementation plan job (standalone or workflow)
+            let is_implementation_plan = matches!(
+                TaskType::from_str(&completed_job.task_type).ok(),
+                Some(TaskType::ImplementationPlan) | Some(TaskType::ImplementationPlanMerge)
+            );
+
+            if !is_workflow_job && is_implementation_plan {
                 // This is a standalone implementation plan job (not part of a workflow)
+                // Send push notification (workflow jobs handle notifications separately)
                 info!("Detected standalone implementation plan job completion: {}", job_id);
                 if let Err(e) = send_implementation_plan_notification(
                     app_handle,
@@ -530,6 +532,29 @@ async fn handle_job_success(
                         job_id, e
                     );
                 }
+            }
+
+            // Auto-generate markdown for ALL implementation plans (standalone or workflow)
+            // so it's ready when user views the plan on mobile
+            if is_implementation_plan {
+                let app_handle_clone = app_handle.clone();
+                let job_id_clone = job_id.to_string();
+                tokio::spawn(async move {
+                    info!("Auto-generating markdown for completed implementation plan: {}", job_id_clone);
+                    match crate::commands::implementation_plan_commands::generate_plan_markdown_command(
+                        app_handle_clone,
+                        job_id_clone.clone(),
+                    )
+                    .await
+                    {
+                        Ok(_) => {
+                            info!("Successfully auto-generated markdown for plan: {}", job_id_clone);
+                        }
+                        Err(e) => {
+                            warn!("Failed to auto-generate markdown for plan {}: {:?}", job_id_clone, e);
+                        }
+                    }
+                });
             }
         }
         JobStatus::Failed => {

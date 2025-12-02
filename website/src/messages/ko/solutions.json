@@ -376,6 +376,29 @@
         "title": "Legacy Code Refactoring - AI Safe Modernization",
         "description": "Refactor legacy code safely with AI planning. Map dependencies, generate migration strategies, and modernize 100K+ line codebases without breaking production."
       },
+      "badge": "코드 현대화",
+      "sections": {
+        "dependencyMapping": {
+          "title": "숨겨진 종속성 매핑",
+          "description": "4단계 FileFinderWorkflow는 코드를 건드리기 전에 임포트 체인, 순환 종속성, 크로스 모듈 참조를 발견합니다. 모든 변경의 영향 범위를 파악하세요.",
+          "link": "파일 탐색 살펴보기"
+        },
+        "multiModelPlanning": {
+          "title": "멀티 모델 마이그레이션 계획",
+          "description": "GPT-5.1, Claude Sonnet 4.5, Gemini에서 마이그레이션 전략을 생성합니다. 각 모델이 다른 관점을 제공—인간 검토로 최상의 접근 방식을 병합합니다.",
+          "link": "계획에 대해 알아보기"
+        },
+        "safeRefactoring": {
+          "title": "안전을 위한 병합 지침",
+          "description": "평문으로 병합 지침을 작성하세요: \"GPT-5.1 롤백 전략 선호, Gemini 테스트 커버리지 사용.\" 변경 사항이 어떻게 합성되는지 정확하게 제어합니다.",
+          "link": "병합 지침 보기"
+        },
+        "incrementalMigration": {
+          "title": "점진적 실행",
+          "description": "통합 터미널에서 마이그레이션 계획을 단계별로 실행합니다. 각 변경은 개별적으로 배포 가능하고 테스트 가능합니다. 모든 단계에 피처 플래그와 롤백 계획이 포함됩니다.",
+          "link": "터미널 워크플로우"
+        }
+      },
       "challenge": {
         "description": "5년 된 코드베이스를 현대화하는 임무를 맡았습니다: 오래된 프레임워크, 테스트 없음, 문서화되지 않은 패턴, 그리고 완전히 이해하지 못하는 중요한 비즈니스 로직. 직접적인 AI 리팩토링은 혼란이 될 것입니다. 계획은 로드맵을 제공합니다.",
         "title": "레거시 코드 과제"
@@ -385,8 +408,12 @@
           "download": "PlanToCode 다운로드",
           "learnMapping": "종속성 매핑에 대해 알아보기"
         },
-        "description": "PlanToCode는 종속성을 매핑하고, 마이그레이션 계획을 생성하며, 프로덕션을 중단시키지 않고 리팩토링하는 데 도움을 줍니다.",
-        "title": "레거시 코드를 안전하게 현대화하세요"
+        "description": "종속성을 발견하고, 마이그레이션을 계획하고, 자신 있게 실행하세요.",
+        "links": {
+          "discovery": "파일 탐색 살펴보기",
+          "plans": "마이그레이션 계획에 대해 알아보기"
+        },
+        "title": "레거시 코드 현대화 시작하기"
       },
       "description": "레거시 코드는 AI 지원 리팩토링이 위험해지는 곳입니다. 한 번의 잘못된 움직임이 프로덕션을 중단시킵니다. AI 계획으로 10만 라인 이상의 코드베이스를 안전하게 현대화하는 방법은 다음과 같습니다.",
       "furtherReading": {

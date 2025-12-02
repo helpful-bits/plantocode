@@ -36,6 +36,10 @@ public class JobsDataService: ObservableObject {
     private var viewedImplementationPlanId: String? = nil
     var cacheValidationTimer: Timer?
     var lastCacheValidationAt: Date?
+    private var lastSyncSessionId: String?
+    private var lastSyncTime: Date?
+    var jobsFetchInFlight: [String: Task<JobListResponse, Error>] = [:]
+    var lastJobsFetchAt: [String: Date] = [:]
 
     private var deviceKey: String {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
@@ -95,12 +99,26 @@ public class JobsDataService: ObservableObject {
         implementationPlanCache.removeAll()
         cacheValidationTimer?.invalidate()
         cacheValidationTimer = nil
+        lastSyncSessionId = nil
+        lastSyncTime = nil
 
         // Safely manage event subscriptions - remove before re-adding in init if needed
         if let obs = relayJobEventObserver {
             NotificationCenter.default.removeObserver(obs)
             relayJobEventObserver = nil
         }
+    }
+
+    // MARK: - Private Helper Methods
+
+    func makeJobListDedupKey(for request: JobListRequest) -> String {
+        let sessionPart = request.sessionId ?? "nil-session"
+        let projectPart = request.projectDirectory ?? "nil-project"
+        let statusPart = (request.statusFilter ?? []).map { $0.rawValue }.joined(separator: ",")
+        let taskTypePart = (request.taskTypeFilter ?? []).joined(separator: ",")
+        let pagePart = request.page.map { "\($0)" } ?? "nil"
+        let pageSizePart = request.pageSize.map { "\($0)" } ?? "nil"
+        return "sess:\(sessionPart)|proj:\(projectPart)|status:\(statusPart)|task:\(taskTypePart)|page:\(pagePart)|size:\(pageSizePart)"
     }
 
     // MARK: - Public Methods
@@ -203,62 +221,78 @@ public class JobsDataService: ObservableObject {
         .eraseToAnyPublisher()
     }
 
-    /// Set the active session (enables background event processing and does initial fetch)
+    /// Lightweight session setter - updates session context and recomputes counts from cache.
+    /// Use this for defensive guards where sync is handled elsewhere.
+    /// For accurate job data with immediate fetch, use startSessionScopedSync() instead.
     public func setActiveSession(sessionId: String, projectDirectory: String?) {
-        // Only fetch if session actually changed
+        // Only update if session actually changed
         let sessionChanged = self.activeSessionId != sessionId
 
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
 
-        // Update workflow job count for new session
-        recomputeSessionWorkflowCount(for: sessionId)
-
-        // Do initial background fetch if session changed
+        // Update counts from cache (may be stale if jobs haven't been fetched yet)
         if sessionChanged {
-            let request = JobListRequest(
-                projectDirectory: projectDirectory,
-                sessionId: sessionId,
-                pageSize: 100,
-                sortBy: .createdAt,
-                sortOrder: .desc
-            )
-
-            listJobs(request: request)
-                .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                .store(in: &cancellables)
+            recomputeSessionWorkflowCount(for: sessionId)
+            recomputeSessionImplementationPlanCount(for: sessionId)
         }
     }
 
     /// Start session-scoped sync for a specific session
+    /// This is THE primary entry point for ensuring accurate job data for a session.
+    /// It handles: setting active session, immediate fetch, and starting validation timer.
+    /// Deduplicated: won't re-sync same session within 2 seconds
     public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
+        // Deduplication: skip if same session synced recently
+        if sessionId == lastSyncSessionId,
+           let lastSync = lastSyncTime,
+           Date().timeIntervalSince(lastSync) < 2.0 {
+            logger.debug("Skipping duplicate sync for session \(sessionId) - synced \(Date().timeIntervalSince(lastSync))s ago")
+            return
+        }
+
+        lastSyncSessionId = sessionId
+        lastSyncTime = Date()
+
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
 
-        // Update workflow job count for new session
+        // Update workflow job count for new session (from cache, may be stale)
         recomputeSessionWorkflowCount(for: sessionId)
+        recomputeSessionImplementationPlanCount(for: sessionId)
 
         // Start periodic cache validation timer
         startCacheValidationTimer()
 
-        // No polling; rely on relay events while connected and reconnection snapshot orchestrated by DataServicesManager.
+        // Immediate fetch to ensure accurate badge counts
+        // This is critical for showing correct counts when workspace first loads
+        guard let projectDir = projectDirectory else { return }
 
-        // Perform a full list snapshot to establish authoritative baseline
         listJobs(request: JobListRequest(
-            projectDirectory: projectDirectory,
+            projectDirectory: projectDir,
             sessionId: sessionId,
-            pageSize: 100
+            pageSize: 100,
+            sortBy: .createdAt,
+            sortOrder: .desc
         ))
-        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+        .sink(
+            receiveCompletion: { [weak self] completion in
+                if case .failure(let error) = completion {
+                    self?.logger.error("Initial session sync failed: \(error.localizedDescription)")
+                }
+            },
+            receiveValue: { _ in
+                // Job counts are updated via updateWorkflowCountsFromJobs/updateImplementationPlanCountsFromJobs
+                // which are called internally by listJobsViaRPC
+            }
+        )
         .store(in: &cancellables)
-
-        // Also refresh active jobs
-        self.refreshActiveJobs()
     }
 
     /// Stop session-scoped sync timer (but keep processing events)
     public func stopSessionScopedSync() {
-        // Keep activeSessionId and activeProjectDirectory so events continue processing in background
+        cacheValidationTimer?.invalidate()
+        cacheValidationTimer = nil
     }
 
     /// Clear jobs from memory
@@ -525,6 +559,11 @@ public class JobsDataService: ObservableObject {
         )
     }
 
+    /// Check if there are any active jobs (jobs in progress)
+    public var hasActiveJobs: Bool {
+        return jobs.contains { $0.jobStatus.isActive }
+    }
+
     public func generatePlanMarkdown(jobId: String) async {
         do {
             var finalPayload: [String: Any]?
@@ -541,21 +580,49 @@ public class JobsDataService: ObservableObject {
             }
 
             await MainActor.run {
-                if let index = self.jobsIndex[jobId] {
+                self.mutateJobs {
+                    guard let index = self.jobsIndex[jobId] else { return }
                     var job = self.jobs[index]
+
+                    var dict: [String: Any] = [:]
                     if let metadataString = job.metadata,
-                       var metaData = try? JSONSerialization.jsonObject(with: Data(metadataString.utf8)) as? [String: Any] {
-                        metaData["markdownResponse"] = markdown
-                        metaData["markdownConversionStatus"] = "completed"
-                        if let newData = try? JSONSerialization.data(withJSONObject: metaData),
-                           let newString = String(data: newData, encoding: .utf8) {
-                            job.metadata = newString
-                            self.jobs[index] = job
-                        }
+                       let data = metadataString.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        dict = json
+                    }
+
+                    dict["markdownResponse"] = markdown
+                    dict["markdownConversionStatus"] = "completed"
+
+                    if let newData = try? JSONSerialization.data(withJSONObject: dict),
+                       let newString = String(data: newData, encoding: .utf8) {
+                        job.metadata = newString
+                        self.jobs[index] = job
                     }
                 }
             }
         } catch {
+            await MainActor.run {
+                self.mutateJobs {
+                    guard let index = self.jobsIndex[jobId] else { return }
+                    var job = self.jobs[index]
+
+                    var dict: [String: Any] = [:]
+                    if let metadataString = job.metadata,
+                       let data = metadataString.data(using: .utf8),
+                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        dict = json
+                    }
+
+                    dict["markdownConversionStatus"] = "failed"
+
+                    if let newData = try? JSONSerialization.data(withJSONObject: dict),
+                       let newString = String(data: newData, encoding: .utf8) {
+                        job.metadata = newString
+                        self.jobs[index] = job
+                    }
+                }
+            }
         }
     }
 }

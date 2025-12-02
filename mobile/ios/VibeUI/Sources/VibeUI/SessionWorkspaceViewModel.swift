@@ -27,6 +27,7 @@ final class SessionWorkspaceViewModel: ObservableObject {
 
     @Published var workflowJobCount: Int = 0
     @Published var implementationPlanCount: Int = 0
+    @Published var hasBootstrappedSession = false
 
     private var container: AppContainer?
     private var multiConnectionManager = MultiConnectionManager.shared
@@ -150,7 +151,17 @@ final class SessionWorkspaceViewModel: ObservableObject {
     }
 
     private func handleSessionUpdate(_ newSession: Session) {
+        let previousSessionId = currentSession?.id
         currentSession = newSession
+
+        // Only update taskText when switching to a DIFFERENT session.
+        // For same-session updates (e.g., relay events echoing back our own sync),
+        // rely on TaskInputView's history-state merge logic to handle conflicts properly.
+        // This prevents the user's in-progress edits from being overwritten.
+        guard previousSessionId != newSession.id else {
+            return
+        }
+
         let incoming = newSession.taskDescription ?? ""
         if taskText != incoming {
             taskText = incoming
@@ -188,6 +199,7 @@ final class SessionWorkspaceViewModel: ObservableObject {
             taskText = ""
             pendingRemoteTaskDescription = nil
             lastSyncedSessionId = nil
+            hasBootstrappedSession = false
         }
         loadMostRecentSession()
     }
@@ -239,6 +251,10 @@ final class SessionWorkspaceViewModel: ObservableObject {
     }
 
     func loadMostRecentSession() {
+        guard !hasBootstrappedSession else {
+            return
+        }
+
         guard !isLoadingSession else {
             return
         }
@@ -271,6 +287,7 @@ final class SessionWorkspaceViewModel: ObservableObject {
 
                 if let mostRecent = sessions.sorted(by: { $0.updatedAt > $1.updatedAt }).first {
                     loadSession(mostRecent)
+                    hasBootstrappedSession = true
                 }
             } catch {
                 errorMessage = "Failed to load sessions: \(error.localizedDescription)"
@@ -290,7 +307,9 @@ final class SessionWorkspaceViewModel: ObservableObject {
             container?.setCurrentProject(ProjectInfo(name: name, directory: dir, hash: hash))
         }
 
-        container?.jobsService.setActiveSession(
+        // Start session-scoped sync to ensure accurate badge counts immediately
+        // This fetches jobs and populates workflow/implementation plan counts
+        container?.jobsService.startSessionScopedSync(
             sessionId: session.id,
             projectDirectory: session.projectDirectory
         )
@@ -304,7 +323,8 @@ final class SessionWorkspaceViewModel: ObservableObject {
             do {
                 if let fullSession = try await container?.sessionService.getSession(id: session.id) {
                     currentSession = fullSession
-                    taskText = fullSession.taskDescription ?? ""
+                    // Don't set taskText here - TaskInputView handles this via history state sync.
+                    // Setting it here could overwrite user edits if the fetch takes a while.
 
                     container?.sessionService.currentSession = fullSession
 
