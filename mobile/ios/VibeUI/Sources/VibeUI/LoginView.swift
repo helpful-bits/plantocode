@@ -129,22 +129,22 @@ public struct LoginView: View {
 
           VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             Text("By signing in you agree to our")
-              .small()
+              .font(.footnote)
               .foregroundColor(Color.mutedForeground)
 
             HStack(spacing: Theme.Spacing.xs) {
               if let termsURL = URL(string: "https://plantocode.com/terms") {
                 Link("Terms of Service", destination: termsURL)
-                  .small()
-                  .tint(Color.primary)
+                  .font(.footnote)
+                  .foregroundColor(Color.primary)
               }
               Text("and")
-                .small()
+                .font(.footnote)
                 .foregroundColor(Color.mutedForeground)
               if let privacyURL = URL(string: "https://plantocode.com/privacy") {
                 Link("Privacy Policy", destination: privacyURL)
-                  .small()
-                  .tint(Color.primary)
+                  .font(.footnote)
+                  .foregroundColor(Color.primary)
               }
             }
           }
