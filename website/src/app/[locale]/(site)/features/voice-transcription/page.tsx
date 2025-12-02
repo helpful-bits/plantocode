@@ -252,6 +252,51 @@ export default async function VoiceTranscriptionFeaturePage({ params }: { params
                   />
                 </GlassCard>
               </section>
+              {/* Workflow Integration */}
+              <div className="mb-16">
+                <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['voiceTranscription.workflow.title'] ?? ''}</h2>
+                <div className="grid md:grid-cols-2 gap-8 mb-8">
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Mic className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">{t['voiceTranscription.workflow.stage1.title'] ?? ''}</h3>
+                        <p className="text-foreground/80">
+                          {t['voiceTranscription.workflow.stage1.description'] ?? ''}
+                        </p>
+                      </div>
+                    </div>
+                  </GlassCard>
+                  <GlassCard className="p-8">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                        <Terminal className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold mb-3">{t['voiceTranscription.workflow.stage5.title'] ?? ''}</h3>
+                        <p className="text-foreground/80">
+                          {t['voiceTranscription.workflow.stage5.description'] ?? ''}
+                        </p>
+                      </div>
+                    </div>
+                  </GlassCard>
+                </div>
+                <GlassCard className="p-8 max-w-4xl mx-auto">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex-shrink-0">
+                      <Sparkles className="w-6 h-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold mb-3">{t['voiceTranscription.workflow.integration.title'] ?? ''}</h3>
+                      <p className="text-foreground/80">
+                        {t['voiceTranscription.workflow.integration.description'] ?? ''}
+                      </p>
+                    </div>
+                  </div>
+                </GlassCard>
+              </div>
               {/* Use Cases */}
               <div className="mb-16">
                 <h2 className="text-2xl sm:text-3xl font-bold mb-8 text-center">{t['voiceTranscription.useCases.title'] ?? ''}</h2>

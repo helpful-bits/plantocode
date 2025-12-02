@@ -18,6 +18,10 @@ public struct SettingsView: View {
   @State private var externalFoldersError: String?
   @FocusState private var focusedField: Field?
 
+  @StateObject private var accountDataService = AccountDataService()
+  @State private var showDeleteAccountDialog = false
+  @State private var deleteErrorMessage: String?
+
   enum Field {
     case customCommand
     case additionalArgs
@@ -207,6 +211,35 @@ public struct SettingsView: View {
                 .tint(Color.primary)
             }
           }
+
+          Section(header: Text("Account Management")) {
+            VStack(alignment: .leading, spacing: 12) {
+              Text("Deleting your account will permanently remove your PlanToCode account data from our servers, including linked devices and workspaces. Some billing records may be retained where legally required. This action cannot be undone.")
+                .small()
+                .foregroundColor(Color.textSecondary)
+
+              Button(role: .destructive) {
+                if !NetworkPathObserver.shared.isOnline {
+                  deleteErrorMessage = "You appear to be offline. Connect to the internet to delete your account."
+                } else {
+                  showDeleteAccountDialog = true
+                }
+              } label: {
+                if accountDataService.isDeleting {
+                  ProgressView()
+                } else {
+                  Text("Delete Account")
+                }
+              }
+              .disabled(accountDataService.isDeleting)
+
+              if let error = deleteErrorMessage ?? accountDataService.lastError?.localizedDescription {
+                Text(error)
+                  .small()
+                  .foregroundColor(Color.destructive)
+              }
+            }
+          }
         }
       }
       .navigationTitle("Settings")
@@ -227,6 +260,20 @@ public struct SettingsView: View {
       }
       .sheet(isPresented: $showFolderPicker) {
         FolderPickerView(onFolderSelected: addExternalFolder)
+      }
+      .confirmationDialog(
+        "Delete Account",
+        isPresented: $showDeleteAccountDialog,
+        titleVisibility: .visible
+      ) {
+        Button("Delete Account", role: .destructive) {
+          Task {
+            await performAccountDeletionFlow()
+          }
+        }
+        Button("Cancel", role: .cancel) { }
+      } message: {
+        Text("This will permanently delete your PlanToCode account, associated devices, workspaces, and most usage data. Some billing and invoice records may be retained as required by law. You will be signed out on all devices and this action cannot be undone.")
       }
       .onAppear {
         guard !hasLoadedInitialSettings else { return }
@@ -335,6 +382,34 @@ public struct SettingsView: View {
     }
 
     return String(folder.split(separator: "/").last ?? folder.suffix(from: folder.firstIndex(of: "/") ?? folder.startIndex))
+  }
+
+  // MARK: - Account Deletion
+
+  private func performAccountDeletionFlow() async {
+    if !NetworkPathObserver.shared.isOnline {
+      deleteErrorMessage = "You appear to be offline. Connect to the internet to delete your account."
+      return
+    }
+
+    // Clear previous error
+    deleteErrorMessage = nil
+
+    do {
+      try await accountDataService.deleteAccount()
+      // AccountDataService handles calling appState.resetToLogin()
+    } catch let error as DataServiceError {
+      switch error {
+      case .offline:
+        deleteErrorMessage = "We couldn't reach the server. Please check your internet connection and try again."
+      case .validation(let message):
+        deleteErrorMessage = message
+      default:
+        deleteErrorMessage = "Account deletion failed. Please try again later."
+      }
+    } catch {
+      deleteErrorMessage = "Account deletion failed. Please try again later."
+    }
   }
 }
 

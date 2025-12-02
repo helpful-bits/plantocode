@@ -185,6 +185,24 @@ fn load_session(app_handle: &tauri::AppHandle) -> Option<DeviceLinkSession> {
     }
 }
 
+/// Clear the persisted session file (called on logout)
+pub fn clear_session(app_handle: &tauri::AppHandle) {
+    match session_file_path(app_handle) {
+        Ok(session_path) => {
+            if session_path.exists() {
+                if let Err(e) = std::fs::remove_file(&session_path) {
+                    warn!("Failed to delete session file: {}", e);
+                } else {
+                    info!("Cleared device link session file for logout");
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to get session file path: {}", e);
+        }
+    }
+}
+
 /// Save session data to disk for resumption
 fn save_session(app_handle: &tauri::AppHandle, sess: &DeviceLinkSession) {
     match session_file_path(app_handle) {
@@ -532,18 +550,12 @@ impl DeviceLinkClient {
                                         }
                                     }
 
+                                    // Always drop pending data on bind - mobile should only receive live output
+                                    // This prevents "endless scrolling" from accumulated historical data
                                     let mut pending = this.pending_binary_by_session.lock().unwrap();
-                                    let buffer = pending.remove(&session_id);
-                                    if let Some(buffer) = buffer {
-                                        if include_snapshot {
-                                            if !buffer.is_empty() {
-                                                info!("Binary uplink: dropping {} pending bytes for session {} (covered by snapshot)", buffer.len(), session_id);
-                                            }
-                                        } else {
-                                            if !buffer.is_empty() {
-                                                info!("Binary uplink: flushing {} pending bytes for session {}", buffer.len(), session_id);
-                                                let _ = bin_tx_for_receiver.send(buffer);
-                                            }
+                                    if let Some(buffer) = pending.remove(&session_id) {
+                                        if !buffer.is_empty() {
+                                            info!("Binary uplink: dropping {} pending bytes for session {} (mobile bind)", buffer.len(), session_id);
                                         }
                                     }
                                 } else {
@@ -632,6 +644,46 @@ impl DeviceLinkClient {
                             }
                             // Continue to next message
                             continue;
+                        }
+
+                        // Legacy compatibility shim: handle messageType-based messages
+                        if let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) {
+                            if let Some(mt) = root.get("messageType").and_then(|v| v.as_str()) {
+                                let payload = root.get("payload").cloned().unwrap_or_else(|| root.clone());
+
+                                match mt {
+                                    "device-status" => {
+                                        let _ = app_handle.emit("device-link-event", json!({
+                                            "type": "device-status",
+                                            "payload": payload,
+                                            "relayOrigin": "remote"
+                                        }));
+                                        continue;
+                                    }
+                                    "event" => {
+                                        // unwrap payload.eventType / payload.payload
+                                        if let Some(event_type) = payload.get("eventType").and_then(|v| v.as_str()) {
+                                            let inner_payload = payload.get("payload").cloned().unwrap_or_else(|| serde_json::Value::Null);
+
+                                            let _ = app_handle.emit("device-link-event", json!({
+                                                "type": event_type,
+                                                "payload": inner_payload,
+                                                "relayOrigin": "remote"
+                                            }));
+                                            continue;
+                                        }
+                                    }
+                                    _ => {
+                                        // Fallback: treat messageType itself as an event type
+                                        let _ = app_handle.emit("device-link-event", json!({
+                                            "type": mt,
+                                            "payload": payload,
+                                            "relayOrigin": "remote"
+                                        }));
+                                        continue;
+                                    }
+                                }
+                            }
                         }
 
                         let now = std::time::SystemTime::now()
@@ -1136,8 +1188,20 @@ pub async fn start_device_link_client(
 ) -> Result<(), AppError> {
     info!("Starting device link client for server: {}", server_url);
 
-    let client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url));
-    app_handle.manage(client.clone());
+    // IMPORTANT: Reuse existing client from app state if available.
+    // Tauri's manage() doesn't replace existing state, so creating a new client
+    // when one already exists would cause a mismatch: the new client would have
+    // the active WebSocket connection, but TerminalManager would still reference
+    // the old client from app state (with sender=None after shutdown).
+    let client = if let Some(existing) = app_handle.try_state::<Arc<DeviceLinkClient>>() {
+        info!("Reusing existing DeviceLinkClient from app state");
+        existing.inner().clone()
+    } else {
+        info!("Creating new DeviceLinkClient");
+        let new_client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url));
+        app_handle.manage(new_client.clone());
+        new_client
+    };
 
     let mut attempt: u32 = 0;
 

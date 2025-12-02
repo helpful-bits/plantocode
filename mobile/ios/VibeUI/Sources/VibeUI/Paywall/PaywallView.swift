@@ -14,12 +14,14 @@ public struct PaywallView: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        // On iOS 17+, use native SubscriptionStoreView which has its own close button
+        // On iOS 16, wrap in NavigationStack with toolbar close button
+        if #available(iOS 17.0, *) {
             SubscriptionPaywallView(
                 configuration: .init(
                     context: .onboarding,
                     allowsDismiss: allowsDismiss,
-                    showsCloseIcon: false,
+                    showsCloseIcon: allowsDismiss, // Native view has its own, but we show ours in topBar for consistency
                     showsSkipButton: false,
                     primaryActionTitle: nil,
                     onPrimaryAction: { dismiss() },
@@ -27,15 +29,30 @@ public struct PaywallView: View {
                     useOwnBackground: true
                 )
             )
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if allowsDismiss {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button {
-                            dismiss()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(Color.mutedForeground)
+        } else {
+            NavigationStack {
+                SubscriptionPaywallView(
+                    configuration: .init(
+                        context: .onboarding,
+                        allowsDismiss: allowsDismiss,
+                        showsCloseIcon: false,
+                        showsSkipButton: false,
+                        primaryActionTitle: nil,
+                        onPrimaryAction: { dismiss() },
+                        onSkip: nil,
+                        useOwnBackground: true
+                    )
+                )
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    if allowsDismiss {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(Color.mutedForeground)
+                            }
                         }
                     }
                 }

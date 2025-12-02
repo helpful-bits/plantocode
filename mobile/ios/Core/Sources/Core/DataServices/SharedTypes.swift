@@ -330,6 +330,7 @@ public enum DataServiceError: Error, LocalizedError {
     case serverError(String)
     case conflictDetected(taskId: String, serverTask: TaskDescription)
     case offline
+    case validation(String)
 
     public var errorDescription: String? {
         switch self {
@@ -367,6 +368,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Task \(taskId) has conflicting changes. Review before continuing."
         case .offline:
             return "Device is offline. Action will be queued."
+        case .validation(let message):
+            return "Validation error: \(message)"
         }
     }
 
@@ -404,6 +407,8 @@ public enum DataServiceError: Error, LocalizedError {
             return "Review the conflicting changes and merge manually."
         case .offline:
             return "Action will be processed when connection is restored."
+        case .validation:
+            return "Please check your input and try again."
         }
     }
 }

@@ -255,6 +255,13 @@ class JobsStore {
       return;
     }
 
+    // Early return if fetched recently (dedup logic)
+    const now = Date.now();
+    const MIN_INTERVAL_MS = 1000;
+    if (this.lastFetchTs && now - this.lastFetchTs < MIN_INTERVAL_MS) {
+      return;
+    }
+
     this.isFetching = true;
 
     if (!opts.silent) {
@@ -279,15 +286,18 @@ class JobsStore {
       }
 
       const fetchedJobs = result.data || [];
-      this.lastFetchTs = Date.now();
       this.consecutiveErrors = 0;
       this.error = null;
 
       this.mergeJobs(fetchedJobs, opts.isManualRefresh || false);
+
+      // Set lastFetchTs only after successful fetch
+      this.lastFetchTs = Date.now();
     } catch (err) {
       this.consecutiveErrors += 1;
       this.error =
         err instanceof Error ? err : new Error("Failed to fetch jobs");
+      // Do NOT set lastFetchTs on error - failures should not block quick retries
     } finally {
       this.isFetching = false;
       if (!opts.silent) {

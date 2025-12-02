@@ -36,6 +36,14 @@
     "voicePipeline": {
       "description": "Voice transcription is implemented as a React hook that coordinates media permissions, microphone selection, and streaming transcription requests. The hook integrates with the plan terminal and prompt editors, inserting recognised text directly into the active component and surfacing notifications if transcription fails.",
       "heading": "Voice transcription pipeline"
+    },
+    "server": {
+      "heading": "Server layer",
+      "description": "The server handles provider configuration (API keys in encrypted vault, rate limits, routing rules for OpenAI, Anthropic, Google), model routing (request proxying, automatic failover, load balancing, cost tracking per user/project), billing (subscription management, usage metering, quota enforcement, cost alerts), and web search APIs (result caching with 30-day/7-day TTL, geographic restrictions, JWT auth)."
+    },
+    "dataFlows": {
+      "heading": "Data flows",
+      "description": "Tasks, plans, jobs, and sessions flow between components: (1) Task refinement: React UI → TextImprovementPopover → Tauri command → WorkflowOrchestrator → text_improvement prompt → SQLite → React provider replaces text. (2) File discovery: Implementation Plans panel → Tauri command → 4 sequential jobs → progress events → SQLite → UI display. (3) Implementation plans: File discovery → Generate Plan → Tauri command → LLM streaming → SQLite → Monaco viewer → review/approve → export. (4) Terminal execution: PTY session → SQLite → command execution → output streaming → voice transcription injection → agent attention detection → audit logs."
     }
   },
   "deepResearch": {
@@ -601,6 +609,14 @@
     "recordingWorkflow": {
       "description": "The recording hook keeps a state machine with idle, recording, processing, and error states. It tracks duration, manages silence detection, and ensures recordings stop automatically after ten minutes. Chunks are buffered and forwarded to the transcription action, which returns recognised text for insertion.",
       "heading": "Recording workflow"
+    },
+    "routingBehavior": {
+      "heading": "Multi-destination routing",
+      "description": "Transcribed text can be routed to multiple destinations: (1) Task description editors with cursor insertion and immediate text_improvement refinement, (2) Terminal dictation buffer for command execution (e.g., 'run npm test' → typed into PTY), (3) Meeting notes mode with accumulated buffer auto-saved to SQLite and task_refinement generating actionable tasks. The insertTranscript callback enables flexible routing without coupling. Routing destination is stored in job metadata for audit trails."
+    },
+    "examples": {
+      "heading": "Usage examples",
+      "description": "Common voice transcription workflows: Sprint planning (meeting recording → transcription → task_refinement → task descriptions), Terminal commands (dictation → transcription → terminal input → execution), Bug reports (verbal description → task editor → text_improvement → task_refinement), Architecture discussions (video + audio → vision analysis + transcription → combined text_improvement)."
     },
     "title": "Voice Transcription"
   }

@@ -42,7 +42,7 @@ public struct ProjectFolderSelectionView: View {
                 VStack(spacing: 24) {
                     headerSection
 
-                    if !multi.activeDeviceIsFullyConnected {
+                    if !multi.activeDeviceIsFullyConnected || connectionLost {
                         connectionGateSection
                     } else {
                         folderBrowserSection
@@ -144,16 +144,36 @@ public struct ProjectFolderSelectionView: View {
 
     private var connectionGateSection: some View {
         VStack(spacing: 16) {
-            StatusAlertView(
-                variant: .warning,
-                title: "Device Connection Required",
-                message: "Please select a device before choosing a project folder"
-            )
+            if connectionLost {
+                StatusAlertView(
+                    variant: .destructive,
+                    title: "Connection Lost",
+                    message: errorMessage ?? "The desktop connection was lost. Please reconnect or select a different device."
+                )
 
-            Button("Select Device") {
-                appState.navigateToDeviceSelection()
+                HStack(spacing: 12) {
+                    Button("Reconnect") {
+                        reconnectToDesktop()
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+
+                    Button("Select Device") {
+                        appState.navigateToDeviceSelection()
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                }
+            } else {
+                StatusAlertView(
+                    variant: .warning,
+                    title: "Device Connection Required",
+                    message: "Please select a device before choosing a project folder"
+                )
+
+                Button("Select Device") {
+                    appState.navigateToDeviceSelection()
+                }
+                .buttonStyle(SecondaryButtonStyle())
             }
-            .buttonStyle(SecondaryButtonStyle())
         }
     }
 
@@ -340,7 +360,11 @@ public struct ProjectFolderSelectionView: View {
             try? await Task.sleep(nanoseconds: 12_000_000_000) // 12s
             if !cancelled && self.isLoading {
                 self.errorMessage = "Operation timed out"
+                self.errorCode = "timeout"
+                self.connectionLost = true
                 self.isLoading = false
+                // Timeout typically means desktop is unreachable - navigate to device selection
+                self.appState.navigateToDeviceSelection()
             }
         }
 
@@ -401,7 +425,10 @@ public struct ProjectFolderSelectionView: View {
             try? await Task.sleep(nanoseconds: 12_000_000_000) // 12s
             if !cancelled && self.isLoading {
                 self.errorMessage = "Operation timed out"
+                self.errorCode = "timeout"
+                self.connectionLost = true
                 self.isLoading = false
+                // Show connection gate to let user retry or select different device
             }
         }
 
@@ -547,6 +574,13 @@ public struct ProjectFolderSelectionView: View {
         let connectionLostCodes = ["auth_required", "relay_failed", "disconnected", "not_connected", "connection_lost", "network_error"]
         if let code = errorCode, connectionLostCodes.contains(code) {
             connectionLost = true
+
+            // For critical connection errors where we can't browse folders at all,
+            // navigate to device selection to let user fix the connection
+            let criticalErrors = ["relay_failed", "disconnected", "not_connected", "connection_lost", "auth_required"]
+            if criticalErrors.contains(code) {
+                appState.navigateToDeviceSelection()
+            }
         }
     }
 

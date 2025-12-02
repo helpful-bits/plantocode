@@ -73,6 +73,22 @@ export default async function PlanToCodeArchitecturePage({ params }: { params: P
           </p>
         </GlassCard>
       </section>
+      <section className="space-y-6 mb-12">
+        <h2 className="text-2xl font-bold">{t['architecture.server.heading']}</h2>
+        <GlassCard className="p-6">
+          <p className="text-muted-foreground leading-relaxed">
+            {t['architecture.server.description']}
+          </p>
+        </GlassCard>
+      </section>
+      <section className="space-y-6 mb-12">
+        <h2 className="text-2xl font-bold">{t['architecture.dataFlows.heading']}</h2>
+        <GlassCard className="p-6">
+          <p className="text-muted-foreground leading-relaxed">
+            {t['architecture.dataFlows.description']}
+          </p>
+        </GlassCard>
+      </section>
     </DocsArticle>
   );
 }

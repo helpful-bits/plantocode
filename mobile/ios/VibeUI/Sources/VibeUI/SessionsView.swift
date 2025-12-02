@@ -228,10 +228,29 @@ public struct SessionsView: View {
                 let sessionsList = try await dataServices.sessionService.fetchSessions(projectDirectory: projectDir)
                 await MainActor.run {
                     sessions = sessionsList.sorted { $0.createdAt > $1.createdAt }
+                    errorMessage = nil
+                    isLoading = false
+                }
+            } catch DataServiceError.offline {
+                // Offline - use any cached sessions from the service
+                await MainActor.run {
+                    let serviceSessions = dataServices.sessionService.sessions
+                    if !serviceSessions.isEmpty {
+                        sessions = serviceSessions.sorted { $0.createdAt > $1.createdAt }
+                        errorMessage = nil // Don't show error if we have cached data
+                    } else {
+                        errorMessage = "Offline - cached sessions unavailable"
+                    }
                     isLoading = false
                 }
             } catch {
+                // Other errors - still try to show service's sessions if available
                 await MainActor.run {
+                    let serviceSessions = dataServices.sessionService.sessions
+                    if !serviceSessions.isEmpty && sessions.isEmpty {
+                        sessions = serviceSessions.sorted { $0.createdAt > $1.createdAt }
+                        // Only show error briefly since we have data
+                    }
                     errorMessage = error.localizedDescription
                     isLoading = false
                 }
@@ -259,9 +278,24 @@ public struct SessionsView: View {
             let sessionsList = try await dataServices.sessionService.fetchSessions(projectDirectory: projectDir)
             await MainActor.run {
                 sessions = sessionsList.sorted { $0.createdAt > $1.createdAt }
+                errorMessage = nil
+            }
+        } catch DataServiceError.offline {
+            // Offline during refresh - keep existing sessions, don't show error
+            await MainActor.run {
+                let serviceSessions = dataServices.sessionService.sessions
+                if !serviceSessions.isEmpty {
+                    sessions = serviceSessions.sorted { $0.createdAt > $1.createdAt }
+                }
+                // Silently handle offline during pull-to-refresh
             }
         } catch {
             await MainActor.run {
+                // On error, try to keep showing service sessions
+                let serviceSessions = dataServices.sessionService.sessions
+                if !serviceSessions.isEmpty && sessions.isEmpty {
+                    sessions = serviceSessions.sorted { $0.createdAt > $1.createdAt }
+                }
                 errorMessage = error.localizedDescription
             }
         }

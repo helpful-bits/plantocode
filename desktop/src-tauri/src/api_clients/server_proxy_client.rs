@@ -1194,6 +1194,35 @@ impl ServerProxyClient {
         Ok(user_info)
     }
 
+    /// Delete the current user's account
+    pub async fn delete_account(&self) -> AppResult<()> {
+        info!("Deleting user account via server proxy");
+
+        let auth_token = self.get_auth_token().await?;
+        let url = format!("{}/api/auth/account", self.server_url);
+
+        let req = self.with_auth_headers(self.http_client.delete(&url), &auth_token)?;
+        let response = req
+            .header("HTTP-Referer", APP_HTTP_REFERER)
+            .header("X-Title", APP_X_TITLE)
+            .send()
+            .await
+            .map_err(|e| AppError::HttpError(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error text".to_string());
+            error!("Account deletion API error: {} - {}", status, error_text);
+            return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
+        }
+
+        info!("Successfully deleted user account");
+        Ok(())
+    }
+
     /// Cancel an LLM request that's in progress
     pub async fn cancel_llm_request(&self, request_id: &str) -> AppResult<()> {
         info!("Cancelling LLM request: request_id={}", request_id);

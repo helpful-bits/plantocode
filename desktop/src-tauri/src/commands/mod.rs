@@ -1,4 +1,5 @@
 // Re-export all command modules
+pub mod account_commands;
 pub mod app_commands;
 pub mod audio_commands;
 pub mod auth0_commands;
@@ -92,6 +93,9 @@ pub use prompt_commands::get_system_prompt_for_task;
 
 // Re-exports from generic task commands module
 pub use generic_task_commands::generic_llm_stream_command;
+
+// Re-exports from account commands module
+pub use account_commands::delete_account_command;
 
 // Re-exports from auth0 commands module
 pub use auth0_commands::{

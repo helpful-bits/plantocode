@@ -50,6 +50,7 @@ pub struct StreamResult {
 pub struct StreamedResponseHandler {
     repo: Arc<BackgroundJobRepository>,
     job_id: String,
+    session_id: String,
     initial_db_job_metadata: Option<String>,
     config: StreamConfig,
     app_handle: Option<tauri::AppHandle>,
@@ -60,6 +61,7 @@ impl StreamedResponseHandler {
     pub fn new(
         repo: Arc<BackgroundJobRepository>,
         job_id: String,
+        session_id: String,
         initial_db_job_metadata: Option<String>,
         config: StreamConfig,
         app_handle: Option<tauri::AppHandle>,
@@ -67,6 +69,7 @@ impl StreamedResponseHandler {
         Self {
             repo,
             job_id,
+            session_id,
             initial_db_job_metadata,
             config,
             app_handle,
@@ -92,7 +95,7 @@ impl StreamedResponseHandler {
         let interval_ms = std::env::var("STREAM_UPDATE_INTERVAL_MS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(350); // Default to 350ms if not set or invalid
+            .unwrap_or(500); // Default to 500ms if not set or invalid
 
         let update_interval = Duration::from_millis(interval_ms);
 
@@ -194,6 +197,7 @@ impl StreamedResponseHandler {
                                     .repo
                                     .update_job_stream_state(
                                         &self.job_id,
+                                        &self.session_id,
                                         &accumulated_response,
                                         current_usage.as_ref(),
                                         stream_progress,
@@ -243,7 +247,7 @@ impl StreamedResponseHandler {
                             // Update job with server-authoritative usage data
                             if let Err(e) = self
                                 .repo
-                                .update_job_stream_usage(&self.job_id, &usage_update)
+                                .update_job_stream_usage(&self.job_id, &self.session_id, &usage_update)
                                 .await
                             {
                                 error!(
@@ -359,6 +363,7 @@ impl StreamedResponseHandler {
                             .repo
                             .update_job_stream_state(
                                 &self.job_id,
+                                &self.session_id,
                                 &accumulated_response,
                                 current_usage.as_ref(),
                                 None, // No final progress since incomplete
@@ -405,6 +410,7 @@ impl StreamedResponseHandler {
             .repo
             .update_job_stream_state(
                 &self.job_id,
+                &self.session_id,
                 &accumulated_response,
                 current_usage.as_ref(),
                 Some(100.0), // Set progress to 100.0

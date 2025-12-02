@@ -25,8 +25,8 @@
   },
   "screenshots": {
     "meta": {
-      "title": "Screenshots - PlanToCode in action",
-      "description": "See PlanToCode in action with real screenshots from actual workflows. File discovery, implementation plans, terminal integration, and more."
+      "title": "Screenshots - Complete Planning Pipeline",
+      "description": "Screenshots of PlanToCode's 5-stage Intelligence-Driven Development workflow: specification capture, FileFinderWorkflow, multi-model plans, merge review, and terminal execution."
     }
   },
   "downloads": {
@@ -43,8 +43,8 @@
   },
   "howItWorks": {
     "meta": {
-      "title": "How It Works - AI Planning Workflow",
-      "description": "AI implementation planning prevents chaos. File discovery, multi-model plans, human review, and safe execution with any coding agent."
+      "title": "How It Works - 5-Stage Intelligence-Driven Development",
+      "description": "Specification capture, FileFinderWorkflow, multi-model planning, implementation_plan_merge, and safe execution with Cursor, Claude Code, or Codex."
     }
   },
   "all-pages": {
@@ -132,7 +132,34 @@
   "about": {
     "architecture": {
       "comment": "Built for complex development workflows, not simple AI chat",
-      "title": "Technical Foundation"
+      "title": "Technical Foundation",
+      "planningEngine": {
+        "title": "Planning Engine",
+        "items": [
+          "Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)",
+          "Structured XML plan generation",
+          "Intelligent plan merging with SOLID principles",
+          "Source attribution tracking"
+        ]
+      },
+      "fileDiscovery": {
+        "title": "File Discovery Workflow",
+        "items": [
+          "Root folder selection (hierarchical intelligence)",
+          "Regex pattern filtering with path validation",
+          "AI-powered relevance assessment",
+          "Extended discovery for related files"
+        ]
+      },
+      "devTools": {
+        "title": "Development Tools",
+        "items": [
+          "Monaco Editor for plan review and editing",
+          "React + TypeScript frontend",
+          "SQLite for local persistence",
+          "Tauri for cross-platform desktop"
+        ]
+      }
     },
     "capabilities": {
       "automation": {
@@ -205,7 +232,7 @@
       },
       "intro": "PlanToCode is a comprehensive development planning environment designed for serious development work where context, traceability, and professional tooling matter more than quick AI interactions. We've built a system for complex, multi-step implementations where traditional AI tools fall short.",
       "multiModel": {
-        "description": "Integration with GPT-5/GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
+        "description": "Integration with GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
         "title": "Multi-Model Intelligence"
       },
       "title": "What We Built"
@@ -246,7 +273,7 @@
           "title": "Human-in-the-Loop"
         },
         "multiModel": {
-          "description": "Generate plans from multiple AI models (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) and merge the best insights. Single-model tools miss perspectives.",
+          "description": "Generate plans from multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) and merge the best insights. Single-model tools miss perspectives.",
           "title": "Multi-Model Planning"
         },
         "title": "What Makes PlanToCode Different"
@@ -555,7 +582,7 @@
       "intro": "The most effective workflow combines both tools, using each for what it does best:",
       "step1": {
         "catch": "What you catch: Wrong file paths, duplicate files, missing dependencies, scope creep",
-        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro).",
+        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro).",
         "title": "Plan in PlanToCode"
       },
       "step2": {
@@ -579,13 +606,13 @@
   "demo": {
     "cta": {
       "button": "View All Screenshots",
-      "description": "Explore real screenshots from actual workflows - file discovery, implementation plans, terminal sessions, and more.",
+      "description": "See how PlanToCode shrinks thousands of files to 10-25 that matter, then synthesizes merged plans before executing with Cursor or Claude Code. Real screenshots showing FileFinderWorkflow panel, Implementation Plans panel, Merge Instructions, and terminal view.",
       "title": "Want to See More?"
     },
     "hero": {
       "screenshots": "View Real Screenshots",
-      "subtitle": "Generate, review, approve — then execute in your preferred agent.",
-      "title": "Interactive demo",
+      "subtitle": "This demo walks through all 5 stages of Intelligence-Driven Development with a real scenario: (1) Specification capture, (2) 4-stage FileFinderWorkflow, (3) Multi-model implementation plans, (4) Human review and plan merge, (5) Secure execution with your favorite tools.",
+      "title": "Interactive Demo",
       "video": "View Demo"
     },
     "meta": {
@@ -602,12 +629,12 @@
       "title": "Ready to Level Up?"
     },
     "hero": {
-      "subtitle": "Plan → Review → Execute. Prepare context-rich implementation plans, then run with your preferred CLI or IDE.",
+      "subtitle": "Download PlanToCode — a planning-first AI development workspace that discovers the right files, generates and merges implementation plans across multiple models, and executes them safely using your favorite tools (Cursor, Claude Code, Codex) in a built-in terminal.",
       "title": "Download PlanToCode"
     },
     "macos": {
       "professional": {
-        "description": "Fully notarized by Apple. Code signed. Integrated terminal with CLI auto-detection and session persistence.",
+        "description": "Fully notarized by Apple. Code signed. Local CLI integration with persistent PTY sessions — run Cursor, Claude Code, and Codex plus git in the same terminal with auto-recovery and session restore.",
         "title": "Professional Ready"
       },
       "requirements": {
@@ -617,7 +644,7 @@
         "ram": "4GB RAM minimum (8GB recommended)",
         "title": "System Requirements"
       },
-      "subtitle": "For Heavy Coding-Agent Users",
+      "subtitle": "Native macOS with Persistent Terminal Sessions",
       "title": "macOS"
     },
     "meta": {
@@ -643,27 +670,27 @@
     },
     "trust": {
       "planning": {
-        "description": "GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro. Council-of-LLMs approach.",
-        "title": "Multi-Model Planning"
+        "description": "Architect-first, not prompt spam — multi-model implementation_plan generation and merge instructions ensure coherent, well-structured code changes.",
+        "title": "Architect-First Planning"
       },
       "pricing": {
-        "description": "Start immediately. Pay-as-you-go. No subscriptions. Token transparency for power users who track costs.",
-        "title": "Usage-Based Pricing"
+        "description": "Transparent costs — token estimation before every API call. Pay-as-you-go. No subscriptions. Full visibility into what you're spending.",
+        "title": "Transparent Costs"
       },
       "professional": {
-        "description": "Single-tenant servers. On-prem deployment. Terminal governance. Built for teams that can't use cloud-only.",
-        "title": "Professional Options"
+        "description": "Codebase-aware file discovery — 4-stage FileFinderWorkflow narrows thousands of files to the 10-25 that matter for your task.",
+        "title": "Intelligent File Discovery"
       },
       "terminal": {
-        "description": "Run claude, cursor, codex, or gemini directly. Voice transcription is available, and logs persist locally so you can resume work without context switching.",
-        "title": "Integrated Terminal"
+        "description": "Secure execution surface — permissioned use of Cursor, Claude Code, and Codex via integrated terminal. Review plans, then execute with full control.",
+        "title": "Secure Execution"
       },
-      "title": "Built for Heavy Coding-Agent Users"
+      "title": "Why Developers Trust PlanToCode"
     },
     "windows": {
       "integration": {
-        "description": "PowerShell and Command Prompt support. Run claude, cursor, codex, or gemini with health monitoring and recovery.",
-        "title": "Terminal Integration"
+        "description": "WSL-aware workflows — paths align between PlanToCode and Cursor/CLI tools. PowerShell and Command Prompt support with health monitoring and auto-recovery.",
+        "title": "WSL-Aware Terminal Integration"
       },
       "requirements": {
         "internet": "Internet connection required for AI features",
@@ -673,7 +700,7 @@
         "ram": "4GB RAM minimum (8GB recommended)",
         "title": "System Requirements"
       },
-      "subtitle": "Microsoft Store - Professional Ready",
+      "subtitle": "Microsoft Store with WSL Support",
       "title": "Windows"
     }
   },
@@ -709,6 +736,10 @@
       "sessions": {
         "description": "Terminal output is stored locally and sessions restore on launch. Close the app, come back next week, continue debugging.",
         "title": "Persistent Sessions"
+      },
+      "remoteControl": {
+        "title": "Remote control on iOS",
+        "description": "Review and merge plans from iOS and open a remote terminal session via device link."
       },
       "title": "Why Corporate Teams Choose This Workflow"
     },
@@ -766,16 +797,16 @@
           "description": "Record workflows, bugs, or UI presentations. Gemini Vision analyzes both audio narration and visual content to capture complete context for requirements gathering.",
           "title": "Screen Recordings"
         },
-        "subtitle": "Meeting recordings, screen captures, and voice dictation",
-        "title": "Capture Ideas & Context",
+        "subtitle": "Stage 1: Voice, video, notes become specifications",
+        "title": "Capture Ideas and Context",
         "voice": {
           "description": "Speak requirements naturally. OpenAI gpt-4o-transcribe transcribes with smart text insertion and speaker identification for rapid specification capture.",
           "title": "Voice Dictation"
         }
       },
       "step2": {
-        "description": "Transform raw meeting transcripts, voice recordings, and rough notes into clear, implementation-ready specifications using two distinct AI prompt types that work together to ensure both clarity and completeness.",
-        "subtitle": "Two AI prompt types for clarity and completeness",
+        "description": "Transform raw meeting transcripts, voice recordings, and rough notes into clear, implementation-ready specifications using two distinct AI prompt types (text_improvement and task_refinement) that work together to ensure both clarity and completeness.",
+        "subtitle": "Stage 2: text_improvement and task_refinement prompts",
         "taskRefinement": {
           "description": "Expands task descriptions by identifying implied requirements, filling in overlooked gaps, clarifying expected behavior and edge cases, and adding technical considerations for implementation readiness.",
           "title": "Task Refinement"
@@ -784,20 +815,20 @@
           "description": "Improves grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level. Perfect for polishing voice transcripts and meeting notes.",
           "title": "Text Enhancement"
         },
-        "title": "Refine into Actionable Specifications"
+        "title": "Refine into Precise Specifications"
       },
       "step3": {
-        "description": "AI file discovery identifies relevant files across your codebase. Multiple AI models generate implementation plans with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
+        "description": "4-stage FileFinderWorkflow identifies relevant files across your codebase. Multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) generate XML-structured implementation_plan documents with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
         "features": {
           "dependencies": "Dependency analysis and impact assessment",
-          "models": "Multi-model support (GPT-5/GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)",
+          "models": "Multi-model support (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)",
           "multiple": "Multiple plan generation for approach comparison",
           "operations": "Clear operation types (modify, create, delete)",
           "paths": "Exact file paths from your repository structure",
           "ranges": "Specific line ranges and modification details"
         },
-        "subtitle": "File-by-file plans with exact repository paths",
-        "title": "Generate Granular Implementation Plans"
+        "subtitle": "Stage 3: FileFinderWorkflow + implementation_plan generation",
+        "title": "Discover Files and Generate Plans"
       },
       "step4": {
         "capabilities": {
@@ -808,19 +839,19 @@
           "modifications": "Request modifications or alternative approaches",
           "visibility": "Complete visibility into proposed changes"
         },
-        "description": "Plans open in Monaco editor for comprehensive review. Team leads examine every proposed change, edit steps directly, merge multiple approaches with custom instructions, or reject plans entirely. No code changes occur without explicit human approval—ensuring alignment with corporate requirements and team workflows.",
-        "subtitle": "Full control before any code changes",
-        "title": "Review, Edit & Approve (Human-in-the-Loop)"
+        "description": "Plans open in Monaco editor for comprehensive review. Team leads examine every proposed change side-by-side, edit steps directly, use implementation_plan_merge with custom instructions to combine best insights from multiple models, or reject plans entirely. No code changes occur without explicit human approval—ensuring alignment with corporate requirements and team workflows.",
+        "subtitle": "Stage 4: Side-by-side review + implementation_plan_merge",
+        "title": "Review and Merge Plans"
       },
       "step5": {
-        "description": "After approval, securely transmit the plan to your chosen coding agent (Claude Code, Cursor, Codex) or assigned software developer. File-by-file granularity prevents regressions and unintended modifications—ensuring safe execution. Integrated terminal with persistent sessions enables immediate execution and debugging.",
-        "subtitle": "Safe handoff to developers or coding agents",
-        "title": "Execute with Confidence",
+        "description": "After approval, execute safely via two attachment methods: (a) Integrated terminal with claude, cursor, or codex commands—full session logging, undo/redo, recovery actions. (b) Copy buttons to paste approved plans into Cursor Composer, Windsurf Cascade, or any IDE chat. File-by-file granularity prevents regressions and unintended modifications—ensuring safe execution.",
+        "subtitle": "Stage 5: Terminal or copy buttons attach to any execution tool",
+        "title": "Execute Safely in Your Tools",
         "tools": {
           "audit": "Complete audit trail of execution",
           "claude": "Claude Code CLI with plan mode support",
           "codex": "OpenAI Codex CLI execution",
-          "cursor": "Cursor CLI integration",
+          "cursor": "Cursor Composer/Agent via paste or CLI",
           "sessions": "Persistent terminal sessions with auto-recovery",
           "terminal": "Integrated terminal with voice transcription"
         }
@@ -1028,8 +1059,8 @@
     }
   },
   "screenshots": {
-    "title": "See PlanToCode in Action — Plan → Review → Execute",
-    "description": "See PlanToCode in action with real screenshots from actual workflows."
+    "title": "Screenshots of the Complete Planning Pipeline",
+    "description": "Each screenshot corresponds to a stage in Intelligence-Driven Development: (1) Specification capture from voice, meetings, or text, (2) 4-stage FileFinderWorkflow discovering relevant files, (3) Multiple implementation plans from different models, (4) Merged plan with human review and instructions, (5) Terminal executing the plan with Cursor, Claude Code, or Codex."
   },
   "support": {
     "button": "Contact Support",

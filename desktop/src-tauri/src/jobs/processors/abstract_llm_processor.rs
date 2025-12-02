@@ -239,6 +239,7 @@ impl LlmTaskRunner {
         let streaming_handler = crate::jobs::streaming_handler::StreamedResponseHandler::new(
             repo.clone(),
             job_id.to_string(),
+            initial_db_job.session_id.clone(),
             initial_db_job.metadata.clone(),
             stream_config,
             Some(self.app_handle.clone()),

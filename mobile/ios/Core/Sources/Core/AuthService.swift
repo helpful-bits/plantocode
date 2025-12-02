@@ -441,6 +441,14 @@ public final class AuthService: NSObject, ObservableObject {
 
     try? KeychainManager.shared.delete(for: .appJWT)
 
+    // Clear device ID so next login gets a fresh device registration
+    // This is important for multi-user scenarios on the same device
+    try? DeviceManager.shared.clearDeviceID()
+
+    // Hard reset all relay connections and clear resume tokens
+    // This ensures the next login gets fresh connections without old session data
+    await MultiConnectionManager.shared.hardReset(reason: .authInvalidated, deletePersistedDevices: true)
+
     await MainActor.run {
       self.authError = nil
       self.isAuthenticated = false

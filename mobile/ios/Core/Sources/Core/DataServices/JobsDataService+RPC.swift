@@ -8,10 +8,48 @@ extension JobsDataService {
     @MainActor
     func listJobsViaRPC(request: JobListRequest, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
         let token = UUID()
+        let cacheKey = makeJobListDedupKey(for: request)
+
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task {
+                guard let self = self else {
+                    promise(.failure(.invalidState("JobsDataService deallocated")))
+                    return
+                }
+
                 await MainActor.run {
-                    self?.currentListJobsRequestToken = token
+                    self.currentListJobsRequestToken = token
+                }
+
+                // Check for in-flight request and coalesce
+                if let existingTask = await MainActor.run(body: { self.jobsFetchInFlight[cacheKey] }) {
+                    do {
+                        let result = try await existingTask.value
+                        promise(.success(result))
+                    } catch let error as DataServiceError {
+                        promise(.failure(error))
+                    } catch {
+                        promise(.failure(.networkError(error)))
+                    }
+                    return
+                }
+
+                // Short-window dedup (1 second)
+                let now = Date()
+                if let lastAt = await MainActor.run(body: { self.lastJobsFetchAt[cacheKey] }),
+                   now.timeIntervalSince(lastAt) < 1.0 {
+                    // Return cached response
+                    let response = await MainActor.run {
+                        JobListResponse(
+                            jobs: self.jobs,
+                            totalCount: UInt32(self.jobs.count),
+                            page: request.page ?? 0,
+                            pageSize: request.pageSize ?? UInt32(self.jobs.count),
+                            hasMore: false
+                        )
+                    }
+                    promise(.success(response))
+                    return
                 }
 
                 // Avoid issuing job.list RPCs when relay is clearly offline; fail fast to prevent request buildup.
@@ -35,13 +73,23 @@ extension JobsDataService {
                     return
                 }
 
-                do {
+                // Create new task for this fetch
+                let fetchTask = Task<JobListResponse, Error> {
+                    defer {
+                        Task { @MainActor in
+                            self.jobsFetchInFlight.removeValue(forKey: cacheKey)
+                        }
+                    }
+
+                    await MainActor.run {
+                        self.lastJobsFetchAt[cacheKey] = Date()
+                    }
+
                     let activeSessionId = request.sessionId
                     let activeProjectDirectory = request.projectDirectory
 
                     if activeSessionId == nil && activeProjectDirectory == nil {
-                        promise(.failure(.invalidState("sessionId or projectDirectory required")))
-                        return
+                        throw DataServiceError.invalidState("sessionId or projectDirectory required")
                     }
 
                     var jobsData: [String: Any]?
@@ -57,8 +105,7 @@ extension JobsDataService {
                         bypassCache: shouldReplace
                     ) {
                         if let error = response.error {
-                            promise(.failure(.serverError("RPC Error: \(error.message)")))
-                            return
+                            throw DataServiceError.serverError("RPC Error: \(error.message)")
                         }
 
                         if let result = response.result?.value as? [String: Any] {
@@ -72,15 +119,13 @@ extension JobsDataService {
                     // Tolerant response parsing - handle missing/partial data gracefully
                     guard let data = jobsData as? [String: Any] else {
                         // No valid data dictionary - return empty response
-                        let emptyResponse = JobListResponse(
+                        return JobListResponse(
                             jobs: [],
                             totalCount: 0,
                             page: request.page ?? 0,
                             pageSize: request.pageSize ?? 50,
                             hasMore: false
                         )
-                        promise(.success(emptyResponse))
-                        return
                     }
 
                     // Safely extract jobs array, defaulting to empty if missing or wrong type
@@ -100,18 +145,27 @@ extension JobsDataService {
                         hasMore: data["hasMore"] as? Bool ?? false
                     )
 
-                    if let self = self {
-                        await MainActor.run {
-                            if shouldReplace && token == self.currentListJobsRequestToken {
-                                self.replaceJobsArray(with: response.jobs)
-                                self.updateWorkflowCountsFromJobs(response.jobs)
-                                self.updateImplementationPlanCountsFromJobs(response.jobs)
-                                self.hasLoadedOnce = true
-                            }
+                    await MainActor.run {
+                        if shouldReplace && token == self.currentListJobsRequestToken {
+                            self.replaceJobsArray(with: response.jobs)
+                            self.updateWorkflowCountsFromJobs(response.jobs)
+                            self.updateImplementationPlanCountsFromJobs(response.jobs)
+                            self.hasLoadedOnce = true
                         }
                     }
-                    promise(.success(response))
 
+                    return response
+                }
+
+                // Store the task in the in-flight dictionary
+                await MainActor.run {
+                    self.jobsFetchInFlight[cacheKey] = fetchTask
+                }
+
+                // Execute the task and handle result
+                do {
+                    let response = try await fetchTask.value
+                    promise(.success(response))
                 } catch {
                     let dataServiceError = error as? DataServiceError ?? .networkError(error)
                     promise(.failure(dataServiceError))

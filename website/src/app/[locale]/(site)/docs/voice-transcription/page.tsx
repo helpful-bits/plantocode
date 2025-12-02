@@ -56,6 +56,22 @@ export default async function VoiceTranscriptionDocPage({ params }: { params: Pr
           </p>
         </GlassCard>
       </section>
+      <section className="space-y-6 mb-12">
+        <h2 className="text-2xl font-bold">{t['voiceTranscription.routingBehavior.heading']}</h2>
+        <GlassCard className="p-6">
+          <p className="text-muted-foreground leading-relaxed">
+            {t['voiceTranscription.routingBehavior.description']}
+          </p>
+        </GlassCard>
+      </section>
+      <section className="space-y-6 mb-12">
+        <h2 className="text-2xl font-bold">{t['voiceTranscription.examples.heading']}</h2>
+        <GlassCard className="p-6">
+          <p className="text-muted-foreground leading-relaxed">
+            {t['voiceTranscription.examples.description']}
+          </p>
+        </GlassCard>
+      </section>
     </DocsArticle>
   );
 }
