@@ -19,7 +19,7 @@ export const BASE_METADATA = {
     height: 630,
     alt: 'PlanToCode - AI Planning for Code',
   },
-  twitterHandle: '@plantocode',
+  twitterHandle: '@helpfulbits_com',
   defaultTitle: 'PlanToCode - AI Planning for Code',
   defaultDescription: 'Plan and ship code changes with AI. Find files, generate and merge AI plans from multiple models, run them in a persistent terminal. Free app with pay-as-you-go usage.',
 } as const;
@@ -698,8 +698,8 @@ export function generateOrganizationSchema() {
     foundingDate: '2024',
     sameAs: [
       'https://github.com/plantocode',
-      'https://twitter.com/plantocode',
-      'https://x.com/plantocode'
+      'https://twitter.com/helpfulbits_com',
+      'https://x.com/helpfulbits_com'
     ],
     contactPoint: {
       '@type': 'ContactPoint',

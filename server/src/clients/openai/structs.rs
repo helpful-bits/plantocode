@@ -7,6 +7,44 @@ pub struct OpenAITranscriptionResponse {
     pub text: String,
 }
 
+// Streaming Transcription Event (SSE format)
+// Event types: "transcript.text.delta", "transcript.text.done"
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TranscriptionStreamEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    #[serde(default)]
+    pub delta: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub logprobs: Option<Vec<serde_json::Value>>,
+}
+
+// Chunking strategy for server-side VAD
+#[derive(Debug, Serialize, Clone)]
+pub struct ChunkingStrategy {
+    #[serde(rename = "type")]
+    pub strategy_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_padding_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub silence_duration_ms: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub threshold: Option<f32>,
+}
+
+impl Default for ChunkingStrategy {
+    fn default() -> Self {
+        Self {
+            strategy_type: "server_vad".to_string(),
+            prefix_padding_ms: Some(200),
+            silence_duration_ms: Some(200),
+            threshold: Some(0.5),
+        }
+    }
+}
+
 // Stream Options for including usage in streaming responses
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamOptions {
@@ -127,9 +165,13 @@ pub struct OpenAIResponsesInputItem {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAIResponsesContentPart {
     #[serde(rename = "type")]
-    pub part_type: String,
+    pub part_type: String,  // "input_text" | "input_image"
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
-    pub image_url: Option<OpenAIImageUrl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_url: Option<String>,  // URL string or data URL for input_image
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,  // File ID for input_image
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -149,9 +191,11 @@ pub enum OpenAIContent {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAIContentPart {
     #[serde(rename = "type")]
-    pub part_type: String,
+    pub part_type: String,  // "text" | "image_url" | "input_text" | "input_image"
     pub text: Option<String>,
     pub image_url: Option<OpenAIImageUrl>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_id: Option<String>,  // For input_image with file reference
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

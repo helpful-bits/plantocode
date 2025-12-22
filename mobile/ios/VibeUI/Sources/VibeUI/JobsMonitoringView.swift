@@ -5,7 +5,7 @@ import Combine
 public struct JobsMonitoringView: View {
     @EnvironmentObject private var container: AppContainer
     @ObservedObject private var jobsService: JobsDataService
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedJobId: IdentifiableString? = nil
     @State private var isLoading = false
@@ -14,7 +14,6 @@ public struct JobsMonitoringView: View {
     @State private var errorMessage: String?
     @State private var showingError = false
     @State private var cancellables = Set<AnyCancellable>()
-    @State private var refreshToken = UUID()
     @State private var successMessage: String?
     @State private var showingSuccess = false
     @State private var hasDoneInitialLoad = false
@@ -60,7 +59,6 @@ public struct JobsMonitoringView: View {
     }
 
     public var body: some View {
-        let _ = refreshToken // bind into body to force recompute when changed
         VStack(spacing: 0) {
             VStack(spacing: 0) {
 
@@ -190,9 +188,6 @@ public struct JobsMonitoringView: View {
             }
         } message: {
             Text(errorMessage ?? "An error occurred")
-        }
-        .onReceive(jobsService.$jobs) { _ in
-            refreshToken = UUID()
         }
     }
 

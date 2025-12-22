@@ -6,6 +6,7 @@ import { type TaskType } from "@/types/task-type-defs";
 
 // Debounce state for token estimation
 let lastEstimateCallTs = 0;
+let lastEstimateSessionId: string | null = null;
 let inFlightEstimate: Promise<ActionState<{
   estimatedTokens: number;
   systemPromptTokens: number;
@@ -31,12 +32,14 @@ export async function estimatePromptTokensAction(params: {
   const now = performance.now();
   const MIN_INTERVAL_MS = 250;
 
-  // Return existing in-flight request if called too frequently
-  if (inFlightEstimate && now - lastEstimateCallTs < MIN_INTERVAL_MS) {
+  // Return existing in-flight request if called too frequently AND same session
+  // Invalidate cache when session changes to prevent returning stale estimates
+  if (inFlightEstimate && now - lastEstimateCallTs < MIN_INTERVAL_MS && lastEstimateSessionId === params.sessionId) {
     return inFlightEstimate;
   }
 
   lastEstimateCallTs = now;
+  lastEstimateSessionId = params.sessionId;
   inFlightEstimate = (async () => {
     try {
       const result = await invoke<{

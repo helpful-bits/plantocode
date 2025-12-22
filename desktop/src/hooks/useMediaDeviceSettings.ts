@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import {
+  VIDEO_ANALYSIS_MIN_FPS,
+  VIDEO_ANALYSIS_MAX_FPS,
+  VIDEO_ANALYSIS_FPS_STEP
+} from "../types/video-analysis-types";
 
 export const FPS_OPTIONS = [1, 5, 10, 15, 20, 24];
 
@@ -24,18 +29,27 @@ export function useMediaDeviceSettings() {
     return "default";
   });
 
-  const [selectedFrameRate, setSelectedFrameRate] = useState<number>(5);
-
-  // Load frame rate from localStorage on mount
-  useEffect(() => {
-    const savedFrameRate = localStorage.getItem('video-recording-frame-rate');
-    if (savedFrameRate) {
-      const parsedFrameRate = parseInt(savedFrameRate, 10);
-      if (!isNaN(parsedFrameRate)) {
-        setSelectedFrameRate(parsedFrameRate);
+  const [selectedFrameRate, setSelectedFrameRate] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedFrameRate = localStorage.getItem('video-recording-frame-rate');
+        if (savedFrameRate) {
+          const parsedFrameRate = Number(savedFrameRate);
+          if (!isNaN(parsedFrameRate)) {
+            // Clamp to valid range
+            const clampedFps = Math.min(
+              VIDEO_ANALYSIS_MAX_FPS,
+              Math.max(VIDEO_ANALYSIS_MIN_FPS, parsedFrameRate)
+            );
+            return clampedFps;
+          }
+        }
+      } catch (error) {
+        console.warn('[MediaDeviceSettings] Failed to read frame rate from localStorage:', error);
       }
     }
-  }, []);
+    return 5; // Default to 5 FPS
+  });
 
   // Enumerate available audio input devices
   useEffect(() => {
@@ -101,8 +115,13 @@ export function useMediaDeviceSettings() {
 
   // Save to localStorage whenever frame rate changes
   const updateSelectedFrameRate = (fps: number) => {
-    setSelectedFrameRate(fps);
-    localStorage.setItem('video-recording-frame-rate', fps.toString());
+    // Clamp to valid range
+    const clampedFps = Math.min(
+      VIDEO_ANALYSIS_MAX_FPS,
+      Math.max(VIDEO_ANALYSIS_MIN_FPS, fps)
+    );
+    setSelectedFrameRate(clampedFps);
+    localStorage.setItem('video-recording-frame-rate', clampedFps.toString());
   };
 
   // Re-enumerate devices to ensure labels are populated after permissions
@@ -253,8 +272,11 @@ export function useMediaDeviceSettings() {
     refreshDeviceList,
     requestPermissionAndRefreshDevices,
     selectedFrameRate,
-    setSelectedFrameRate: updateSelectedFrameRate,
+    updateSelectedFrameRate,
     FPS_OPTIONS,
+    videoMinFps: VIDEO_ANALYSIS_MIN_FPS,
+    videoMaxFps: VIDEO_ANALYSIS_MAX_FPS,
+    videoStepFps: VIDEO_ANALYSIS_FPS_STEP,
     minFps: Math.min(...FPS_OPTIONS),
     maxFps: Math.max(...FPS_OPTIONS),
   };

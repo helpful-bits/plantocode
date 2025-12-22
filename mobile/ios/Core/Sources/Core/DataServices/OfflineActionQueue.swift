@@ -52,8 +52,12 @@ public class OfflineActionQueue {
     }
 
     private func save() {
-        guard let encoded = try? JSONEncoder().encode(queue) else { return }
-        UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        let queueCopy = queue
+        let key = userDefaultsKey
+        Task.detached(priority: .utility) {
+            guard let encoded = try? JSONEncoder().encode(queueCopy) else { return }
+            UserDefaults.standard.set(encoded, forKey: key)
+        }
     }
 
     public func processPending(with sessionService: SessionDataService) async {

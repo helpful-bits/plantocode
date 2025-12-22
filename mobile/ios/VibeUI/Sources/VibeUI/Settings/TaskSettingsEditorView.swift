@@ -66,7 +66,10 @@ public struct TaskSettingsEditorView: View {
                         Spacer()
                     }
 
-                    ModelSelectorView(providers: providers, selectedModelId: $selectedModel) { m in
+                    ModelSelectorView(
+                        providers: providers.filtered(by: settings.allowedModels),
+                        selectedModelId: $selectedModel
+                    ) { m in
                         Task {
                             try? await dataService.setProjectTaskSetting(projectDirectory: projectDirectory, taskKey: taskKey, settingKey: "model", value: m)
                             settings.model = m

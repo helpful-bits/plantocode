@@ -12,9 +12,9 @@ import UIKit
 public struct SessionWorkspaceView: View {
     @EnvironmentObject private var container: AppContainer
     @StateObject private var viewModel = SessionWorkspaceViewModel()
-    @StateObject private var voiceDictationService = VoiceDictationService.shared
-    @StateObject private var textEnhancementService = TextEnhancementService.shared
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var voiceDictationService = VoiceDictationService.shared
+    @ObservedObject private var textEnhancementService = TextEnhancementService.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @ObservedObject private var appState = AppState.shared
 
     let autoPresentDeviceSelection: Bool
@@ -263,7 +263,7 @@ struct TaskTab: View {
     @State private var showingDeviceMenu = false
     @State private var showFindFilesSheet: Bool = false
     @State private var isKeyboardVisible = false
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
 
     var body: some View {
         NavigationStack {
@@ -514,12 +514,12 @@ private struct SessionSynchronizedPlansView: View {
         ImplementationPlansView(jobsService: jobsService, currentTaskDescription: taskText)
             .navigationTitle("Plans")
             .navigationBarTitleDisplayMode(.inline)
-            .task {
-                // Synchronize session immediately when view appears
+            .onAppear {
+                // Synchronize session synchronously when view appears
+                // Using onAppear instead of .task to ensure session is set
+                // BEFORE ImplementationPlansView.onAppear runs
                 if container.sessionService.currentSession?.id != session.id {
-                    await MainActor.run {
-                        container.sessionService.currentSession = session
-                    }
+                    container.sessionService.currentSession = session
                 }
             }
     }
@@ -610,7 +610,7 @@ struct EmptySessionView: View {
     @State private var showingMenu = false
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var container: AppContainer
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
 
     // Use computed property based on container state instead of local state
     private var isLoadingProject: Bool {

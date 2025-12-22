@@ -4,7 +4,7 @@ import Core
 public struct DeviceSelectionView: View {
     @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
     @ObservedObject private var appState = AppState.shared
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @EnvironmentObject private var container: AppContainer
     @State private var isConnecting = false
     @State private var errorMessage: String?
@@ -591,7 +591,7 @@ private struct DeviceRow: View {
     let isSelected: Bool
     let isConnecting: Bool
     let onTap: () -> Void
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
 
     var body: some View {
         Button(action: onTap) {

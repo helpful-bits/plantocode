@@ -10,7 +10,7 @@ private struct ProjectFolderItem: Identifiable {
 public struct ProjectFolderSelectionView: View {
     @EnvironmentObject var container: AppContainer
     @ObservedObject var appState = AppState.shared
-    @StateObject var multi = MultiConnectionManager.shared
+    @ObservedObject var multi = MultiConnectionManager.shared
     @ObservedObject private var deviceDiscovery = DeviceDiscoveryService.shared
 
     @State private var currentPath: String = ""

@@ -288,7 +288,7 @@
         "title": "Intelligent Instruction Processing"
       },
       "multiModel": {
-        "description": "Run GPT-5.1 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.",
+        "description": "Run GPT-5.2 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.",
         "features": [
           "Each plan stored with complete metadata",
           "Relevant files automatically extracted",
@@ -413,7 +413,7 @@
       "multiModel": {
         "description": "Choose from multiple AI models with project-specific configurations and temperature settings.",
         "features": [
-          "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro",
+          "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro",
           "Project-specific model settings",
           "Real-time token estimation",
           "Context window validation"
@@ -504,7 +504,7 @@
         },
         {
           "title": "Multi-Model Generation",
-          "description": "Run models multiple times (3x GPT-5.1, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking."
+          "description": "Run models multiple times (3x GPT-5.2, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking."
         },
         {
           "title": "Edit in Monaco",
@@ -892,7 +892,7 @@
         "question": "What FPS settings should I use?"
       },
       "model": {
-        "answer": "Use Gemini 2.5 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 3 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.",
+        "answer": "Use Gemini 3 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 3 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.",
         "question": "Which AI model should I choose?"
       },
       "optimization": {
@@ -950,7 +950,7 @@
           "Faster processing time",
           "Good for simple UI analysis"
         ],
-        "title": "Gemini 2.5 Flash"
+        "title": "Gemini 3 Flash"
       },
       "pro": {
         "description": "Comprehensive analysis with deeper insights. Best for complex UI issues, detailed pattern recognition, and advanced debugging.",

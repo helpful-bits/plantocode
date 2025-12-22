@@ -1,7 +1,7 @@
 {
   "name": "plantocode-desktop",
   "private": true,
-  "version": "1.2.5",
+  "version": "1.2.8",
   "type": "module",
   "scripts": {
     "dev": "vite --config src/vite.config.mts",
@@ -78,8 +78,10 @@
     "monaco-editor": "^0.52.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-markdown": "10.1.0",
     "react-router-dom": "^7.9.6",
     "react-window": "^1.8.11",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7"
   },

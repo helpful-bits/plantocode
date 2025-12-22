@@ -1,7 +1,9 @@
-import { createContext, useContext, useReducer, useCallback, useRef, useEffect, ReactNode, useMemo } from 'react';
+import { createContext, useContext, useReducer, useCallback, useRef, useEffect, ReactNode, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit, listen } from '@tauri-apps/api/event';
 import { startVideoAnalysisJob, type StartVideoAnalysisJobParams } from '@/actions/video-analysis/start-video-analysis.action';
+import { VIDEO_ANALYSIS_MIN_FPS, VIDEO_ANALYSIS_MAX_FPS } from '@/types/video-analysis-types';
+import { pathDirname } from '@/utils/tauri-fs';
 
 const MIME_CANDIDATES = [
   'video/webm;codecs=vp9,opus',      // Best quality WebM codec
@@ -16,6 +18,8 @@ interface AnalysisMetadata extends Omit<StartVideoAnalysisJobParams, 'videoPath'
 interface ScreenRecordingContextValue {
   isRecording: boolean;
   startTime: number | null;
+  currentFileSizeBytes: number | null;
+  diskSpaceWarning: { level: "warn" | "critical"; availableBytes: number } | null;
   startRecording: (options?: { recordAudio?: boolean; audioDeviceId?: string; frameRate?: number }, analysisMetadata?: AnalysisMetadata | null) => Promise<void>;
   stopRecording: () => void;
   cancelRecording: () => void;
@@ -74,7 +78,6 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
   const screenStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const combinedStreamRef = useRef<MediaStream | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
   const recordingOptionsRef = useRef<{ recordAudio: boolean; audioDeviceId: string; frameRate: number }>({
     recordAudio: true,
     audioDeviceId: 'default',
@@ -84,24 +87,113 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
   const startTimeRef = useRef<number | null>(null);
   const wasCancelledRef = useRef<boolean>(false);
 
+  // Streaming to disk refs
+  const recordingFilePathRef = useRef<string | null>(null);
+  const appendQueueRef = useRef<Promise<void> | null>(null);
+  const writtenBytesRef = useRef(0);
+
+  // Disk space monitoring refs
+  const diskIntervalRef = useRef<number | null>(null);
+  const [diskSpaceWarning, setDiskSpaceWarning] = useState<{ level: "warn" | "critical"; availableBytes: number } | null>(null);
+
+  // Helper function to clamp FPS
+  const clampFps = useCallback((fps: number) => {
+    return Math.min(VIDEO_ANALYSIS_MAX_FPS, Math.max(VIDEO_ANALYSIS_MIN_FPS, fps));
+  }, []);
+
+  // Helper function to enqueue append operations
+  const enqueueAppend = useCallback((bytes: Uint8Array) => {
+    const prev = appendQueueRef.current ?? Promise.resolve();
+    const path = recordingFilePathRef.current;
+    appendQueueRef.current = prev.then(async () => {
+      if (!path) return;
+      try {
+        await invoke("append_binary_file_command", {
+          path,
+          content: Array.from(bytes),
+          projectDirectory: null,
+        });
+        writtenBytesRef.current += bytes.byteLength;
+      } catch (error) {
+        console.error('Error appending to recording file:', error);
+        throw error;
+      }
+    });
+  }, []);
+
+  // Helper function to start disk space polling
+  const startDiskPolling = useCallback((filePath: string) => {
+    // Clear any existing interval
+    if (diskIntervalRef.current !== null) {
+      window.clearInterval(diskIntervalRef.current);
+    }
+
+    diskIntervalRef.current = window.setInterval(async () => {
+      try {
+        const dirPath = await pathDirname(filePath);
+        const { availableBytes } = await invoke<{ availableBytes: number }>("get_disk_space_command", {
+          path: dirPath
+        });
+
+        // Define thresholds: 500MB for warning, 100MB for critical
+        const WARNING_THRESHOLD = 500 * 1024 * 1024;
+        const CRITICAL_THRESHOLD = 100 * 1024 * 1024;
+
+        if (availableBytes < CRITICAL_THRESHOLD) {
+          setDiskSpaceWarning({ level: "critical", availableBytes });
+          window.dispatchEvent(new CustomEvent("recording-disk-space-critical", {
+            detail: { availableBytes }
+          }));
+        } else if (availableBytes < WARNING_THRESHOLD) {
+          setDiskSpaceWarning({ level: "warn", availableBytes });
+          window.dispatchEvent(new CustomEvent("recording-disk-space-warning", {
+            detail: { availableBytes }
+          }));
+        } else {
+          setDiskSpaceWarning(null);
+        }
+      } catch (error) {
+        console.error('Error checking disk space:', error);
+      }
+    }, 10000); // Check every 10 seconds
+  }, []);
+
   // Centralized cleanup function
-  const cleanup = useCallback(() => {
+  const cleanup = useCallback(async () => {
+    // Clear disk polling interval
+    if (diskIntervalRef.current !== null) {
+      window.clearInterval(diskIntervalRef.current);
+      diskIntervalRef.current = null;
+    }
+
+    // Wait for append queue to flush
+    if (appendQueueRef.current) {
+      try {
+        await appendQueueRef.current;
+      } catch (error) {
+        console.error('Error flushing append queue during cleanup:', error);
+      }
+    }
+
     // Stop all tracks
     screenStreamRef.current?.getTracks().forEach(track => track.stop());
     micStreamRef.current?.getTracks().forEach(track => track.stop());
     combinedStreamRef.current?.getTracks().forEach(track => track.stop());
-    
+
     // Clear refs
     mediaRecorderRef.current = null;
     screenStreamRef.current = null;
     micStreamRef.current = null;
     combinedStreamRef.current = null;
-    chunksRef.current = [];
     analysisMetadataRef.current = null;
     startTimeRef.current = null;
     wasCancelledRef.current = false;
-    
+    recordingFilePathRef.current = null;
+    appendQueueRef.current = null;
+    writtenBytesRef.current = 0;
+
     // Reset state
+    setDiskSpaceWarning(null);
     dispatch({ type: 'RESET' });
   }, []);
 
@@ -110,18 +202,21 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
     const handleRecording = async () => {
       if (state.status === 'capturing') {
         const options = recordingOptionsRef.current;
-        
+
         try {
+          // Clamp frame rate to valid range
+          const clampedFrameRate = clampFps(options.frameRate);
+
           // Capture display media
           const displayMediaOptions: DisplayMediaStreamOptions = {
             video: {
-              frameRate: { ideal: options.frameRate, max: options.frameRate },
+              frameRate: { ideal: clampedFrameRate, max: clampedFrameRate },
               width: { ideal: 1920, max: 3840 },
               height: { ideal: 1080, max: 2160 },
             },
             audio: options.recordAudio,
           };
-          
+
           const screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
           screenStreamRef.current = screenStream;
           
@@ -156,7 +251,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
           }
           
           combinedStreamRef.current = finalStream;
-          
+
           // Set up MediaRecorder
           const mimeType = MIME_CANDIDATES.find(MediaRecorder.isTypeSupported) || 'video/webm';
           const recorderOptions = {
@@ -164,57 +259,103 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
             videoBitsPerSecond: 5_000_000,  // 5 Mbps for high quality screen recording
             audioBitsPerSecond: 64_000      // 64 kbps for reduced audio quality
           };
-          
+
+          // Determine file extension based on MIME type
+          let extension = 'webm';
+          if (mimeType.includes('mp4')) {
+            extension = 'mp4';
+          }
+
+          // Create recording file path before starting recorder
+          const filePath = await invoke<string>('create_unique_filepath_command', {
+            requestId: `screen-recording-${Date.now()}`,
+            sessionName: 'screen-recordings',
+            extension,
+            targetDirName: 'videos',
+            projectDirectory: null
+          });
+          recordingFilePathRef.current = filePath;
+
+          // Start disk space monitoring
+          startDiskPolling(filePath);
+
           const recorder = new MediaRecorder(finalStream, recorderOptions);
           mediaRecorderRef.current = recorder;
-          
-          recorder.ondataavailable = (event) => {
+
+          // Stream data to disk instead of accumulating in memory
+          recorder.ondataavailable = async (event) => {
             if (event.data && event.data.size > 0) {
-              chunksRef.current.push(event.data);
+              try {
+                const arrayBuffer = await event.data.arrayBuffer();
+                const uint8Array = new Uint8Array(arrayBuffer);
+                enqueueAppend(uint8Array);
+              } catch (error) {
+                console.error('Error processing data chunk:', error);
+              }
             }
           };
-          
+
+          // Lifecycle event handler: recording started
+          recorder.onstart = () => {
+            window.dispatchEvent(new CustomEvent("recording-started", {
+              detail: {
+                filePath: recordingFilePathRef.current,
+                frameRate: clampedFrameRate,
+                startTime: startTimeRef.current
+              }
+            }));
+          };
+
+          // Lifecycle event handler: recording error
+          recorder.onerror = (event) => {
+            console.error('MediaRecorder error:', event);
+            window.dispatchEvent(new CustomEvent("recording-error", {
+              detail: {
+                error: event,
+                filePath: recordingFilePathRef.current
+              }
+            }));
+          };
+
           recorder.onstop = async () => {
+            const filePath = recordingFilePathRef.current;
+
             if (!wasCancelledRef.current) {
               const startTime = startTimeRef.current;
-              if (!startTime) {
-                cleanup();
+              if (!startTime || !filePath) {
+                await cleanup();
                 return;
               }
-              
-              const durationMs = Date.now() - startTime;
-              const recorderMimeType = recorder.mimeType || mimeType;
-              const blob = new Blob(chunksRef.current, { type: recorderMimeType });
-              
-              let extension = 'webm';
-              if (recorderMimeType.includes('mp4')) {
-                extension = 'mp4';
+
+              // Flush append queue before finishing
+              if (appendQueueRef.current) {
+                try {
+                  await appendQueueRef.current;
+                } catch (error) {
+                  console.error('Error flushing append queue:', error);
+                }
               }
-              
+
+              // Remux the video file to fix WebM container metadata (duration, bitrate)
+              // This is necessary because streaming chunks directly to disk bypasses container finalization
               try {
-                const filePath = await invoke<string>('create_unique_filepath_command', {
-                  requestId: `screen-recording-${Date.now()}`,
-                  sessionName: 'screen-recordings',
-                  extension,
-                  targetDirName: 'videos',
-                  projectDirectory: null
-                });
-                
-                const arrayBuffer = await blob.arrayBuffer();
-                const uint8Array = new Uint8Array(arrayBuffer);
-                
-                await invoke('write_binary_file_command', {
+                await invoke('remux_video_command', { path: filePath });
+              } catch (error) {
+                // Log the error but continue - the video file is still usable, just with missing metadata
+                // The video analysis processor will fallback to probing duration from frames
+                console.warn('Failed to remux video file (metadata may be incomplete):', error);
+              }
+
+              const durationMs = Date.now() - startTime;
+
+              try {
+                await emit('recording-finished', {
                   path: filePath,
-                  content: Array.from(uint8Array),
-                  projectDirectory: null
+                  durationMs,
+                  frameRate: clampedFrameRate,
+                  fileSizeBytes: writtenBytesRef.current
                 });
-                
-                await emit('recording-finished', { 
-                  path: filePath, 
-                  durationMs, 
-                  frameRate: options.frameRate 
-                });
-                
+
                 // Start video analysis job if metadata is provided
                 if (analysisMetadataRef.current) {
                   try {
@@ -222,7 +363,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
                       ...analysisMetadataRef.current,
                       videoPath: filePath,
                       durationMs,
-                      framerate: options.frameRate || 5
+                      framerate: clampedFrameRate
                     });
                     await emit('video-analysis-started', { jobId: result.jobId });
                   } catch (error) {
@@ -232,13 +373,34 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
                   }
                 }
               } catch (error) {
-                console.error('Error saving recording:', error);
+                console.error('Error finishing recording:', error);
               } finally {
-                cleanup();
+                await cleanup();
               }
             } else {
+              // Recording was cancelled - delete the file
+              if (filePath) {
+                // Flush any pending writes first
+                if (appendQueueRef.current) {
+                  try {
+                    await appendQueueRef.current;
+                  } catch (error) {
+                    console.error('Error flushing append queue during cancellation:', error);
+                  }
+                }
+
+                try {
+                  await invoke('delete_file_command', {
+                    path: filePath,
+                    projectDirectory: null
+                  });
+                } catch (error) {
+                  console.error('Error deleting cancelled recording file:', error);
+                }
+              }
+
               await emit('recording-cancelled', {});
-              cleanup();
+              await cleanup();
             }
           };
           
@@ -246,6 +408,13 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
           const videoTrack = screenStream.getVideoTracks()[0];
           if (videoTrack) {
             videoTrack.addEventListener('ended', () => {
+              window.dispatchEvent(new CustomEvent("recording-source-ended", {
+                detail: {
+                  filePath: recordingFilePathRef.current,
+                  reason: 'user_stopped_sharing'
+                }
+              }));
+
               if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
                 mediaRecorderRef.current.stop();
               }
@@ -275,7 +444,7 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
     };
 
     handleRecording();
-  }, [state.status, state.startTime, cleanup]);
+  }, [state.status, state.startTime, cleanup, clampFps, enqueueAppend, startDiskPolling]);
 
   // Effect to listen for backend stop recording request
   useEffect(() => {
@@ -316,17 +485,18 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
 
     wasCancelledRef.current = false;
 
-    // Store options and metadata for use in the effect
+    // Clamp and store options and metadata for use in the effect
+    const clampedFrameRate = clampFps(options.frameRate ?? 5);
     recordingOptionsRef.current = {
       recordAudio: options.recordAudio ?? true,
       audioDeviceId: options.audioDeviceId ?? 'default',
-      frameRate: options.frameRate ?? 5
+      frameRate: clampedFrameRate
     };
-    
+
     analysisMetadataRef.current = analysisMetadata ?? null;
 
     dispatch({ type: 'START_CAPTURE' });
-  }, [state.status]);
+  }, [state.status, clampFps]);
 
   const stopRecording = useCallback(() => {
     if (state.status === 'recording') {
@@ -343,10 +513,12 @@ export function ScreenRecordingProvider({ children }: ScreenRecordingProviderPro
   const value = useMemo<ScreenRecordingContextValue>(() => ({
     isRecording: state.status === 'capturing' || state.status === 'recording',
     startTime: state.startTime,
+    currentFileSizeBytes: writtenBytesRef.current || null,
+    diskSpaceWarning,
     startRecording,
     stopRecording,
     cancelRecording
-  }), [state.status, state.startTime, startRecording, stopRecording, cancelRecording]);
+  }), [state.status, state.startTime, diskSpaceWarning, startRecording, stopRecording, cancelRecording]);
 
   return (
     <ScreenRecordingContext.Provider value={value}>

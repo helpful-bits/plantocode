@@ -81,7 +81,7 @@
       },
       "intro": "PlanToCode는 빠른 AI 상호 작용보다 컨텍스트, 추적 가능성 및 전문 도구가 더 중요한 진지한 개발 작업을 위해 설계된 포괄적인 개발 계획 환경입니다. 기존 AI 도구가 부족한 복잡한 다단계 구현을 위한 시스템을 구축했습니다.",
       "multiModel": {
-        "description": "GPT-5.1, Claude Sonnet 4 및 Gemini 3 Pro와의 통합. 단순한 API 호출이 아닌 프로젝트별 구성, 실시간 스트리밍 및 완전한 추적 가능성을 갖춘 지능형 오케스트레이션입니다.",
+        "description": "GPT-5.2, Claude Sonnet 4 및 Gemini 3 Pro와의 통합. 단순한 API 호출이 아닌 프로젝트별 구성, 실시간 스트리밍 및 완전한 추적 가능성을 갖춘 지능형 오케스트레이션입니다.",
         "title": "다중 모델 인텔리전스"
       },
       "title": "우리가 구축한 것"
@@ -122,7 +122,7 @@
           "title": "휴먼 인 더 루프"
         },
         "multiModel": {
-          "description": "여러 AI 모델(GPT-5.1, Claude 4.5, Gemini 3 Pro)에서 계획을 생성하고 최고의 통찰력을 병합합니다. 단일 모델 도구는 관점을 놓칩니다.",
+          "description": "여러 AI 모델(GPT-5.2, Claude 4.5, Gemini 3 Pro)에서 계획을 생성하고 최고의 통찰력을 병합합니다. 단일 모델 도구는 관점을 놓칩니다.",
           "title": "다중 모델 계획"
         },
         "title": "PlanToCode를 차별화하는 요소"
@@ -501,25 +501,25 @@
       "title": "PlanToCode 다운로드 - macOS 및 Windows | 무료 평가판"
     },
     "mobile": {
-      "button": "곧 App Store에 출시",
+      "button": "App Store에서 다운로드",
       "connected": {
-        "description": "iOS 앱 출시 시 알림을 받으려면 대기자 명단에 가입하세요. 헤비 코딩 에이전트 사용자를 위한 조기 액세스.",
-        "title": "연결 유지"
+        "description": "데스크톱 PlanToCode 세션을 원격으로 제어하세요. 계획 검토, 터미널 관리 및 이동 중 생산성 유지.",
+        "title": "원격 제어"
       },
       "features": {
         "design": "네이티브 iOS/iPadOS 디자인 언어",
         "monitor": "원격으로 터미널 세션 모니터링",
         "review": "이동 중에도 구현 계획 검토 및 편집",
         "sync": "데스크톱 워크스페이스와 원활하게 동기화",
-        "title": "계획된 기능",
+        "title": "기능",
         "voice": "빠른 아이디어 캡처를 위한 음성 전사"
       },
-      "subtitle": "곧 iPhone 및 iPad 출시",
+      "subtitle": "iPhone 및 iPad용 원격 제어",
       "title": "iOS 모바일 앱"
     },
     "trust": {
       "planning": {
-        "description": "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. LLM 협의회 접근 방식.",
+        "description": "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. LLM 협의회 접근 방식.",
         "title": "다중 모델 계획"
       },
       "pricing": {
@@ -666,7 +666,7 @@
         "description": "AI 파일 검색은 코드베이스 전체에서 관련 파일을 식별합니다. 여러 AI 모델이 파일별 세분성—정확한 파일 경로, 특정 줄 범위 및 명확한 작업 유형(수정/생성/삭제)—을 갖춘 구현 계획을 생성합니다. 이러한 세분성은 영향 평가를 매우 명확하게 만듭니다.",
         "features": {
           "dependencies": "종속성 분석 및 영향 평가",
-          "models": "다중 모델 지원 (GPT-5.1, Claude 4, Gemini 3 Pro)",
+          "models": "다중 모델 지원 (GPT-5.2, Claude 4, Gemini 3 Pro)",
           "multiple": "접근 방식 비교를 위한 여러 계획 생성",
           "operations": "명확한 작업 유형 (수정, 생성, 삭제)",
           "paths": "리포지토리 구조의 정확한 파일 경로",

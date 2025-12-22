@@ -6,7 +6,7 @@ public struct FileManagementView: View {
     @ObservedObject private var filesService: FilesDataService
     @ObservedObject private var sessionService: SessionDataService
     @ObservedObject private var jobsService: JobsDataService
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @State private var searchText = ""
     @State private var files: [FileInfo] = []
     @State private var errorMessage: String?

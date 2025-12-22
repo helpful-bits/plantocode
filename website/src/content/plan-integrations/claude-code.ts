@@ -5,7 +5,7 @@ export const claudeCodeContent: PlanIntegrationContent = {
   meta: {
     title: 'Claude Code Plan Mode - Repeatable Multi-Model Planning',
     description:
-      "Claude Code has Plan Mode built-in. PlanToCode adds repeatable multi-model planning: 4-stage FileFinderWorkflow discovers files, implementation_plan runs across GPT-5.1/Claude Sonnet 4.5/Gemini, implementation_plan_merge consolidates. Feed comprehensive blueprints into Claude Code Plan Mode permissions.",
+      "Claude Code has Plan Mode built-in. PlanToCode adds repeatable multi-model planning: 4-stage FileFinderWorkflow discovers files, implementation_plan runs across GPT-5.2/Claude Sonnet 4.5/Gemini, implementation_plan_merge consolidates. Feed comprehensive blueprints into Claude Code Plan Mode permissions.",
     canonical: 'https://www.plantocode.com/plan-mode/claude-code',
   },
 
@@ -13,13 +13,13 @@ export const claudeCodeContent: PlanIntegrationContent = {
     eyebrow: 'Claude Code • Repeatable Multi-Model Planning',
     h1: "Claude Code has Plan Mode. PlanToCode adds the architect's blueprint.",
     subhead:
-      "Claude Code Plan Mode is Stage 5 execution with permission controls. PlanToCode provides Stages 1-4: spec capture (voice/text), 4-stage FileFinderWorkflow, multi-model implementation_plan across GPT-5.1/Claude Sonnet 4.5/Gemini, human review and merge. Feed comprehensive blueprints into Plan Mode.",
+      "Claude Code Plan Mode is Stage 5 execution with permission controls. PlanToCode provides Stages 1-4: spec capture (voice/text), 4-stage FileFinderWorkflow, multi-model implementation_plan across GPT-5.2/Claude Sonnet 4.5/Gemini, human review and merge. Feed comprehensive blueprints into Plan Mode.",
     supporting:
       'Intelligence-Driven Development: PlanToCode is the architect (repeatable multi-model planning). Claude Code Plan Mode is the construction crew (permission-controlled execution). Combine for enterprise-grade governance.',
   },
 
   intro:
-    "Claude Code Plan Mode (Shift+Tab, read-only analysis; --permission-mode plan for execution) provides permission-controlled execution. But it lacks repeatable pre-planning: no multi-model synthesis, no human-guided merge, no systematic file discovery. PlanToCode fills this gap with Intelligence-Driven Development Stages 1-4: (1) Specification capture via text_improvement/task_refinement, (2) 4-stage FileFinderWorkflow (root selection, regex filter, AI relevance, extended path finder), (3) Multi-model implementation_plan across GPT-5.1/Claude Sonnet 4.5/Gemini, (4) Human review and implementation_plan_merge. Stage 5: Feed merged blueprint into Claude Code Plan Mode. All technical details verified against Anthropic's official documentation.",
+    "Claude Code Plan Mode (Shift+Tab, read-only analysis; --permission-mode plan for execution) provides permission-controlled execution. But it lacks repeatable pre-planning: no multi-model synthesis, no human-guided merge, no systematic file discovery. PlanToCode fills this gap with Intelligence-Driven Development Stages 1-4: (1) Specification capture via text_improvement/task_refinement, (2) 4-stage FileFinderWorkflow (root selection, regex filter, AI relevance, extended path finder), (3) Multi-model implementation_plan across GPT-5.2/Claude Sonnet 4.5/Gemini, (4) Human review and implementation_plan_merge. Stage 5: Feed merged blueprint into Claude Code Plan Mode. All technical details verified against Anthropic's official documentation.",
 
   valueBullets: [
     {
@@ -35,7 +35,7 @@ export const claudeCodeContent: PlanIntegrationContent = {
     {
       title: 'Repeatable multi-model planning process',
       description:
-        'Stage 3: Run implementation_plan with GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Each model brings a different perspective. Stage 4: Review side-by-side, identify conflicts (one suggests class components, another uses hooks). Write merge instructions ("Prefer hooks, keep error handling from the other plan"). Run implementation_plan_merge. Repeatable process, reproducible results.',
+        'Stage 3: Run implementation_plan with GPT-5.2, Claude Sonnet 4.5, and Gemini 3 Pro. Each model brings a different perspective. Stage 4: Review side-by-side, identify conflicts (one suggests class components, another uses hooks). Write merge instructions ("Prefer hooks, keep error handling from the other plan"). Run implementation_plan_merge. Repeatable process, reproducible results.',
     },
     {
       title: 'Plan Mode permissions + pre-planned scope',
@@ -45,7 +45,7 @@ export const claudeCodeContent: PlanIntegrationContent = {
     {
       title: 'Narrative: Generate → Copy → Execute',
       description:
-        'Complete workflow: Stage 1 (capture "Add caching layer to API" via text_improvement). Stage 2 (FileFinderWorkflow discovers routes/, middleware/, redis config). Stage 3 (generate GPT-5.1 plan: Redis client setup; Gemini plan: Redis cluster + fallback). Stage 4 (merge with "Use GPT-5.1 Redis client, add Gemini fallback"). Copy merged XML. Open Claude Code, paste blueprint, enable Plan Mode (Shift+Tab), review proposed changes, approve. Claude Code executes. PlanToCode terminal logs output.',
+        'Complete workflow: Stage 1 (capture "Add caching layer to API" via text_improvement). Stage 2 (FileFinderWorkflow discovers routes/, middleware/, redis config). Stage 3 (generate GPT-5.2 plan: Redis client setup; Gemini plan: Redis cluster + fallback). Stage 4 (merge with "Use GPT-5.2 Redis client, add Gemini fallback"). Copy merged XML. Open Claude Code, paste blueprint, enable Plan Mode (Shift+Tab), review proposed changes, approve. Claude Code executes. PlanToCode terminal logs output.',
     },
     {
       title: 'Skyscraper blueprint analogy',
@@ -58,7 +58,7 @@ export const claudeCodeContent: PlanIntegrationContent = {
     {
       title: 'Stages 1-4: PlanToCode repeatable planning workflow',
       description:
-        'Stage 1: Capture specification from voice notes, meeting transcripts, or text descriptions using text_improvement (clarify vague requirements) and task_refinement (break down into sub-tasks). Stage 2: Run FileFinderWorkflow—4 sub-stages: (2a) root folder selection identifies scope boundaries, (2b) regex file filter matches patterns, (2c) AI relevance assessment scores each file, (2d) extended path finder discovers transitive dependencies. Stage 3: Generate multiple implementation plans using implementation_plan prompt across GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro—each brings a different perspective. Stage 4: Review plans side-by-side, identify conflicts/gaps, write merge instructions (plain English guidance: "Prefer this plan\'s error handling, use that plan\'s test coverage"), run implementation_plan_merge to produce single XML blueprint.',
+        'Stage 1: Capture specification from voice notes, meeting transcripts, or text descriptions using text_improvement (clarify vague requirements) and task_refinement (break down into sub-tasks). Stage 2: Run FileFinderWorkflow—4 sub-stages: (2a) root folder selection identifies scope boundaries, (2b) regex file filter matches patterns, (2c) AI relevance assessment scores each file, (2d) extended path finder discovers transitive dependencies. Stage 3: Generate multiple implementation plans using implementation_plan prompt across GPT-5.2, Claude Sonnet 4.5, and Gemini 3 Pro—each brings a different perspective. Stage 4: Review plans side-by-side, identify conflicts/gaps, write merge instructions (plain English guidance: "Prefer this plan\'s error handling, use that plan\'s test coverage"), run implementation_plan_merge to produce single XML blueprint.',
     },
     {
       title: 'Stage 5: Feeding the blueprint into Claude Code Plan Mode',
@@ -73,17 +73,17 @@ export const claudeCodeContent: PlanIntegrationContent = {
     {
       title: 'Concrete narrative: Caching layer implementation',
       description:
-        `Stage 1: Voice note "Add Redis caching to API endpoints to reduce DB load." Text_improvement clarifies: "Cache GET requests with 5-minute TTL, invalidate on POST/PUT/DELETE." Stage 2: FileFinderWorkflow discovers api/routes/*.ts, middleware/cache.ts (doesn't exist yet—Stage 2d suggests creation), config/redis.ts, tests/integration/. Stage 3: GPT-5.1 suggests Redis client with basic TTL; Gemini suggests Redis cluster with async invalidation. Stage 4: Merge instruction "Use simple Redis client, add async invalidation for write-heavy endpoints." Merged blueprint ready. Stage 5: Open Claude Code, paste blueprint, enable Plan Mode (Shift+Tab), review 8 file edits, approve. Claude Code executes: creates cache.ts, updates routes, adds tests, updates redis config.`,
+        `Stage 1: Voice note "Add Redis caching to API endpoints to reduce DB load." Text_improvement clarifies: "Cache GET requests with 5-minute TTL, invalidate on POST/PUT/DELETE." Stage 2: FileFinderWorkflow discovers api/routes/*.ts, middleware/cache.ts (doesn't exist yet—Stage 2d suggests creation), config/redis.ts, tests/integration/. Stage 3: GPT-5.2 suggests Redis client with basic TTL; Gemini suggests Redis cluster with async invalidation. Stage 4: Merge instruction "Use simple Redis client, add async invalidation for write-heavy endpoints." Merged blueprint ready. Stage 5: Open Claude Code, paste blueprint, enable Plan Mode (Shift+Tab), review 8 file edits, approve. Claude Code executes: creates cache.ts, updates routes, adds tests, updates redis config.`,
     },
     {
       title: 'Multi-model blind spot prevention',
       description:
-        `Single-model Claude Code Plan Mode provides one perspective—may miss edge cases, legacy constraints, or alternative patterns. PlanToCode Stage 3 multi-model planning runs GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro in parallel. Each model brings a different perspective and catches different things. Stage 4 merge consolidates all three perspectives. Claude Code Plan Mode executes the synthesized blueprint—comprehensive coverage, fewer blind spots.`,
+        `Single-model Claude Code Plan Mode provides one perspective—may miss edge cases, legacy constraints, or alternative patterns. PlanToCode Stage 3 multi-model planning runs GPT-5.2, Claude Sonnet 4.5, and Gemini 3 Pro in parallel. Each model brings a different perspective and catches different things. Stage 4 merge consolidates all three perspectives. Claude Code Plan Mode executes the synthesized blueprint—comprehensive coverage, fewer blind spots.`,
     },
     {
       title: 'Repeatable process for audits and compliance',
       description:
-        `Enterprise governance requirement: reproducible planning process with audit trail. PlanToCode Stages 1-4 provide this: (1) Specification is versioned (text_improvement/task_refinement outputs stored). (2) FileFinderWorkflow results are logged (which files discovered, relevance scores). (3) Each model's implementation_plan is saved (GPT-5.1 output, Gemini output). (4) Merge instructions and final merged blueprint are versioned. Stage 5 Claude Code Plan Mode execution uses the blueprint—logs every file edit, permission request, approval. Full audit trail from requirements to execution.`,
+        `Enterprise governance requirement: reproducible planning process with audit trail. PlanToCode Stages 1-4 provide this: (1) Specification is versioned (text_improvement/task_refinement outputs stored). (2) FileFinderWorkflow results are logged (which files discovered, relevance scores). (3) Each model's implementation_plan is saved (GPT-5.2 output, Gemini output). (4) Merge instructions and final merged blueprint are versioned. Stage 5 Claude Code Plan Mode execution uses the blueprint—logs every file edit, permission request, approval. Full audit trail from requirements to execution.`,
     },
   ],
 
@@ -165,11 +165,11 @@ export const claudeCodeContent: PlanIntegrationContent = {
     },
     {
       q: 'How do I use the merged plan with Claude Code Plan Mode?',
-      a: 'Complete PlanToCode Stages 1-4: (1) Capture spec via text_improvement/task_refinement. (2) Run FileFinderWorkflow (root selection → regex filter → AI relevance → extended path finder). (3) Generate plans from GPT-5.1, Claude Sonnet 4.5, and Gemini—each brings a different perspective. (4) Review side-by-side, write merge instructions, run implementation_plan_merge. Copy merged XML. Open Claude Code CLI, paste XML as context. Enable Plan Mode (Shift+Tab or --permission-mode plan). Review proposed file edits. Approve/reject each. Claude Code executes within approved scope. PlanToCode terminal (optional) logs output for audit trail.',
+      a: 'Complete PlanToCode Stages 1-4: (1) Capture spec via text_improvement/task_refinement. (2) Run FileFinderWorkflow (root selection → regex filter → AI relevance → extended path finder). (3) Generate plans from GPT-5.2, Claude Sonnet 4.5, and Gemini—each brings a different perspective. (4) Review side-by-side, write merge instructions, run implementation_plan_merge. Copy merged XML. Open Claude Code CLI, paste XML as context. Enable Plan Mode (Shift+Tab or --permission-mode plan). Review proposed file edits. Approve/reject each. Claude Code executes within approved scope. PlanToCode terminal (optional) logs output for audit trail.',
     },
     {
       q: 'What are the benefits of multi-model planning over single-model Plan Mode?',
-      a: 'Single-model Plan Mode: One perspective, may miss edge cases or alternative approaches. Multi-model planning (PlanToCode Stage 3) runs GPT-5.1, Claude Sonnet 4.5, and Gemini in parallel. Each model catches different things. Stage 4 merge consolidates all three—comprehensive blueprint. Example: One model suggests class components, another suggests hooks. Merge instruction: "Use hooks, keep the error handling approach." Claude Code Plan Mode executes merged blueprint—best of all models, fewer blind spots.',
+      a: 'Single-model Plan Mode: One perspective, may miss edge cases or alternative approaches. Multi-model planning (PlanToCode Stage 3) runs GPT-5.2, Claude Sonnet 4.5, and Gemini in parallel. Each model catches different things. Stage 4 merge consolidates all three—comprehensive blueprint. Example: One model suggests class components, another suggests hooks. Merge instruction: "Use hooks, keep the error handling approach." Claude Code Plan Mode executes merged blueprint—best of all models, fewer blind spots.',
     },
   ],
 

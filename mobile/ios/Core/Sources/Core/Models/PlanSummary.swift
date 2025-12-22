@@ -45,6 +45,7 @@ public struct PlanSummary: Codable, Identifiable {
     public let tokensSent: Int?
     public let tokensReceived: Int?
     public let modelUsed: String?
+    public let markdownConversionStatus: String?  // "pending", "completed", or "failed"
 
     public var modelDisplayName: String? {
         modelUsed.map(PlanContentParser.displayModelName)
@@ -101,11 +102,26 @@ public struct PlanSummary: Codable, Identifiable {
         return "\(count)"
     }
 
+    /// Whether the plan is fully ready (job completed AND markdown converted)
+    public var isFullyReady: Bool {
+        let isJobCompleted = status.lowercased() == "completed" || status.lowercased() == "completed_by_tag"
+        let isMarkdownReady = markdownConversionStatus == "completed"
+        return isJobCompleted && isMarkdownReady
+    }
+
     /// Status-based color
+    /// Green checkmark only shown when both job is completed AND markdown is ready
     public var statusColor: String {
         switch status.lowercased() {
         case "completed", "completed_by_tag":
-            return "green"
+            // Only show green if markdown is also completed
+            if markdownConversionStatus == "completed" {
+                return "green"
+            } else if markdownConversionStatus == "failed" {
+                return "orange"  // Markdown conversion failed
+            } else {
+                return "blue"  // Still converting markdown
+            }
         case "failed":
             return "red"
         case "canceled":
@@ -120,10 +136,18 @@ public struct PlanSummary: Codable, Identifiable {
     }
 
     /// Status icon name
+    /// Green checkmark only shown when both job is completed AND markdown is ready
     public var statusIcon: String {
         switch status.lowercased() {
         case "completed", "completed_by_tag":
-            return "checkmark.circle.fill"
+            // Only show checkmark if markdown is also completed
+            if markdownConversionStatus == "completed" {
+                return "checkmark.circle.fill"
+            } else if markdownConversionStatus == "failed" {
+                return "exclamationmark.triangle.fill"  // Markdown conversion failed
+            } else {
+                return "arrow.clockwise"  // Still converting markdown
+            }
         case "failed":
             return "exclamationmark.circle.fill"
         case "canceled":
@@ -184,6 +208,9 @@ public struct PlanSummary: Codable, Identifiable {
         // Set model used
         self.modelUsed = job.modelUsed
 
+        // Extract markdown conversion status from metadata
+        self.markdownConversionStatus = metadataDict?["markdownConversionStatus"] as? String
+
         // Extract execution status from job progress fields
         if let progressPercentage = job.progressPercentage,
            let subStatus = job.subStatusMessage {
@@ -221,7 +248,8 @@ public struct PlanSummary: Codable, Identifiable {
         executionStatus: PlanExecutionStatus?,
         tokensSent: Int?,
         tokensReceived: Int?,
-        modelUsed: String?
+        modelUsed: String?,
+        markdownConversionStatus: String? = nil
     ) {
         self.id = id
         self.jobId = jobId
@@ -237,5 +265,6 @@ public struct PlanSummary: Codable, Identifiable {
         self.tokensSent = tokensSent
         self.tokensReceived = tokensReceived
         self.modelUsed = modelUsed
+        self.markdownConversionStatus = markdownConversionStatus
     }
 }

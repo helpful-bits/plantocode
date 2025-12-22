@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/ui/collapsible";
 import { useJobDetailsContext } from "../../_contexts/job-details-context";
 import { formatFileSize } from "@/utils/string-utils";
+import { VideoPlayer } from "@/ui/video-player";
 
 interface FileInfo {
   exists: boolean;
@@ -123,17 +124,10 @@ export function JobDetailsVideoSection() {
             </div>
           ) : videoUrl ? (
             <div className="space-y-2">
-              <div className="rounded-md overflow-hidden bg-black">
-                <video
-                  controls
-                  className="w-full max-h-[500px]"
-                  src={videoUrl}
-                >
-                  <p className="text-sm text-muted-foreground p-4">
-                    Your browser does not support the video tag.
-                  </p>
-                </video>
-              </div>
+              <VideoPlayer
+                src={videoUrl}
+                maxHeight="500px"
+              />
               {fileSize !== null && (
                 <div className="text-xs text-muted-foreground text-center">
                   File size: {formatFileSize(fileSize)}

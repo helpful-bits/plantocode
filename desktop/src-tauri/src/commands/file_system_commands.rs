@@ -352,6 +352,82 @@ pub async fn write_binary_file_command(
     Ok(())
 }
 
+#[command]
+pub async fn append_binary_file_command(
+    path: String,
+    content: Vec<u8>,
+    project_directory: Option<String>,
+    app_handle: AppHandle,
+) -> AppResult<()> {
+    info!("Appending to binary file: {} ({} bytes)", path, content.len());
+
+    // If project_directory is provided, ensure the file path is within it
+    if let Some(proj_dir) = project_directory {
+        let target_path = std::path::Path::new(&path);
+        let project_path = std::path::Path::new(&proj_dir);
+
+        // Validate path security
+        crate::utils::fs_utils::ensure_path_within_project(project_path, target_path)
+            .map_err(|e| AppError::SecurityError(format!("Invalid path: {}", e)))?;
+    }
+
+    fs_utils::append_bytes_to_file(&path, &content)
+        .await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to append to binary file: {}", e)))?;
+
+    Ok(())
+}
+
+#[command]
+pub async fn read_binary_file_command(
+    path: String,
+    project_directory: Option<String>,
+    _app_handle: AppHandle,
+) -> AppResult<Vec<u8>> {
+    info!("Reading binary file: {}", path);
+
+    // If project_directory is provided, ensure the file path is within it
+    if let Some(proj_dir) = project_directory {
+        let target_path = std::path::Path::new(&path);
+        let project_path = std::path::Path::new(&proj_dir);
+
+        // Validate path security
+        crate::utils::fs_utils::ensure_path_within_project(project_path, target_path)
+            .map_err(|e| AppError::SecurityError(format!("Invalid path: {}", e)))?;
+    }
+
+    let content = tokio::fs::read(&path)
+        .await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to read binary file: {}", e)))?;
+
+    info!("Read {} bytes from {}", content.len(), path);
+    Ok(content)
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileStatsResponse {
+    pub size: u64,
+    pub is_file: bool,
+    pub is_dir: bool,
+}
+
+#[command]
+pub async fn get_file_stats_command(
+    path: String,
+    _app_handle: AppHandle,
+) -> AppResult<FileStatsResponse> {
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| AppError::FileSystemError(format!("Failed to get file stats: {}", e)))?;
+
+    Ok(FileStatsResponse {
+        size: metadata.len(),
+        is_file: metadata.is_file(),
+        is_dir: metadata.is_dir(),
+    })
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateUniqueFilePathArgs {

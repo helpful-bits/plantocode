@@ -1,12 +1,13 @@
 use crate::error::AppError;
 use base64::Engine;
+use futures_util::StreamExt;
 use reqwest::{
     Client,
     multipart::{Form, Part},
 };
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, warn};
 
-use super::structs::OpenAITranscriptionResponse;
+use super::structs::{ChunkingStrategy, OpenAITranscriptionResponse, TranscriptionStreamEvent};
 
 /// Transcribe audio using OpenAI's direct API with GPT-4o-transcribe
 #[instrument(skip(client, api_key, audio_data), fields(filename = %filename))]
@@ -238,4 +239,237 @@ pub fn validate_transcription_model(model: &str) -> Result<(), AppError> {
     }
 
     Ok(())
+}
+
+/// Transcribe audio using OpenAI's streaming API with server-side VAD chunking
+/// This approach is more reliable for large files as it:
+/// 1. Uses stream=true for progressive results
+/// 2. Uses chunking_strategy with server_vad for automatic audio segmentation
+/// 3. Handles long audio files without timeout issues
+#[instrument(skip(client, api_key, audio_data), fields(filename = %filename))]
+pub async fn transcribe_audio_streaming(
+    client: &Client,
+    api_key: &str,
+    base_url: &str,
+    audio_data: &[u8],
+    filename: &str,
+    model: &str,
+    language: Option<&str>,
+    prompt: Option<&str>,
+    temperature: Option<f32>,
+    mime_type: &str,
+) -> Result<String, AppError> {
+    let url = format!("{}/audio/transcriptions", base_url);
+
+    // Validate transcription model is supported
+    validate_transcription_model(model)?;
+
+    // Validate audio data
+    if audio_data.is_empty() {
+        return Err(AppError::Validation(
+            "Audio data cannot be empty".to_string(),
+        ));
+    }
+
+    // Validate minimum size to filter out malformed chunks
+    const MIN_FILE_SIZE: usize = 1000; // 1KB minimum
+    if audio_data.len() < MIN_FILE_SIZE {
+        return Err(AppError::Validation(format!(
+            "Audio file too small ({}B < 1KB) - likely malformed",
+            audio_data.len()
+        )));
+    }
+
+    // Validate file size (25MB limit for OpenAI)
+    const MAX_FILE_SIZE: usize = 25 * 1024 * 1024; // 25MB
+    if audio_data.len() > MAX_FILE_SIZE {
+        return Err(AppError::Validation(format!(
+            "Audio file too large ({}MB > 25MB)",
+            audio_data.len() / (1024 * 1024)
+        )));
+    }
+
+    // Basic WebM header validation
+    if filename.ends_with(".webm") && audio_data.len() >= 4 {
+        if audio_data[0] != 0x1A
+            || audio_data[1] != 0x45
+            || audio_data[2] != 0xDF
+            || audio_data[3] != 0xA3
+        {
+            debug!(
+                "WebM header validation failed for {}: {:02X} {:02X} {:02X} {:02X}",
+                filename, audio_data[0], audio_data[1], audio_data[2], audio_data[3]
+            );
+            return Err(AppError::Validation(
+                "Invalid WebM file format - missing EBML header".to_string(),
+            ));
+        }
+    }
+
+    // Ensure filename has correct extension
+    let filename_with_ext = if !filename.contains('.') {
+        match mime_type {
+            "audio/webm" => format!("{}.webm", filename),
+            "audio/mpeg" => format!("{}.mp3", filename),
+            "audio/wav" => format!("{}.wav", filename),
+            _ => filename.to_string(),
+        }
+    } else {
+        filename.to_string()
+    };
+
+    let file_part = Part::bytes(audio_data.to_vec())
+        .file_name(filename_with_ext.clone())
+        .mime_str(mime_type)
+        .map_err(|e| AppError::Validation(format!("Invalid audio mime type: {}", e)))?;
+
+    // Create chunking strategy for server-side VAD
+    let chunking_strategy = ChunkingStrategy::default();
+    let chunking_json = serde_json::to_string(&chunking_strategy)
+        .map_err(|e| AppError::Internal(format!("Failed to serialize chunking strategy: {}", e)))?;
+
+    let mut form = Form::new()
+        .part("file", file_part)
+        .text("model", model.to_string())
+        .text("stream", "true")
+        .text("chunking_strategy", chunking_json);
+
+    // Add optional parameters
+    if let Some(lang) = language {
+        form = form.text("language", lang.to_string());
+    }
+    if let Some(p) = prompt {
+        form = form.text("prompt", p.to_string());
+    }
+    if let Some(temp) = temperature {
+        form = form.text("temperature", temp.to_string());
+    }
+
+    info!(
+        "Sending streaming transcription request to OpenAI: {} ({} bytes) with server_vad chunking",
+        filename_with_ext,
+        audio_data.len()
+    );
+    debug!(
+        "Using model: {}, language: {:?}, prompt: {:?}, temperature: {:?}, mime_type: {}",
+        model, language, prompt, temperature, mime_type
+    );
+
+    let response = client
+        .post(&url)
+        .bearer_auth(api_key)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| AppError::External(format!("OpenAI streaming transcription request failed: {}", e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "Unknown error".to_string());
+        warn!(
+            "OpenAI streaming transcription failed with status {}: {}",
+            status, error_text
+        );
+        return Err(AppError::External(format!(
+            "OpenAI streaming transcription error ({}): {}",
+            status, error_text
+        )));
+    }
+
+    info!("OpenAI streaming transcription request accepted, processing SSE stream");
+
+    // Process SSE stream and collect transcription text
+    let mut full_text = String::new();
+    let mut bytes_stream = response.bytes_stream();
+    let mut buffer = String::new();
+
+    while let Some(chunk_result) = bytes_stream.next().await {
+        let chunk = chunk_result
+            .map_err(|e| AppError::External(format!("Stream read error: {}", e)))?;
+
+        // Append chunk to buffer
+        let chunk_str = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&chunk_str);
+
+        // Process complete lines from buffer (SSE uses single \n between events)
+        while let Some(line_end) = buffer.find('\n') {
+            let line = buffer[..line_end].trim().to_string();
+            buffer = buffer[line_end + 1..].to_string();
+
+            // Skip empty lines
+            if line.is_empty() {
+                continue;
+            }
+
+            // Parse SSE data line
+            if let Some(data) = line.strip_prefix("data: ") {
+                if data == "[DONE]" {
+                    info!(
+                        "Streaming transcription complete: {} characters",
+                        full_text.len()
+                    );
+                    return Ok(full_text);
+                }
+
+                // Parse JSON event
+                match serde_json::from_str::<TranscriptionStreamEvent>(data) {
+                    Ok(event) => {
+                        match event.event_type.as_str() {
+                            "transcript.text.delta" => {
+                                if let Some(delta) = &event.delta {
+                                    full_text.push_str(delta);
+                                }
+                            }
+                            "transcript.text.done" => {
+                                // Final text is provided in the done event
+                                if let Some(text) = &event.text {
+                                    // Use the complete text from done event (more reliable)
+                                    full_text = text.clone();
+                                }
+                                info!(
+                                    "Streaming transcription complete: {} characters",
+                                    full_text.len()
+                                );
+                                return Ok(full_text);
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to parse transcription event: {} - raw: {}", e, data);
+                    }
+                }
+            }
+        }
+    }
+
+    // Process any remaining data in buffer
+    for line in buffer.lines() {
+        let line = line.trim();
+        if let Some(data) = line.strip_prefix("data: ") {
+            if let Ok(event) = serde_json::from_str::<TranscriptionStreamEvent>(data) {
+                if event.event_type == "transcript.text.done" {
+                    if let Some(text) = &event.text {
+                        return Ok(text.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // If we got here, stream ended without [DONE] marker
+    if !full_text.is_empty() {
+        info!(
+            "Streaming transcription ended (no DONE marker): {} characters",
+            full_text.len()
+        );
+        Ok(full_text)
+    } else {
+        Err(AppError::External(
+            "Streaming transcription ended without receiving any text".to_string(),
+        ))
+    }
 }

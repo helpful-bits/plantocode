@@ -49,14 +49,15 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>PlanToCode needs access to your local network to discover and connect to your desktop devices.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>PlanToCode uses Face ID to securely authenticate and protect your data.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>We need microphone access to capture your voice for dictation.</string>
+	<string>PlanToCode needs microphone access to capture your voice for dictation.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>PlanToCode uses speech recognition to transcribe your voice for tasks and commands.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-		<string>audio</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>

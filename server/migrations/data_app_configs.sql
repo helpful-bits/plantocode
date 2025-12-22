@@ -4,14 +4,14 @@ VALUES (
   '{
     "tasks": {
       "implementation_plan": {
-        "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["openai/gpt-5.1-2025-11-13", "google/gemini-3-pro-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5-pro-2025-10-06", "deepseek/deepseek-r1-0528"],
+        "model": "openai/gpt-5.2-2025-12-11",
+        "allowed_models": ["openai/gpt-5.2-2025-12-11", "google/gemini-3-pro-preview", "google/gemini-3-flash-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5.2-pro-2025-12-11", "anthropic/claude-opus-4-5-20251101", "deepseek/deepseek-r1-0528"],
         "max_tokens": 23000,
         "temperature": 0.7,
         "copy_buttons": [
           {
             "label": "Parallel Claude Coding Agents",
-            "content": "{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Analyze the architecture, data flows, and sequence of events, then launch parallel Claude coding agents that execute simultaneously to save time. Each agent should implement a specific aspect of the plan precisely and systematically.\n\nProvide each agent with explicit, detailed instructions about their exact responsibilities. Do NOT instruct agents to run git, cargo, or TypeScript check commands."
+            "content": "{{IMPLEMENTATION_PLAN}}\nUnderstand the implementation plan above thoroughly. Analyze the architecture, data flows, and sequence of events, then launch parallel Claude coding agents that execute simultaneously to save time. Each agent should implement a specific aspect of the plan precisely and systematically.\n\nProvide each agent with explicit, detailed instructions about their exact responsibilities. Do NOT instruct agents to run git, cargo, or TypeScript check commands, or other similar commands.\n\nCRITICAL: Remove all deprecated features completely - no deprecated comments, annotations, or fallback implementations. The codebase should only contain modern, forward-looking code."
           },
           {
             "label": "Investigate Results",
@@ -33,19 +33,19 @@ VALUES (
       },
       "implementation_plan_title": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["openai/gpt-5-mini", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4-5-20250929"],
+        "allowed_models": ["openai/gpt-5-mini", "google/gemini-3-flash-preview", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 500,
         "temperature": 0.2
       },
       "implementation_plan_merge": {
-        "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["openai/gpt-5.1-2025-11-13", "google/gemini-3-pro-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5-pro-2025-10-06"],
+        "model": "openai/gpt-5.2-2025-12-11",
+        "allowed_models": ["openai/gpt-5.2-2025-12-11", "google/gemini-3-pro-preview", "google/gemini-2.5-pro", "xai/grok-4", "openai/gpt-5.2-pro-2025-12-11", "anthropic/claude-opus-4-5-20251101"],
         "max_tokens": 35000,
         "temperature": 0.35
       },
       "text_improvement": {
-        "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro", "openai/gpt-5.1-2025-11-13"],
+        "model": "anthropic/claude-opus-4-5-20251101",
+        "allowed_models": ["anthropic/claude-opus-4-5-20251101", "anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro", "openai/gpt-5.2-2025-12-11"],
         "max_tokens": 4096,
         "temperature": 0.45
       },
@@ -57,67 +57,67 @@ VALUES (
       },
       "regex_file_filter": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash", "openai/gpt-5-mini"],
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-3-flash-preview", "openai/gpt-5-mini"],
         "max_tokens": 35000,
         "temperature": 0.2
       },
       "task_refinement": {
-        "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro", "openai/o4-mini"],
+        "model": "anthropic/claude-opus-4-5-20251101",
+        "allowed_models": ["anthropic/claude-opus-4-5-20251101", "anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-pro"],
         "max_tokens": 16384,
         "temperature": 0.4
       },
       "extended_path_finder": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini", "openai/gpt-5-mini"],
+        "allowed_models": ["google/gemini-3-flash-preview", "openai/gpt-5-mini"],
         "max_tokens": 8192,
         "temperature": 0.15
       },
       "file_relevance_assessment": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/o4-mini", "openai/gpt-5-mini"],
+        "allowed_models": ["google/gemini-3-flash-preview", "openai/gpt-5-mini"],
         "max_tokens": 24000,
         "temperature": 0.2
       },
       "web_search_prompts_generation": {
-        "model": "openai/gpt-5.1-2025-11-13",
-        "allowed_models": ["google/gemini-2.5-flash", "google/gemini-2.5-pro", "openai/o4-mini", "openai/gpt-5.1-2025-11-13"],
+        "model": "openai/gpt-5.2-2025-12-11",
+        "allowed_models": ["google/gemini-3-flash-preview", "google/gemini-2.5-pro", "openai/gpt-5.2-2025-12-11"],
         "max_tokens": 30000,
         "temperature": 0.2
       },
       "web_search_execution": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["openai/o3", "openai/o4-mini", "openai/gpt-5.1-2025-11-13", "openai/gpt-5-mini"],
+        "allowed_models": ["openai/o3", "openai/gpt-5.2-2025-12-11", "openai/gpt-5-mini"],
         "max_tokens": 10000,
         "temperature": 0.3
       },
       "root_folder_selection": {
         "model": "openai/gpt-5-mini",
-        "allowed_models": ["google/gemini-2.5-flash", "openai/gpt-5-mini", "anthropic/claude-sonnet-4-5-20250929"],
+        "allowed_models": ["google/gemini-3-flash-preview", "openai/gpt-5-mini", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 4096,
         "temperature": 0.2
       },
       "video_analysis": {
         "model": "google/gemini-2.5-pro",
-        "allowed_models": ["google/gemini-2.5-pro", "google/gemini-2.5-flash"],
-        "max_tokens": 16384,
+        "allowed_models": ["google/gemini-3-pro-preview", "google/gemini-2.5-pro", "google/gemini-3-flash-preview"],
+        "max_tokens": 50000,
         "temperature": 0.4
       },
       "generic_llm_stream": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash", "openai/o4-mini"],
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-3-flash-preview"],
         "max_tokens": 8192,
         "temperature": 0.7
       },
       "streaming": {
         "model": "anthropic/claude-sonnet-4-5-20250929",
-        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-2.5-flash"],
+        "allowed_models": ["anthropic/claude-sonnet-4-5-20250929", "google/gemini-3-flash-preview"],
         "max_tokens": 4096,
         "temperature": 0.7
       },
       "unknown": {
-        "model": "google/gemini-2.5-flash",
-        "allowed_models": ["google/gemini-2.5-flash", "anthropic/claude-sonnet-4-5-20250929"],
+        "model": "google/gemini-3-flash-preview",
+        "allowed_models": ["google/gemini-3-flash-preview", "anthropic/claude-sonnet-4-5-20250929"],
         "max_tokens": 2048,
         "temperature": 0.5
       }

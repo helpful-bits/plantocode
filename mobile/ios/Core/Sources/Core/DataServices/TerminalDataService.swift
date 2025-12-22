@@ -16,7 +16,7 @@ import UIKit
 /// - PTY resize propagation on terminal size changes
 /// - Connection readiness gating before session start
 
-private let MOBILE_TERMINAL_RING_MAX_BYTES = 32 * 1_048_576
+private let MOBILE_TERMINAL_RING_MAX_BYTES = 8 * 1_048_576
 
 private enum TerminalSessionLifecycle: Equatable {
     case initializing
@@ -28,7 +28,7 @@ private struct ByteRing {
     private var storage: Data
     private let maxBytes: Int
 
-    init(maxBytes: Int = 4 * 1_048_576) {
+    init(maxBytes: Int = 8 * 1_048_576) {
         self.storage = Data()
         self.maxBytes = maxBytes
     }
@@ -83,12 +83,13 @@ public class TerminalDataService: ObservableObject {
     private var bootstrapInFlight = false
     private var lastBootstrapAt: Date?
     private var lastKnownSizeBySession: [String: (cols: Int, rows: Int)] = [:]
+    private var hardResetObserver: NSObjectProtocol?
 
     // MARK: - Initialization
     public init() {
         self.setupEventSubscriptions()
 
-        NotificationCenter.default.addObserver(
+        hardResetObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("connection-hard-reset-completed"),
             object: nil,
             queue: .main
@@ -167,7 +168,14 @@ public class TerminalDataService: ObservableObject {
     }
 
     deinit {
-        self.eventSubscriptions.values.forEach { $0.cancel() }
+        if let observer = hardResetObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        connectionStateCancellable?.cancel()
+        activeDeviceReconnectCancellable?.cancel()
+        globalBinarySubscription?.cancel()
+        eventSubscriptions.values.forEach { $0.cancel() }
+        pendingUnbindTasks.values.forEach { $0.cancel() }
     }
 
     // MARK: - Terminal Session Management
@@ -474,6 +482,10 @@ public class TerminalDataService: ObservableObject {
             lastActivityBySession.removeValue(forKey: session.id)
             activeSessions.removeValue(forKey: session.id)
 
+            // Clean up ring buffers and tracking data
+            outputRings.removeValue(forKey: session.id)
+            lastKnownSizeBySession.removeValue(forKey: session.id)
+
         } catch {
             self.lastError = error as? DataServiceError ?? DataServiceError.networkError(error)
             throw error
@@ -683,6 +695,11 @@ public class TerminalDataService: ObservableObject {
         if currentBoundSessionId == sessionId {
             currentBoundSessionId = nil
         }
+
+        // Clean up ring buffers and tracking data
+        outputRings.removeValue(forKey: sessionId)
+        lastActivityBySession.removeValue(forKey: sessionId)
+        lastKnownSizeBySession.removeValue(forKey: sessionId)
 
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {

@@ -136,7 +136,7 @@
       "planningEngine": {
         "title": "Planning Engine",
         "items": [
-          "Multi-model AI orchestration (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)",
+          "Multi-model AI orchestration (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro)",
           "Structured XML plan generation",
           "Intelligent plan merging with SOLID principles",
           "Source attribution tracking"
@@ -232,7 +232,7 @@
       },
       "intro": "PlanToCode is a comprehensive development planning environment designed for serious development work where context, traceability, and professional tooling matter more than quick AI interactions. We've built a system for complex, multi-step implementations where traditional AI tools fall short.",
       "multiModel": {
-        "description": "Integration with GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
+        "description": "Integration with GPT-5.2, Claude Sonnet 4.5, and Gemini 3 Pro. Not just API calls - intelligent orchestration with project-specific configurations, real-time streaming, and complete traceability.",
         "title": "Multi-Model Intelligence"
       },
       "title": "What We Built"
@@ -273,7 +273,7 @@
           "title": "Human-in-the-Loop"
         },
         "multiModel": {
-          "description": "Generate plans from multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) and merge the best insights. Single-model tools miss perspectives.",
+          "description": "Generate plans from multiple AI models (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro) and merge the best insights. Single-model tools miss perspectives.",
           "title": "Multi-Model Planning"
         },
         "title": "What Makes PlanToCode Different"
@@ -582,7 +582,7 @@
       "intro": "The most effective workflow combines both tools, using each for what it does best:",
       "step1": {
         "catch": "What you catch: Wrong file paths, duplicate files, missing dependencies, scope creep",
-        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro).",
+        "description": "Describe your task (voice or text), run file discovery to find all impacted files, generate implementation plans from multiple AI models (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro).",
         "title": "Plan in PlanToCode"
       },
       "step2": {
@@ -652,20 +652,20 @@
       "title": "Download PlanToCode - macOS & Windows | Free Trial"
     },
     "mobile": {
-      "button": "Coming Soon to App Store",
+      "button": "Download on App Store",
       "connected": {
-        "description": "Join our waitlist to be notified when the iOS app launches. Early access for heavy coding-agent users.",
-        "title": "Stay Connected"
+        "description": "Control your desktop PlanToCode sessions remotely. Review plans, manage terminals, and stay productive on the go.",
+        "title": "Remote Control"
       },
       "features": {
         "design": "Native iOS/iPadOS design language",
         "monitor": "Monitor terminal sessions remotely",
         "review": "Review and edit implementation plans on the go",
         "sync": "Sync with desktop workspace seamlessly",
-        "title": "Planned Features",
+        "title": "Features",
         "voice": "Voice transcription for quick idea capture"
       },
-      "subtitle": "Coming Soon for iPhone & iPad",
+      "subtitle": "Remote Control for iPhone & iPad",
       "title": "iOS Mobile App"
     },
     "trust": {
@@ -818,10 +818,10 @@
         "title": "Refine into Precise Specifications"
       },
       "step3": {
-        "description": "4-stage FileFinderWorkflow identifies relevant files across your codebase. Multiple AI models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) generate XML-structured implementation_plan documents with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
+        "description": "4-stage FileFinderWorkflow identifies relevant files across your codebase. Multiple AI models (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro) generate XML-structured implementation_plan documents with file-by-file granularity—exact file paths, specific line ranges, and clear operation types (modify/create/delete). This granularity makes impact assessment crystal clear.",
         "features": {
           "dependencies": "Dependency analysis and impact assessment",
-          "models": "Multi-model support (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro)",
+          "models": "Multi-model support (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro)",
           "multiple": "Multiple plan generation for approach comparison",
           "operations": "Clear operation types (modify, create, delete)",
           "paths": "Exact file paths from your repository structure",

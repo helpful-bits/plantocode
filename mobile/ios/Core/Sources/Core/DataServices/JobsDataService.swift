@@ -625,4 +625,13 @@ public class JobsDataService: ObservableObject {
             }
         }
     }
+
+    deinit {
+        if let obs = relayJobEventObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        cacheValidationTimer?.invalidate()
+        progressSubscription?.cancel()
+        cancellables.removeAll()
+    }
 }

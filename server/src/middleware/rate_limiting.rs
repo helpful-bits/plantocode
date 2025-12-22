@@ -16,7 +16,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::config::settings::RateLimitConfig;
-use crate::middleware::api_key_auth::ApiKeyIdentity;
+use crate::middleware::auth_types::ApiKeyIdentity;
 use crate::models::AuthenticatedUser;
 
 /// Rate limiting strategy
