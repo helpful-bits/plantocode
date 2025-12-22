@@ -33,6 +33,7 @@ final class SessionWorkspaceViewModel: ObservableObject {
     private var multiConnectionManager = MultiConnectionManager.shared
     private var appState = AppState.shared
     private var cancellables = Set<AnyCancellable>()
+    private var lastAutoLoadAt: Date?
 
     var currentProjectDirectory: String {
         container?.currentProject?.directory ?? appState.selectedProjectDirectory ?? ""
@@ -266,6 +267,12 @@ final class SessionWorkspaceViewModel: ObservableObject {
         guard container?.isInitializing == false else {
             return
         }
+
+        let now = Date()
+        if let last = lastAutoLoadAt, now.timeIntervalSince(last) < 1.0 {
+            return
+        }
+        lastAutoLoadAt = now
 
         Task {
             isLoadingSession = true

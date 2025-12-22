@@ -72,7 +72,7 @@
         "q": "코딩 방법을 알아야 합니까?"
       },
       "q6": {
-        "a": "기본 구성에는 Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 및 Kimi K2가 포함되어 있습니다. 작업을 제출하기 전에 설정 패널에서 작업당 모델을 전환할 수 있습니다.",
+        "a": "기본 구성에는 Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1 및 Kimi K2가 포함되어 있습니다. 작업을 제출하기 전에 설정 패널에서 작업당 모델을 전환할 수 있습니다.",
         "q": "어떤 AI 모델이 계획을 생성할 수 있습니까?"
       },
       "q7": {
@@ -114,7 +114,7 @@
         "title": "지침과 함께 계획 병합"
       },
       "modelConfiguration": {
-        "description": "구현 계획을 위해 Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 및 Kimi K2 중에서 선택하십시오. 설정은 프로젝트별로 유지됩니다.",
+        "description": "구현 계획을 위해 Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, Grok 4, DeepSeek R1 및 Kimi K2 중에서 선택하십시오. 설정은 프로젝트별로 유지됩니다.",
         "title": "작업당 모델 구성"
       },
       "monacoEditor": {
@@ -130,7 +130,7 @@
         "title": "사양 캡처 및 개선"
       },
       "textImprovement": {
-        "description": "모든 선택 항목을 강조 표시하여 Claude 4.5 Sonnet 또는 Gemini 2.5 Flash로 텍스트 개선 작업을 실행합니다. 재작성은 서식을 유지하고 Monaco 에디터, 작업 입력 및 터미널 받아쓰기 내부에 적용됩니다.",
+        "description": "모든 선택 항목을 강조 표시하여 Claude 4.5 Sonnet 또는 Gemini 3 Flash로 텍스트 개선 작업을 실행합니다. 재작성은 서식을 유지하고 Monaco 에디터, 작업 입력 및 터미널 받아쓰기 내부에 적용됩니다.",
         "title": "텍스트 개선 팝오버"
       },
       "tokenGuardrails": {
@@ -191,9 +191,9 @@
       "description": "동일한 작업, 동일한 파일, 동일한 컨텍스트. 여러 번 실행 - 동일한 모델 또는 혼합. 각 AI는 고유한 아키텍처 취향을 가지고 있습니다. 표준화된 형식으로 다양한 유효한 접근 방식을 확인하십시오.",
       "link": "워크플로우 탐색",
       "runs": {
-        "run1": "실행 1 - GPT-5.1",
+        "run1": "실행 1 - GPT-5.2",
         "run2": "실행 2 - Gemini 3 Pro",
-        "run3": "실행 3 - GPT-5.1"
+        "run3": "실행 3 - GPT-5.2"
       },
       "tags": {
         "middlewareFirst": "미들웨어 접근 방식",
@@ -206,7 +206,7 @@
       "description": "시스템은 모든 계획을 평가하고 등급을 매겨 코드베이스에 아키텍처적으로 가장 적합한 접근 방식을 식별한 다음 이를 하나의 우수한 구현으로 병합합니다. 선택적 병합 지침이 합성을 안내합니다.",
       "link": "병합 세부 정보",
       "merge": {
-        "line1": "입력: 4개 계획(2×GPT-5.1, 2×Gemini)",
+        "line1": "입력: 4개 계획(2×GPT-5.2, 2×Gemini)",
         "line2": "범위: 모든 계획의 파일",
         "line3": "전략: 병합 지침 적용",
         "line4": "출력: 파일별 계획",

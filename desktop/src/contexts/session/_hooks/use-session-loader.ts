@@ -154,12 +154,9 @@ export function useSessionLoader({
         }
 
         // **Critical Fix:** Ensure paths from DB are consistently normalized
-        if (session.includedFiles) {
-          session.includedFiles = session.includedFiles.map(p => createComparablePathKey(p)).filter(Boolean);
-        }
-        if (session.forceExcludedFiles) {
-          session.forceExcludedFiles = session.forceExcludedFiles.map(p => createComparablePathKey(p)).filter(Boolean);
-        }
+        // Always initialize arrays to prevent undefined causing race conditions in token estimation
+        session.includedFiles = (session.includedFiles || []).map(p => createComparablePathKey(p)).filter(Boolean);
+        session.forceExcludedFiles = (session.forceExcludedFiles || []).map(p => createComparablePathKey(p)).filter(Boolean);
 
         setCurrentSession(session);
         setSessionModified(false);

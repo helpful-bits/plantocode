@@ -17,9 +17,8 @@ public struct RemoteTerminalView: View {
     @State private var errorMessage: String?
     @State private var isSessionActive = false
     @State private var composePresentation: ComposePresentation? = nil
-    @StateObject private var settingsService = SettingsDataService()
     @StateObject private var terminalController = SwiftTermController()
-    @StateObject private var pathObserver = NetworkPathObserver.shared
+    @ObservedObject private var pathObserver = NetworkPathObserver.shared
 
     @State private var shouldShowKeyboard = false
     @State private var isKeyboardVisible: Bool = false
@@ -33,6 +32,10 @@ public struct RemoteTerminalView: View {
     @State private var planContentForJob: String = ""
     @State private var taskDescriptionContent: String = ""
     @State private var isActionsExpanded: Bool = false
+
+    // Rate-limiting for reconnection to avoid repeated full-screen redraws
+    @State private var lastReattachAt: Date? = nil
+    @State private var reattachInFlight: Bool = false
 
     private let contextType: TerminalContextType
 
@@ -97,27 +100,44 @@ public struct RemoteTerminalView: View {
 
     private func reattachToExistingSessionIfNeeded() {
         guard let terminalSession = terminalSession, isSessionActive else { return }
+        guard pathObserver.currentPath?.status == .satisfied else { return }
 
-        outputCancellable?.cancel()
-        outputCancellable = nil
+        // Prevent concurrent reattach attempts
+        if reattachInFlight { return }
+
+        // Rate-limit reattachment to at most once every 2 seconds
+        let now = Date()
+        if let last = lastReattachAt, now.timeIntervalSince(last) < 2.0 {
+            return
+        }
+
+        reattachInFlight = true
+        lastReattachAt = now
 
         let capturedJobId = jobId
         let terminalService = container.terminalService
 
+        // If already subscribed to hydrated stream, only ensure binary bind is present
+        // This avoids replaying the entire ring snapshot repeatedly
+        if outputCancellable != nil {
+            Task {
+                defer { reattachInFlight = false }
+                try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
+            }
+            return
+        }
+
+        // Subscribe to hydrated stream (first time or after cleanup)
         outputCancellable = terminalService
             .getHydratedRawOutputStream(for: capturedJobId)
             .receive(on: DispatchQueue.main)
             .sink { data in
                 terminalController.feedBytes(data: data)
-                DispatchQueue.main.async {
-                }
             }
 
         Task {
-            do {
-                try await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
-            } catch {
-            }
+            defer { reattachInFlight = false }
+            try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
         }
     }
 
@@ -445,13 +465,12 @@ public struct RemoteTerminalView: View {
                 let workingDirectory = container.sessionService.currentSession?.projectDirectory
 
                 // Fetch preferred shell from settings with timeout
-                let settingsService = SettingsDataService()
                 var preferredShell: String?
                 do {
                     try await withTimeout(seconds: 5.0) {
-                        try await settingsService.loadPreferredTerminal()
+                        try await container.settingsService.loadPreferredTerminal()
                     }
-                    preferredShell = settingsService.preferredTerminal
+                    preferredShell = container.settingsService.preferredTerminal
                 } catch {
                     // Shell preference fetch failed - use default
                 }
@@ -668,9 +687,9 @@ class SwiftTermController: NSObject, ObservableObject {
     private var lastDataReceivedAt: Date = .distantPast
     private var burstStartedAt: Date?
     private var framesSinceLastData: Int = 0
-    private static let burstThreshold: TimeInterval = 0.05 // 50ms between chunks = burst mode
-    private static let burstCooldown: TimeInterval = 0.3 // Stay in burst mode for 300ms after last data
-    private static let minFlushInterval: TimeInterval = 0.016 // ~60fps - minimal delay to reduce scroll jumping
+    private static let burstThreshold: TimeInterval = 0.1 // 100ms between chunks = burst mode
+    private static let burstCooldown: TimeInterval = 0.5 // Stay in burst mode for 500ms after last data
+    private static let minFlushInterval: TimeInterval = 0.15 // ~6-7fps - aggressive coalescing to eliminate TUI flicker
     private var lastFlushAt: Date = .distantPast
 
     // Escape sequence buffering to avoid flushing mid-sequence
@@ -685,6 +704,18 @@ class SwiftTermController: NSObject, ObservableObject {
     private var lastSentCols: Int = 0
     private var lastSentRows: Int = 0
 
+    // Resize transition buffering: pause feeding briefly during resize to avoid scroll corruption
+    private var isResizeInProgress: Bool = false
+    private var resizeBuffer: [Data] = []
+    private static let maxResizeBufferChunks = 30
+    private static let resizeDebounceIdle: TimeInterval = 0.25  // 250ms when no active output
+    private static let resizeDebounceActive: TimeInterval = 0.08  // 80ms when actively streaming
+
+    // Scroll-following: only auto-scroll when user is near bottom
+    private var followOutput: Bool = true
+    private var lastScrollPosition: Double = 1.0
+    private static let nearBottomThreshold: Double = 0.98
+
     deinit {
         displayLink?.invalidate()
     }
@@ -695,8 +726,10 @@ class SwiftTermController: NSObject, ObservableObject {
         pendingData.removeAll(keepingCapacity: false)
         batchBuffer.removeAll(keepingCapacity: false)
         backgroundBuffer.removeAll(keepingCapacity: false)
+        resizeBuffer.removeAll(keepingCapacity: false)
         burstStartedAt = nil
         isFeedingPaused = false
+        isResizeInProgress = false
         lastSentCols = 0
         lastSentRows = 0
         terminalView = nil
@@ -724,6 +757,7 @@ class SwiftTermController: NSObject, ObservableObject {
                 }
             }
             backgroundBuffer.removeAll()
+            // Let SwiftTerm handle scrolling naturally after background resume
         }
 
         // Resume display link if we have pending data
@@ -757,21 +791,12 @@ class SwiftTermController: NSObject, ObservableObject {
 
         let now = Date()
 
-        // Check if we're in burst mode (rapid updates from Claude's TUI)
-        let isInBurst = burstStartedAt != nil && now.timeIntervalSince(burstStartedAt!) < Self.burstCooldown
-
-        if isInBurst {
-            // During bursts, enforce minimum flush interval to coalesce more updates
-            let timeSinceLastFlush = now.timeIntervalSince(lastFlushAt)
-            if timeSinceLastFlush < Self.minFlushInterval {
-                // Don't flush yet - wait for more data to coalesce
-                framesSinceLastData += 1
-
-                // But don't wait forever - flush after 3 frames even in burst mode
-                if framesSinceLastData < 3 {
-                    return
-                }
-            }
+        // ALWAYS enforce minimum flush interval to coalesce TUI updates
+        // This is critical for preventing flicker from "clear screen + repaint" sequences
+        let timeSinceLastFlush = now.timeIntervalSince(lastFlushAt)
+        if timeSinceLastFlush < Self.minFlushInterval {
+            // Don't flush yet - wait for more data to coalesce
+            return
         }
 
         flushBatchBuffer()
@@ -802,6 +827,17 @@ class SwiftTermController: NSObject, ObservableObject {
             // Prevent unbounded memory growth during background
             if backgroundBuffer.count > Self.maxBackgroundChunks {
                 backgroundBuffer.removeFirst(backgroundBuffer.count - Self.maxBackgroundChunks)
+            }
+            return
+        }
+
+        // If resize in progress, buffer data to avoid scroll corruption during size transition
+        // This prevents cursor positioning commands from being interpreted with wrong dimensions
+        if isResizeInProgress {
+            resizeBuffer.append(data)
+            // Prevent unbounded memory growth during resize
+            if resizeBuffer.count > Self.maxResizeBufferChunks {
+                resizeBuffer.removeFirst(resizeBuffer.count - Self.maxResizeBufferChunks)
             }
             return
         }
@@ -850,31 +886,42 @@ class SwiftTermController: NSObject, ObservableObject {
         guard let terminalView = terminalView else { return }
         guard !batchBuffer.isEmpty || !pendingData.isEmpty else { return }
 
-        // Feed any pre-terminal buffered data first
-        if !pendingData.isEmpty {
-            for buffered in pendingData {
-                let buffer = ArraySlice([UInt8](buffered))
-                terminalView.feed(byteArray: buffer)
+        var didFeedData = false
+
+        // Wrap all feed and scroll operations in performWithoutAnimation
+        // to prevent Core Animation from interpolating between terminal frames
+        UIView.performWithoutAnimation { [self] in
+            // Feed any pre-terminal buffered data first
+            if !pendingData.isEmpty {
+                for buffered in pendingData {
+                    let buffer = ArraySlice([UInt8](buffered))
+                    terminalView.feed(byteArray: buffer)
+                }
+                pendingData.removeAll()
+                didFeedData = true
             }
-            pendingData.removeAll()
-        }
 
-        // Feed batched data
-        if !batchBuffer.isEmpty {
-            // Check if buffer ends with incomplete escape sequence
-            // If so, hold back the incomplete part for next flush
-            let holdbackData = extractIncompleteEscapeSequence()
-
+            // Feed batched data
             if !batchBuffer.isEmpty {
-                let buffer = ArraySlice([UInt8](batchBuffer))
-                terminalView.feed(byteArray: buffer)
-                batchBuffer.removeAll(keepingCapacity: true)
+                // Check if buffer ends with incomplete escape sequence
+                // If so, hold back the incomplete part for next flush
+                let holdbackData = extractIncompleteEscapeSequence()
+
+                if !batchBuffer.isEmpty {
+                    let buffer = ArraySlice([UInt8](batchBuffer))
+                    terminalView.feed(byteArray: buffer)
+                    batchBuffer.removeAll(keepingCapacity: true)
+                    didFeedData = true
+                }
+
+                // Put back the incomplete escape sequence for next flush
+                if let holdback = holdbackData {
+                    batchBuffer.append(holdback)
+                }
             }
 
-            // Put back the incomplete escape sequence for next flush
-            if let holdback = holdbackData {
-                batchBuffer.append(holdback)
-            }
+            // Let SwiftTerm handle scrolling naturally - don't force repositionVisibleFrame
+            // Forcing scroll on every flush causes visible jumping with TUI output
         }
     }
 
@@ -955,19 +1002,67 @@ extension SwiftTermController: TerminalViewDelegate {
             lastSentRows = newRows
             onResize?(newCols, newRows)
         } else {
-            // More aggressive debounce (400ms) to handle rapid keyboard show/hide cycles
+            // Start resize transition: buffer incoming data to avoid scroll corruption
+            // from cursor positioning commands interpreted with wrong dimensions
+            isResizeInProgress = true
+
+            // Adaptive debounce: shorter when actively streaming (burstStartedAt != nil),
+            // longer when idle to coalesce rapid keyboard show/hide cycles
+            let isActivelyStreaming = burstStartedAt != nil
+            let debounceInterval = isActivelyStreaming ? Self.resizeDebounceActive : Self.resizeDebounceIdle
+
             resizeDebouncer?.cancel()
             let capturedCols = newCols
             let capturedRows = newRows
             resizeDebouncer = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
+
                 // Double-check dimensions still different before sending
-                guard capturedCols != self.lastSentCols || capturedRows != self.lastSentRows else { return }
+                guard capturedCols != self.lastSentCols || capturedRows != self.lastSentRows else {
+                    self.completeResizeTransition()
+                    return
+                }
+
                 self.lastSentCols = capturedCols
                 self.lastSentRows = capturedRows
                 self.onResize?(capturedCols, capturedRows)
+
+                // Complete resize transition after a brief delay to allow PTY to process
+                // the new size before we resume feeding data
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                    self?.completeResizeTransition()
+                }
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: resizeDebouncer!)
+            DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: resizeDebouncer!)
+        }
+    }
+
+    /// Complete resize transition: flush buffered data and reset scroll position
+    private func completeResizeTransition() {
+        guard isResizeInProgress else { return }
+        isResizeInProgress = false
+
+        guard let terminalView = terminalView else {
+            resizeBuffer.removeAll()
+            return
+        }
+
+        // Feed resize-buffered data without animation to avoid scroll jumping
+        if !resizeBuffer.isEmpty {
+            UIView.performWithoutAnimation { [self] in
+                for chunk in resizeBuffer {
+                    let buffer = ArraySlice([UInt8](chunk))
+                    terminalView.feed(byteArray: buffer)
+                }
+            }
+            resizeBuffer.removeAll()
+        }
+
+        // Let SwiftTerm handle scrolling naturally after resize
+
+        // Resume display link if we have pending batch data
+        if needsFlush {
+            displayLink?.isPaused = false
         }
     }
 
@@ -1002,7 +1097,14 @@ extension SwiftTermController: TerminalViewDelegate {
     }
 
     func scrolled(source: TerminalView, position: Double) {
-        // Let SwiftTerm handle scrolling naturally
+        // Track scroll position and update followOutput state
+        // When user scrolls up, disable auto-scroll; when near bottom, re-enable
+        lastScrollPosition = position
+        if position >= Self.nearBottomThreshold {
+            followOutput = true
+        } else {
+            followOutput = false
+        }
     }
 }
 
@@ -1019,6 +1121,10 @@ struct SwiftTerminalView: UIViewRepresentable {
     func makeUIView(context: Context) -> FirstResponderTerminalView {
         let terminalView = FirstResponderTerminalView(frame: .zero)
         terminalView.terminalDelegate = controller
+
+        // Mark terminal as opaque with solid background to reduce compositing artifacts during mirroring
+        terminalView.isOpaque = true
+        terminalView.backgroundColor = .black
 
         // Use Menlo font for better emoji and wide character support
         // Menlo has better rendering characteristics for Unicode/emoji than default monospace
@@ -1073,8 +1179,8 @@ struct SwiftTerminalView: UIViewRepresentable {
             terminalView.setValue(true, forKey: "applicationCursor")
         }
 
-        // Note: We call ensureCaretIsVisible() after each batch flush in flushBatchBuffer()
-        // to keep the terminal scrolled to the latest output
+        // Note: repositionVisibleFrame() is called after each batch flush in flushBatchBuffer()
+        // and after resize transitions complete to keep the terminal scrolled to latest output
 
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true

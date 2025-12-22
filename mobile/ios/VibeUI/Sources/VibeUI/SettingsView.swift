@@ -119,12 +119,12 @@ public struct SettingsView: View {
             } label: {
               VStack(alignment: .leading, spacing: 4) {
                 Text("Subscription")
-                if let status = container.subscriptionManager.status.isActive ? "Active" : nil {
-                  Text(status)
+                if container.subscriptionManager.status.isActive {
+                  Text("Pro subscription active")
                     .font(.caption)
-                    .foregroundColor(.green)
+                    .foregroundColor(Color.success)
                 } else {
-                  Text("Not Subscribed")
+                  Text("Not subscribed to PlanToCode Pro")
                     .font(.caption)
                     .foregroundColor(Color.mutedForeground)
                 }

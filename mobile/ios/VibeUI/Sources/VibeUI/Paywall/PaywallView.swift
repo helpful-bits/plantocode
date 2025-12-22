@@ -46,7 +46,7 @@ public struct PaywallView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     if allowsDismiss {
-                        ToolbarItem(placement: .cancellationAction) {
+                        ToolbarItem(placement: .navigationBarTrailing) {
                             Button {
                                 dismiss()
                             } label: {

@@ -5,11 +5,11 @@ import { DesktopModelSelectorToggle } from '../desktop-ui/DesktopModelSelectorTo
 import { DesktopButton } from '../desktop-ui/DesktopButton';
 import { useTimedLoop } from '../hooks';
 
-// Models matching the screenshot: Claude 4 Sonnet, Gemini 3 Pro, GPT-5.1, GPT-o3, DeepSeek R1 (0528), Kimi K2, Grok 4
+// Models matching the screenshot: Claude 4 Sonnet, Gemini 3 Pro, GPT-5.2, GPT-o3, DeepSeek R1 (0528), Kimi K2, Grok 4
 const models = [
   { id: 'claude-4-sonnet', name: 'Claude 4 Sonnet' },
   { id: 'gemini-2.5-pro', name: 'Gemini 3 Pro' },
-  { id: 'gpt-5', name: 'GPT-5.1' },
+  { id: 'gpt-5', name: 'GPT-5.2' },
   { id: 'gpt-o3', name: 'GPT-o3' },
   { id: 'deepseek-r1-0528', name: 'DeepSeek R1 (0528)' },
   { id: 'kimi-k2', name: 'Kimi K2' },

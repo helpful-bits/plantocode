@@ -6,7 +6,7 @@ import OSLog
 public struct ImplementationPlansView: View {
     @EnvironmentObject private var container: AppContainer
     @ObservedObject var jobsService: JobsDataService
-    @StateObject private var multiConnectionManager = MultiConnectionManager.shared
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @StateObject private var planCreatorViewModel = ImplementationPlanCreatorViewModel()
     @ObservedObject private var appState = AppState.shared
     @State private var selectedPlanJobIdForNav: String? = nil
@@ -18,6 +18,11 @@ public struct ImplementationPlansView: View {
     @State private var showingPromptPreview = false
     @State private var deletingPlans = Set<String>()
     @State private var cancellables = Set<AnyCancellable>()
+    @State private var derivedPlans: [PlanSummary] = []
+
+    // Track previous session state for token re-estimation
+    @State private var lastIncludedFilesCount: Int = 0
+    @State private var lastTaskDescriptionHash: Int = 0
 
     // Terminal launch states
     @State private var showTerminal = false
@@ -38,33 +43,7 @@ public struct ImplementationPlansView: View {
 
     // Computed properties for reactive data from JobsDataService
     private var plans: [PlanSummary] {
-        // Get active session ID
-        guard let activeSessionId = container.sessionService.currentSession?.id else {
-            return []
-        }
-
-        // Determine whether to filter by session
-        let shouldFilterBySession = !activeSessionId.starts(with: "mobile-session-")
-
-        // Filter jobs
-        let filteredJobs = jobsService.jobs.filter { job in
-            // Must be implementation_plan or implementation_plan_merge
-            guard job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" else {
-                return false
-            }
-
-            // If shouldFilterBySession is true, also filter by sessionId
-            if shouldFilterBySession {
-                return job.sessionId == activeSessionId
-            }
-
-            return true
-        }
-
-        // Map to PlanSummary and sort by createdAt descending (stable sort to prevent jumping during processing)
-        return filteredJobs
-            .map(PlanSummary.init(from:))
-            .sorted { $0.createdAt > $1.createdAt }
+        derivedPlans
     }
 
     private var isLoading: Bool {
@@ -449,6 +428,10 @@ public struct ImplementationPlansView: View {
                 return
             }
 
+            // Reset tracking state for new session
+            lastIncludedFilesCount = session.includedFiles.count
+            lastTaskDescriptionHash = (session.taskDescription ?? "").hashValue
+
             // Start session-scoped sync (sets active session, fetches jobs, starts validation timer)
             container.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
 
@@ -461,6 +444,15 @@ public struct ImplementationPlansView: View {
 
             if state.isConnected {
                 planCreatorViewModel.loadModelSettings()
+
+                // Also trigger jobs sync when connection is established
+                // This handles the case where view appeared before connection was ready
+                if let session = container.sessionService.currentSession {
+                    container.jobsService.startSessionScopedSync(
+                        sessionId: session.id,
+                        projectDirectory: session.projectDirectory
+                    )
+                }
             }
         }
         .onAppear {
@@ -470,9 +462,37 @@ public struct ImplementationPlansView: View {
             // Setup view model (sync is handled by .task(id:) below)
             planCreatorViewModel.setup(container: container, currentTaskDescription: currentTaskDescription)
             planCreatorViewModel.requestTokenEstimation()
+
+            // Initialize tracking state for token re-estimation
+            if let session = container.sessionService.currentSession {
+                lastIncludedFilesCount = session.includedFiles.count
+                lastTaskDescriptionHash = (session.taskDescription ?? "").hashValue
+            }
+
+            // Initial computation of plans
+            recomputePlans()
         }
         .onDisappear {
             container.setJobsViewActive(false)
+        }
+        .onReceive(jobsService.objectWillChange) { _ in
+            // Use objectWillChange instead of $jobs because jobs array is mutated in-place
+            // (via mutateJobs), which doesn't trigger @Published property publisher
+            recomputePlans()
+        }
+        .onReceive(container.sessionService.currentSessionPublisher) { session in
+            recomputePlans()
+
+            // Re-estimate tokens when files or task description change
+            guard let session = session else { return }
+            let newFilesCount = session.includedFiles.count
+            let newTaskHash = (session.taskDescription ?? "").hashValue
+
+            if newFilesCount != lastIncludedFilesCount || newTaskHash != lastTaskDescriptionHash {
+                lastIncludedFilesCount = newFilesCount
+                lastTaskDescriptionHash = newTaskHash
+                planCreatorViewModel.requestTokenEstimation()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             planCreatorViewModel.invalidateModelCache()
@@ -541,6 +561,37 @@ public struct ImplementationPlansView: View {
 
         // Trigger a refresh by calling the jobs service to reload jobs
         await jobsService.refreshActiveJobs()
+    }
+
+    private func recomputePlans() {
+        // Get active session ID
+        guard let activeSessionId = container.sessionService.currentSession?.id else {
+            derivedPlans = []
+            return
+        }
+
+        // Determine whether to filter by session
+        let shouldFilterBySession = !activeSessionId.starts(with: "mobile-session-")
+
+        // Filter jobs
+        let filteredJobs = jobsService.jobs.filter { job in
+            // Must be implementation_plan or implementation_plan_merge
+            guard job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" else {
+                return false
+            }
+
+            // If shouldFilterBySession is true, also filter by sessionId
+            if shouldFilterBySession {
+                return job.sessionId == activeSessionId
+            }
+
+            return true
+        }
+
+        // Map to PlanSummary and sort by createdAt descending (stable sort to prevent jumping during processing)
+        derivedPlans = filteredJobs
+            .map(PlanSummary.init(from:))
+            .sorted { $0.createdAt > $1.createdAt }
     }
 
     private func mergePlans() {

@@ -81,7 +81,7 @@
       },
       "intro": "PlanToCode est un environnement complet de planification de développement conçu pour un travail de développement sérieux où le contexte, la traçabilité et l'outillage professionnel comptent plus que les interactions rapides avec l'IA. Nous avons construit un système pour les implémentations complexes en plusieurs étapes où les outils IA traditionnels sont insuffisants.",
       "multiModel": {
-        "description": "Intégration avec GPT-5.1, Claude Sonnet 4 et Gemini 3 Pro. Pas seulement des appels API - orchestration intelligente avec configurations spécifiques au projet, streaming en temps réel et traçabilité complète.",
+        "description": "Intégration avec GPT-5.2, Claude Sonnet 4 et Gemini 3 Pro. Pas seulement des appels API - orchestration intelligente avec configurations spécifiques au projet, streaming en temps réel et traçabilité complète.",
         "title": "Intelligence Multi-Modèles"
       },
       "title": "Ce Que Nous Avons Construit"
@@ -122,7 +122,7 @@
           "title": "Humain dans la Boucle"
         },
         "multiModel": {
-          "description": "Générez des plans à partir de plusieurs modèles IA (GPT-5.1, Claude 4.5, Gemini 3 Pro) et fusionnez les meilleures idées. Les outils à modèle unique manquent des perspectives.",
+          "description": "Générez des plans à partir de plusieurs modèles IA (GPT-5.2, Claude 4.5, Gemini 3 Pro) et fusionnez les meilleures idées. Les outils à modèle unique manquent des perspectives.",
           "title": "Planification Multi-Modèles"
         },
         "title": "Ce Qui Rend PlanToCode Différent"
@@ -501,25 +501,25 @@
       "title": "Télécharger PlanToCode - macOS & Windows | Essai Gratuit"
     },
     "mobile": {
-      "button": "Bientôt sur l'App Store",
+      "button": "Télécharger sur l'App Store",
       "connected": {
-        "description": "Rejoignez notre liste d'attente pour être notifié lors du lancement de l'application iOS. Accès anticipé pour les utilisateurs intensifs d'agents de codage.",
-        "title": "Restez Connecté"
+        "description": "Contrôlez vos sessions PlanToCode de bureau à distance. Révisez les plans, gérez les terminaux et restez productif en déplacement.",
+        "title": "Contrôle à Distance"
       },
       "features": {
         "design": "Langage de design natif iOS/iPadOS",
         "monitor": "Surveiller les sessions de terminal à distance",
         "review": "Réviser et modifier les plans d'implémentation en déplacement",
         "sync": "Synchroniser avec l'espace de travail de bureau de manière transparente",
-        "title": "Fonctionnalités Prévues",
+        "title": "Fonctionnalités",
         "voice": "Transcription vocale pour capture rapide d'idées"
       },
-      "subtitle": "Bientôt pour iPhone & iPad",
+      "subtitle": "Contrôle à Distance pour iPhone & iPad",
       "title": "Application Mobile iOS"
     },
     "trust": {
       "planning": {
-        "description": "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Approche Conseil de LLMs.",
+        "description": "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Approche Conseil de LLMs.",
         "title": "Planification Multi-Modèles"
       },
       "pricing": {
@@ -666,7 +666,7 @@
         "description": "La découverte de fichiers IA identifie les fichiers pertinents dans votre codebase. Plusieurs modèles IA génèrent des plans d'implémentation avec granularité fichier par fichier - chemins de fichiers exacts, plages de lignes spécifiques et types d'opérations clairs (modifier/créer/supprimer). Cette granularité rend l'évaluation d'impact cristalline.",
         "features": {
           "dependencies": "Analyse de dépendances et évaluation d'impact",
-          "models": "Support multi-modèles (GPT-5.1, Claude 4, Gemini 3 Pro)",
+          "models": "Support multi-modèles (GPT-5.2, Claude 4, Gemini 3 Pro)",
           "multiple": "Génération de plans multiples pour comparaison d'approches",
           "operations": "Types d'opérations clairs (modifier, créer, supprimer)",
           "paths": "Chemins de fichiers exacts de votre structure de dépôt",

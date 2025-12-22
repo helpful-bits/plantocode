@@ -28,6 +28,24 @@ async fn restart_device_link_client(
     Ok(())
 }
 
+/// Resolve server URL from DB or environment when ServerProxyClient is not available.
+/// Precedence: selected_server_url from DB > SERVER_URL env var > EU default
+async fn resolve_server_url_from_db_or_env(pool: &Arc<sqlx::SqlitePool>) -> String {
+    // 1) Try selected_server_url from DB
+    let settings_repo = crate::db_utils::settings_repository::SettingsRepository::new(pool.clone());
+    if let Ok(Some(url)) = settings_repo.get_value("selected_server_url").await {
+        return url;
+    }
+
+    // 2) Try SERVER_URL env var
+    if let Ok(env_url) = std::env::var("SERVER_URL") {
+        return env_url;
+    }
+
+    // 3) Final fallback: EU region to match mobile default
+    "https://api-eu.plantocode.com".to_string()
+}
+
 /// Initialize TokenManager only (deferred client initialization)
 pub async fn initialize_token_manager(app_handle: &AppHandle) -> AppResult<()> {
     // Get the existing TokenManager from app state (managed early in lib.rs)
@@ -380,7 +398,11 @@ pub async fn initialize_device_link_connection(
         let device_settings = settings_repo.get_device_settings().await?;
 
         if device_settings.allow_remote_access {
-            // Resolve server URL with precedence: ServerProxyClient > env var > default
+            // Server URL precedence for DeviceLinkClient:
+            // 1. ServerProxyClient.base_url() if initialized
+            // 2. selected_server_url from app DB
+            // 3. SERVER_URL environment variable
+            // 4. Hardcoded EU default (to match mobile)
             let server_url = if let Some(proxy_client_lock) = app_handle
                 .try_state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
             {
@@ -388,12 +410,10 @@ pub async fn initialize_device_link_connection(
                 if let Some(proxy_client) = proxy_guard.as_ref() {
                     proxy_client.base_url().to_string()
                 } else {
-                    std::env::var("SERVER_URL")
-                        .unwrap_or_else(|_| "https://api.plantocode.com".to_string())
+                    resolve_server_url_from_db_or_env(&pool).await
                 }
             } else {
-                std::env::var("SERVER_URL")
-                    .unwrap_or_else(|_| "https://api.plantocode.com".to_string())
+                resolve_server_url_from_db_or_env(&pool).await
             };
 
             tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);

@@ -757,25 +757,38 @@ impl GoogleClient {
                                 }
                             }
                             "image_url" => {
-                                // Handle image content if needed
-                                if let Some(image_url) = part
-                                    .get("image_url")
-                                    .and_then(|u| u.get("url"))
-                                    .and_then(|url| url.as_str())
-                                {
-                                    // Convert base64 image to inline data format
+                                // Handle OpenAI-style image_url content
+                                // Can be: { image_url: { url: "..." } } or { image_url: "..." }
+                                let url = if let Some(image_url_obj) = part.get("image_url") {
+                                    if let Some(url_str) = image_url_obj.as_str() {
+                                        // Direct string URL
+                                        Some(url_str.to_string())
+                                    } else if let Some(url) = image_url_obj.get("url").and_then(|u| u.as_str()) {
+                                        // Object with url property
+                                        Some(url.to_string())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                };
+
+                                if let Some(image_url) = url {
                                     if image_url.starts_with("data:") {
+                                        // Parse data URL
                                         if let Some(comma_pos) = image_url.find(',') {
                                             let header = &image_url[..comma_pos];
                                             let data = &image_url[comma_pos + 1..];
 
-                                            // Extract MIME type from data URI
+                                            // Extract MIME type from header
                                             let mime_type = if header.contains("image/jpeg") {
                                                 "image/jpeg"
                                             } else if header.contains("image/png") {
                                                 "image/png"
                                             } else if header.contains("image/webp") {
                                                 "image/webp"
+                                            } else if header.contains("image/gif") {
+                                                "image/gif"
                                             } else {
                                                 "image/jpeg" // Default fallback
                                             };
@@ -788,8 +801,91 @@ impl GoogleClient {
                                                 ..Default::default()
                                             });
                                         }
+                                    } else if image_url.starts_with("gs://") || image_url.contains("generativelanguage.googleapis.com") {
+                                        // Google Cloud Storage or Gemini File API URI
+                                        let mime_type = if image_url.ends_with(".jpg") || image_url.ends_with(".jpeg") {
+                                            "image/jpeg"
+                                        } else if image_url.ends_with(".png") {
+                                            "image/png"
+                                        } else if image_url.ends_with(".webp") {
+                                            "image/webp"
+                                        } else {
+                                            "application/octet-stream"
+                                        };
+
+                                        google_parts.push(GooglePart {
+                                            file_data: Some(GoogleFileData {
+                                                mime_type: mime_type.to_string(),
+                                                file_uri: image_url,
+                                            }),
+                                            ..Default::default()
+                                        });
+                                    }
+                                    // Note: Regular HTTP URLs are not directly supported by Gemini API
+                                    // They would need to be fetched and converted to base64 first
+                                }
+                            }
+                            "image" => {
+                                // Handle Anthropic-style image content
+                                if let Some(source) = part.get("source") {
+                                    let source_type = source.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                                    match source_type {
+                                        "base64" => {
+                                            let media_type = source.get("media_type").and_then(|m| m.as_str()).unwrap_or("image/jpeg");
+                                            let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+
+                                            if !data.is_empty() {
+                                                google_parts.push(GooglePart {
+                                                    inline_data: Some(GoogleBlob {
+                                                        mime_type: media_type.to_string(),
+                                                        data: data.to_string(),
+                                                    }),
+                                                    ..Default::default()
+                                                });
+                                            }
+                                        }
+                                        "url" => {
+                                            // URL images would need to be fetched first
+                                            // For now, log a warning
+                                            tracing::warn!("URL-based images in Anthropic format not directly supported for Google API");
+                                        }
+                                        _ => {}
                                     }
                                 }
+                            }
+                            "input_image" => {
+                                // Handle OpenAI Responses API style input_image
+                                if let Some(image_url) = part.get("image_url").and_then(|u| u.as_str()) {
+                                    if image_url.starts_with("data:") {
+                                        // Parse data URL same as above
+                                        if let Some(comma_pos) = image_url.find(',') {
+                                            let header = &image_url[..comma_pos];
+                                            let data = &image_url[comma_pos + 1..];
+
+                                            let mime_type = if header.contains("image/jpeg") {
+                                                "image/jpeg"
+                                            } else if header.contains("image/png") {
+                                                "image/png"
+                                            } else if header.contains("image/webp") {
+                                                "image/webp"
+                                            } else if header.contains("image/gif") {
+                                                "image/gif"
+                                            } else {
+                                                "image/jpeg"
+                                            };
+
+                                            google_parts.push(GooglePart {
+                                                inline_data: Some(GoogleBlob {
+                                                    mime_type: mime_type.to_string(),
+                                                    data: data.to_string(),
+                                                }),
+                                                ..Default::default()
+                                            });
+                                        }
+                                    }
+                                }
+                                // Note: file_id references are OpenAI-specific and not supported here
                             }
                             _ => {
                                 // Skip unsupported content types

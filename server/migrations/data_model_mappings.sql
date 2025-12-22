@@ -10,11 +10,13 @@ VALUES
 -- Anthropic models routed through OpenRouter using canonical slugs
 ('anthropic/claude-sonnet-4-5-20250929', 'openrouter', 'anthropic/claude-sonnet-4.5'),
 ('anthropic/claude-opus-4-20250514', 'openrouter', 'anthropic/claude-opus-4'),
+('anthropic/claude-opus-4-5-20251101', 'openrouter', 'anthropic/claude-opus-4.5'),
 ('anthropic/claude-3-7-sonnet-20250219', 'openrouter', 'anthropic/claude-3.7-sonnet'),
 
 -- Anthropic direct API mappings
 ('anthropic/claude-sonnet-4-5-20250929', 'anthropic', 'claude-sonnet-4-5-20250929'),
 ('anthropic/claude-opus-4-20250514', 'anthropic', 'claude-opus-4-20250514'),
+('anthropic/claude-opus-4-5-20251101', 'anthropic', 'claude-opus-4-5-20251101'),
 ('anthropic/claude-3-7-sonnet-20250219', 'anthropic', 'claude-3-7-sonnet-20250219'),
 
 -- =============================================================================
@@ -23,10 +25,10 @@ VALUES
 -- OpenAI models routed through OpenRouter (for fallback scenarios)
 ('openai/gpt-4.1', 'openrouter', 'openai/gpt-4.1'),
 ('openai/gpt-4.1-mini', 'openrouter', 'openai/gpt-4.1-mini'),
-('openai/gpt-5.1-2025-11-13', 'openrouter', 'openai/gpt-5.1-2025-11-13'),
+('openai/gpt-5.2-2025-12-11', 'openrouter', 'openai/gpt-5.2-2025-12-11'),
 ('openai/gpt-5-mini', 'openrouter', 'openai/gpt-5-mini'),
 ('openai/gpt-5-nano', 'openrouter', 'openai/gpt-5-nano'),
-('openai/gpt-5-pro-2025-10-06', 'openrouter', 'openai/gpt-5-pro-2025-10-06'),
+('openai/gpt-5.2-pro-2025-12-11', 'openrouter', 'openai/gpt-5.2-pro-2025-12-11'),
 ('openai/o3', 'openrouter', 'openai/o3'),
 ('openai/o3-deep-research-2025-06-26', 'openrouter', 'openai/o3-deep-research-2025-06-26'),
 ('openai/o4-mini', 'openrouter', 'openai/o4-mini'),
@@ -35,10 +37,10 @@ VALUES
 -- OpenAI direct API mappings
 ('openai/gpt-4.1', 'openai', 'gpt-4.1'),
 ('openai/gpt-4.1-mini', 'openai', 'gpt-4.1-mini'),
-('openai/gpt-5.1-2025-11-13', 'openai', 'gpt-5.1-2025-11-13'),
+('openai/gpt-5.2-2025-12-11', 'openai', 'gpt-5.2-2025-12-11'),
 ('openai/gpt-5-mini', 'openai', 'gpt-5-mini'),
 ('openai/gpt-5-nano', 'openai', 'gpt-5-nano'),
-('openai/gpt-5-pro-2025-10-06', 'openai', 'gpt-5-pro-2025-10-06'),
+('openai/gpt-5.2-pro-2025-12-11', 'openai', 'gpt-5.2-pro-2025-12-11'),
 ('openai/o3', 'openai', 'o3'),
 ('openai/o3-deep-research-2025-06-26', 'openai', 'o3-deep-research-2025-06-26'),
 ('openai/o4-mini', 'openai', 'o4-mini'),
@@ -53,12 +55,12 @@ VALUES
 -- =============================================================================
 -- Google models routed through OpenRouter (for fallback scenarios)
 ('google/gemini-2.5-pro', 'openrouter', 'google/gemini-2.5-pro'),
-('google/gemini-2.5-flash', 'openrouter', 'google/gemini-2.5-flash'),
+('google/gemini-3-flash-preview', 'openrouter', 'google/gemini-3-flash-preview'),
 ('google/gemini-3-pro-preview', 'openrouter', 'google/gemini-3-pro-preview'),
 
 -- Google direct API mappings (clean model IDs without google/ prefix)
 ('google/gemini-2.5-pro', 'google', 'gemini-2.5-pro'),
-('google/gemini-2.5-flash', 'google', 'gemini-2.5-flash'),
+('google/gemini-3-flash-preview', 'google', 'gemini-3-flash-preview'),
 ('google/gemini-3-pro-preview', 'google', 'gemini-3-pro-preview'),
 
 -- =============================================================================

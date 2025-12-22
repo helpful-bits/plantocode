@@ -72,7 +72,7 @@
         "q": "Do I need to know how to code?"
       },
       "q6": {
-        "a": "The default configuration ships with Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1, and Kimi K2. You can switch models per task from the settings panel before submitting a job.",
+        "a": "The default configuration ships with Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1, and Kimi K2. You can switch models per task from the settings panel before submitting a job.",
         "q": "Which AI models can generate plans?"
       },
       "q7": {
@@ -114,7 +114,7 @@
         "title": "Merge plans with instructions"
       },
       "modelConfiguration": {
-        "description": "Choose from Gemini 3 Pro, GPT-5.1, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2 for implementation plans. Settings persist per project.",
+        "description": "Choose from Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2 for implementation plans. Settings persist per project.",
         "title": "Model configuration per task"
       },
       "monacoEditor": {
@@ -130,7 +130,7 @@
         "title": "Specification capture & refinement"
       },
       "textImprovement": {
-        "description": "Highlight any selection to run the text-improvement job with Claude 4.5 Sonnet or Gemini 2.5 Flash. The rewrite preserves formatting and applies inside Monaco editors, task inputs, and terminal dictation.",
+        "description": "Highlight any selection to run the text-improvement job with Claude 4.5 Sonnet or Gemini 3 Flash. The rewrite preserves formatting and applies inside Monaco editors, task inputs, and terminal dictation.",
         "title": "Text improvement popover"
       },
       "tokenGuardrails": {
@@ -191,9 +191,9 @@
       "description": "Same task, same files, same context. Run multiple times - same model or mixed. Each AI has unique architectural taste. See different valid approaches in standardized format.",
       "link": "Explore the workflow",
       "runs": {
-        "run1": "Run 1 - GPT-5.1",
+        "run1": "Run 1 - GPT-5.2",
         "run2": "Run 2 - Gemini 3 Pro",
-        "run3": "Run 3 - GPT-5.1"
+        "run3": "Run 3 - GPT-5.2"
       },
       "tags": {
         "middlewareFirst": "Middleware approach",
@@ -206,7 +206,7 @@
       "description": "System evaluates and rates all plans to identify the most architecturally appropriate approaches for your codebase, then merges them into one superior implementation. Optional merge instructions guide synthesis.",
       "link": "Merge details",
       "merge": {
-        "line1": "Input: 4 plans (2×GPT-5.1, 2×Gemini)",
+        "line1": "Input: 4 plans (2×GPT-5.2, 2×Gemini)",
         "line2": "Scope: Files across all plans",
         "line3": "Strategy: Apply merge instructions",
         "line4": "Output: File-by-file plan",

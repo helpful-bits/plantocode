@@ -147,30 +147,45 @@ public class CopyButtonManager: ObservableObject {
     /// Save custom buttons to user defaults
     public func saveButtons(_ buttons: [CopyButton]) {
         self.buttons = buttons
-        if let encoded = try? JSONEncoder().encode(buttons) {
-            UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        let buttonsCopy = buttons
+        let key = userDefaultsKey
+        Task.detached(priority: .utility) {
+            if let encoded = try? JSONEncoder().encode(buttonsCopy) {
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
         }
     }
 
     /// Reset to default buttons
     public func resetToDefaults() {
         buttons = CopyButton.defaults
-        UserDefaults.standard.removeObject(forKey: userDefaultsKey)
+        let key = userDefaultsKey
+        Task.detached(priority: .utility) {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     /// Add a new button
     public func addButton(_ button: CopyButton) {
         buttons.append(button)
-        if let encoded = try? JSONEncoder().encode(buttons) {
-            UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        let buttonsCopy = buttons
+        let key = userDefaultsKey
+        Task.detached(priority: .utility) {
+            if let encoded = try? JSONEncoder().encode(buttonsCopy) {
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
         }
     }
 
     /// Remove a button
     public func removeButton(id: String) {
         buttons.removeAll { $0.id == id }
-        if let encoded = try? JSONEncoder().encode(buttons) {
-            UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+        let buttonsCopy = buttons
+        let key = userDefaultsKey
+        Task.detached(priority: .utility) {
+            if let encoded = try? JSONEncoder().encode(buttonsCopy) {
+                UserDefaults.standard.set(encoded, forKey: key)
+            }
         }
     }
 
@@ -178,8 +193,12 @@ public class CopyButtonManager: ObservableObject {
     public func updateButton(_ button: CopyButton) {
         if let index = buttons.firstIndex(where: { $0.id == button.id }) {
             buttons[index] = button
-            if let encoded = try? JSONEncoder().encode(buttons) {
-                UserDefaults.standard.set(encoded, forKey: userDefaultsKey)
+            let buttonsCopy = buttons
+            let key = userDefaultsKey
+            Task.detached(priority: .utility) {
+                if let encoded = try? JSONEncoder().encode(buttonsCopy) {
+                    UserDefaults.standard.set(encoded, forKey: key)
+                }
             }
         }
     }

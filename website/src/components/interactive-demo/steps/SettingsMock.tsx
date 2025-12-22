@@ -360,8 +360,8 @@ Analyze the task and create an ARRAY of targeted pattern groups. Each group shou
                           <DesktopSelectOption value="openai/o3">
                             OpenAI o3
                           </DesktopSelectOption>
-                          <DesktopSelectOption value="openai/gpt-5.1-2025-11-13">
-                            OpenAI GPT-5.1
+                          <DesktopSelectOption value="openai/gpt-5.2-2025-12-11">
+                            OpenAI GPT-5.2
                           </DesktopSelectOption>
                           <DesktopSelectOption value="deepseek/deepseek-r1-0528">
                             DeepSeek R1

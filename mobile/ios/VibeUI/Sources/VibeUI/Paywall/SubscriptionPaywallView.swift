@@ -122,21 +122,24 @@ public struct SubscriptionPaywallView: View {
 
             ScrollView {
                 VStack(spacing: Theme.Spacing.xl) {
-                    // Native StoreView has its own header, so skip ours
+                    // Native StoreView has its own header/branding, so only show ours for custom UI
                     if !usesNativeStoreView {
                         headerSection
                         statusOrIntroSection
                     }
+                    // Always show features before plans
+                    featuresSection
                     plansSection
                     // Native StoreView has its own subscribe button
                     if !usesNativeStoreView {
                         subscribeButtonSection
                     }
+                    subscriptionDetailsSection
                     actionsAndLegalSection
                     primaryCTASection
                 }
                 .padding(.horizontal, Theme.Spacing.lg)
-                .padding(.top, usesNativeStoreView ? Theme.Spacing.xl : 0)
+                .padding(.top, Theme.Spacing.md)
                 .padding(.bottom, Theme.Spacing.xxl)
             }
         }
@@ -196,19 +199,54 @@ public struct SubscriptionPaywallView: View {
                 .font(.system(size: 44, weight: .regular))
                 .foregroundColor(Color.primary)
 
-            Text("PlanToCode Pro")
+            Text(SubscriptionCopy.title)
                 .h2()
                 .multilineTextAlignment(.center)
 
-            if configuration.context == .onboarding {
-                Text("Start with a 7-day free trial, then save with the yearly plan.")
-                    .lead()
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(Color.mutedForeground)
-                    .padding(.horizontal, Theme.Spacing.lg)
-            }
+            Text(SubscriptionCopy.subtitle(for: configuration.context))
+                .lead()
+                .multilineTextAlignment(.center)
+                .foregroundColor(Color.mutedForeground)
+                .padding(.horizontal, Theme.Spacing.lg)
         }
         .padding(.bottom, Theme.Spacing.md)
+    }
+
+    // MARK: - Features Section
+
+    @ViewBuilder
+    private var featuresSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("What's Included")
+                .font(.headline)
+                .foregroundColor(Color.cardForeground)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                ForEach(SubscriptionCopy.featureBullets, id: \.text) { bullet in
+                    featureRow(icon: bullet.icon, text: bullet.text)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.card)
+        .cornerRadius(Theme.Radii.lg)
+    }
+
+    @ViewBuilder
+    private func featureRow(icon: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(Color.primary)
+                .frame(width: 20)
+
+            Text(text)
+                .small()
+                .foregroundColor(Color.cardForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 4)
     }
 
     // MARK: - Status/Intro Section
@@ -224,10 +262,12 @@ public struct SubscriptionPaywallView: View {
                         .foregroundColor(Color.mutedForeground)
                 }
             } else if configuration.context == .onboarding && !manager.status.isActive {
-                Text("Includes a 7-day free trial. Cancel anytime in the App Store.")
-                    .small()
-                    .foregroundColor(Color.mutedForeground)
-                    .multilineTextAlignment(.center)
+                if let trialDescription = freeTrialDescription {
+                    Text("Includes a \(trialDescription). Cancel anytime in the App Store.")
+                        .small()
+                        .foregroundColor(Color.mutedForeground)
+                        .multilineTextAlignment(.center)
+                }
             }
 
             if let error = localConfigurationError ?? manager.configurationError {
@@ -277,11 +317,10 @@ public struct SubscriptionPaywallView: View {
         .subscriptionStoreControlStyle(.picker)
         .subscriptionStoreButtonLabel(.multiline)
         .subscriptionStorePickerItemBackground(Color.card)
-        .backgroundStyle(Color.background)
-        .storeButton(.hidden, for: .cancellation) // Hide native close button - we use our own topBar
+        .backgroundStyle(.clear)
+        .storeButton(.hidden, for: .cancellation)
         .tint(Color.primary)
         .onInAppPurchaseCompletion { _, result in
-            // Handle purchase completion - transition to next screen on success
             if case .success(.success(_)) = result {
                 Task {
                     await manager.refreshStatus()
@@ -291,10 +330,6 @@ public struct SubscriptionPaywallView: View {
                 }
             }
         }
-        .frame(minHeight: 260)
-        .padding()
-        .background(Color.card)
-        .cornerRadius(Theme.Radii.lg)
     }
 
     @ViewBuilder
@@ -434,6 +469,53 @@ public struct SubscriptionPaywallView: View {
         }
     }
 
+    // MARK: - Subscription Details Section
+
+    /// Dynamically gets the free trial description from any product that has one
+    private var freeTrialDescription: String? {
+        // Check any product for introductory offer description
+        let products = [manager.weeklyProduct, manager.monthlyProduct, manager.annualProduct].compactMap { $0 }
+        return products.first(where: { $0.hasFreeTrialOffer })?.introductoryOfferDescription
+    }
+
+    @ViewBuilder
+    private var subscriptionDetailsSection: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
+            Text("Subscription Details")
+                .font(.headline)
+                .foregroundColor(Color.cardForeground)
+
+            VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
+                if let trialDescription = freeTrialDescription {
+                    subscriptionDetailRow(text: "All plans include a \(trialDescription)")
+                }
+                ForEach(SubscriptionCopy.legalSummaryLines, id: \.self) { line in
+                    subscriptionDetailRow(text: line)
+                }
+            }
+        }
+        .padding(Theme.Spacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.card)
+        .cornerRadius(Theme.Radii.lg)
+    }
+
+    @ViewBuilder
+    private func subscriptionDetailRow(text: String) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.sm) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 12))
+                .foregroundColor(Color.mutedForeground)
+                .frame(width: 16)
+
+            Text(text)
+                .font(.system(size: 12))
+                .foregroundColor(Color.mutedForeground)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 2)
+    }
+
     // MARK: - Actions and Legal Section
 
     @ViewBuilder
@@ -451,19 +533,19 @@ public struct SubscriptionPaywallView: View {
             Button("Restore Purchases") {
                 Task {
                     await manager.restorePurchases()
+                    await manager.refreshStatus()
+                    if manager.status.isActive && configuration.context == .onboarding {
+                        configuration.onPrimaryAction?()
+                    }
                 }
             }
             .buttonStyle(LinkButtonStyle())
 
             // Legal section with proper styling
             VStack(spacing: Theme.Spacing.sm) {
-                Text("Subscriptions auto-renew until canceled. Manage in App Store > Account > Subscriptions.")
-                    .small()
-                    .multilineTextAlignment(.center)
-
                 HStack(spacing: Theme.Spacing.lg) {
                     if let termsURL = URL(string: "https://plantocode.com/legal/us/terms") {
-                        Link("Terms of Service", destination: termsURL)
+                        Link("Terms of Use", destination: termsURL)
                     }
                     Text("·")
                         .foregroundColor(Color.mutedForeground)

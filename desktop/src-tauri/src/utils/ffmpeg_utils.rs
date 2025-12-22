@@ -127,6 +127,56 @@ pub async fn probe_duration_ms(path: &Path) -> AppResult<i64> {
     ))
 }
 
+/// Remux a video file to fix container metadata (duration, bitrate).
+/// This is necessary for WebM files created by streaming MediaRecorder chunks directly to disk,
+/// as the container header is never properly finalized.
+/// The operation is done in-place by writing to a temp file and replacing the original.
+pub async fn remux_video_in_place(path: &Path) -> AppResult<()> {
+    let path_str = path.to_str()
+        .ok_or_else(|| AppError::Processing("Invalid video path".to_string()))?;
+
+    // Create temp file path in the same directory to ensure same filesystem (for atomic rename)
+    let parent = path.parent()
+        .ok_or_else(|| AppError::Processing("Cannot determine parent directory".to_string()))?;
+    let file_stem = path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("video");
+    let extension = path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("webm");
+    let temp_path = parent.join(format!("{}_remuxed_temp.{}", file_stem, extension));
+    let temp_path_str = temp_path.to_str()
+        .ok_or_else(|| AppError::Processing("Invalid temp path".to_string()))?;
+
+    // Run ffmpeg to remux the file
+    let output = Command::new("ffmpeg")
+        .args(&[
+            "-y",           // Overwrite output file
+            "-i", path_str, // Input file
+            "-c", "copy",   // Copy streams without re-encoding
+            "-fflags", "+genpts",  // Generate presentation timestamps
+            temp_path_str,  // Output to temp file
+        ])
+        .output()
+        .await
+        .map_err(|e| AppError::Processing(format!("Failed to run ffmpeg for remuxing: {}", e)))?;
+
+    if !output.status.success() {
+        // Clean up temp file if it exists
+        let _ = tokio::fs::remove_file(&temp_path).await;
+        return Err(AppError::Processing(
+            format!("FFmpeg remuxing failed: {}", String::from_utf8_lossy(&output.stderr))
+        ));
+    }
+
+    // Replace original file with remuxed version
+    tokio::fs::rename(&temp_path, path)
+        .await
+        .map_err(|e| AppError::Processing(format!("Failed to replace original file with remuxed version: {}", e)))?;
+
+    Ok(())
+}
+
 /// Split video into chunks and return metadata for each chunk
 /// Returns Vec<(index, path, start_ms, end_ms)>
 pub async fn split_video_into_chunks(

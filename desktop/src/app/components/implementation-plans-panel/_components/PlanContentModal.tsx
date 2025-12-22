@@ -12,6 +12,7 @@ import { Button } from "@/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/ui/dialog";
 import { Progress } from "@/ui/progress";
 import { VirtualizedCodeViewer } from "@/ui/virtualized-code-viewer";
+import { MarkdownRenderer } from "@/ui/markdown-renderer";
 import { Badge } from "@/ui/badge";
 
 import { getStreamingStatus, getParsedMetadata } from "../../background-jobs-sidebar/utils";
@@ -424,8 +425,8 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                     : "Generate Markdown"}
               </Button>
 
-              {/* Save Button */}
-              {!isStreaming && hasUnsavedChanges && (
+              {/* Save Button - only show in XML edit mode */}
+              {!isStreaming && hasUnsavedChanges && viewMode === "xml" && (
                 <Button
                   variant="default"
                   size="sm"
@@ -489,7 +490,14 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
 
         {/* Content */}
         <div className="flex-1 min-h-0 relative">
-          {baselineReady && (
+          {baselineReady && viewMode === "markdown" && effectiveMarkdown ? (
+            <MarkdownRenderer
+              content={effectiveMarkdown}
+              height="100%"
+              showCopy={false}
+              showContentSize={true}
+            />
+          ) : baselineReady && (
             <VirtualizedCodeViewer
               key={editorKey}
               content={viewerContent}
@@ -500,11 +508,11 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
               placeholder="No implementation plan content available yet"
               language={viewerLanguage}
               className=""
-              readOnly={isStreaming || viewMode === "markdown"}
+              readOnly={isStreaming}
               streamOptimized={isStreaming}
               showFollowToggle={true}
               followStreamingDefault={true}
-              onChange={viewMode === "xml" && !isStreaming ? handleContentChange : undefined}
+              onChange={!isStreaming ? handleContentChange : undefined}
               loadingIndicator={
                 <div className="flex items-center justify-center h-full">
                   <div className="flex items-center gap-2">

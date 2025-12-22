@@ -434,6 +434,50 @@ pub async fn get_app_temp_dir() -> AppResult<PathBuf> {
     Ok(app_temp_dir)
 }
 
+/// Append bytes to a file (async version)
+/// Uses file lock manager to coordinate append operations
+pub async fn append_bytes_to_file(path: impl AsRef<Path>, content: &[u8]) -> AppResult<()> {
+    let path = path.as_ref();
+
+    // Acquire a write lock - essential for write coordination
+    let lock_manager = get_global_file_lock_manager().await?;
+    let _guard = lock_manager.acquire(path, LockMode::Write).await?;
+
+    // Create the directory if it doesn't exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).await.map_err(|e| {
+            AppError::FileSystemError(format!(
+                "Failed to create directory {}: {}",
+                parent.display(),
+                e
+            ))
+        })?;
+    }
+
+    // Open file with create and append flags
+    use tokio::io::AsyncWriteExt;
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .await
+        .map_err(|e| {
+            AppError::FileSystemError(format!("Failed to open file {}: {}", path.display(), e))
+        })?;
+
+    // Write and flush
+    file.write_all(content).await.map_err(|e| {
+        AppError::FileSystemError(format!("Failed to write to file {}: {}", path.display(), e))
+    })?;
+
+    file.flush().await.map_err(|e| {
+        AppError::FileSystemError(format!("Failed to flush file {}: {}", path.display(), e))
+    })?;
+
+    Ok(())
+    // The lock is automatically released when _guard goes out of scope
+}
+
 /// Ensure that a target path is within a project directory
 /// This is an important security check to prevent operations outside the authorized area
 /// (sync version is fine as it's just path manipulation)

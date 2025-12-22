@@ -19,7 +19,7 @@ public class UndoRedoManager: ObservableObject {
     private var deviceId: String?
 
     // MARK: - Initialization
-    public init(maxHistorySize: Int = 50, deviceId: String? = nil) {
+    public init(maxHistorySize: Int = 20, deviceId: String? = nil) {
         self.maxHistorySize = maxHistorySize
         self.deviceId = deviceId
     }

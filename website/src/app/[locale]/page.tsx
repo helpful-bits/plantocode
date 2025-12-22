@@ -158,8 +158,8 @@ export default function Home() {
     foundingDate: '2024',
     sameAs: [
       'https://github.com/plantocode',
-      'https://twitter.com/plantocode',
-      'https://x.com/plantocode'
+      'https://twitter.com/helpfulbits_com',
+      'https://x.com/helpfulbits_com'
     ],
     contactPoint: {
       '@type': 'ContactPoint',
@@ -265,7 +265,7 @@ export default function Home() {
     {
       '@type': 'VideoObject',
       name: 'Plan Creation & Merge from Multiple AI Models',
-      description: 'Demonstrates generating implementation plans from configured models such as Gemini 3 Pro, GPT-5.1, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
+      description: 'Demonstrates generating implementation plans from configured models such as Gemini 3 Pro, GPT-5.2, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
       thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',

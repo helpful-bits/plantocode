@@ -22,7 +22,7 @@ FROM (VALUES
     
     -- Google models - input 1.15
     ('google/gemini-2.5-pro', 1.15::DECIMAL(5,3), 2.1::DECIMAL(5,3), 6718),
-    ('google/gemini-2.5-flash', 1.15::DECIMAL(5,3), 2.9::DECIMAL(5,3), 271),
+    ('google/gemini-3-flash-preview', 1.15::DECIMAL(5,3), 2.9::DECIMAL(5,3), 271),
     ('google/gemini-3-pro-preview', 1.15::DECIMAL(5,3), 2.1::DECIMAL(5,3), 6718),
     
     -- Other models - input 1.15

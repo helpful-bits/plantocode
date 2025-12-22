@@ -120,8 +120,24 @@
             owner: "{{ app_user }}"
             group: "{{ app_group }}"
             mode: '0600'
-          notify: restart app
-          
+          register: env_file_result
+
+        - name: Restart service if env changed (before binary deploy)
+          systemd:
+            name: "{{ app_name }}"
+            state: restarted
+          when: env_file_result.changed
+
+        - name: Wait for service after env restart
+          uri:
+            url: "http://localhost:{{ app_port }}/health"
+            status_code: 200
+          register: env_restart_health
+          until: env_restart_health.status == 200
+          retries: 30
+          delay: 1
+          when: env_file_result.changed
+
         - name: Generate deployment timestamp
           set_fact:
             deploy_timestamp: "{{ ansible_date_time.epoch }}"

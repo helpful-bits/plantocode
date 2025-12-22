@@ -151,8 +151,13 @@ pub fn estimate_tokens_for_messages(messages: &[serde_json::Value], model: &str)
 ///
 /// Handles different message formats:
 /// - Simple string content
-/// - Complex content arrays
-/// - Different provider formats
+/// - Complex content arrays with text and image parts
+/// - OpenAI Chat API: { "type": "text", "text": "..." }
+/// - OpenAI Responses API: { "type": "input_text", "text": "..." }
+/// - Anthropic: { "type": "text", "text": "..." }
+///
+/// Note: Image parts are intentionally ignored for token estimation
+/// as image tokens are billed separately based on provider usage data.
 ///
 /// # Arguments
 ///
@@ -170,8 +175,34 @@ fn extract_content_from_message(message: &serde_json::Value) -> Option<String> {
                     serde_json::Value::Array(arr) => {
                         let mut combined = String::new();
                         for item in arr {
-                            if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
-                                combined.push_str(text);
+                            // Get the part type to determine how to extract text
+                            let part_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                            match part_type {
+                                // Standard text types from various providers
+                                "text" | "input_text" => {
+                                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                                        if !combined.is_empty() {
+                                            combined.push(' ');
+                                        }
+                                        combined.push_str(text);
+                                    }
+                                }
+                                // Image types - skip for token estimation
+                                // Image tokens are calculated by providers and billed separately
+                                "image_url" | "input_image" | "image" => {
+                                    // Intentionally skip image parts
+                                    continue;
+                                }
+                                // Unknown type - try to extract text anyway (backwards compatibility)
+                                _ => {
+                                    if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                                        if !combined.is_empty() {
+                                            combined.push(' ');
+                                        }
+                                        combined.push_str(text);
+                                    }
+                                }
                             }
                         }
                         if !combined.is_empty() {
@@ -276,6 +307,46 @@ mod tests {
         });
 
         let content = extract_content_from_message(&message);
-        assert_eq!(content, Some("Hello, world!".to_string()));
+        assert_eq!(content, Some("Hello,  world!".to_string()));
+    }
+
+    #[test]
+    fn test_extract_content_from_responses_api_message() {
+        let message = json!({
+            "role": "user",
+            "content": [
+                {
+                    "type": "input_text",
+                    "text": "What is in this image?"
+                },
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/jpeg;base64,..."
+                }
+            ]
+        });
+
+        let content = extract_content_from_message(&message);
+        assert_eq!(content, Some("What is in this image?".to_string()));
+    }
+
+    #[test]
+    fn test_extract_content_skips_images() {
+        let message = json!({
+            "role": "user",
+            "content": [
+                {
+                    "type": "image_url",
+                    "image_url": { "url": "https://example.com/image.jpg" }
+                },
+                {
+                    "type": "text",
+                    "text": "Describe this image"
+                }
+            ]
+        });
+
+        let content = extract_content_from_message(&message);
+        assert_eq!(content, Some("Describe this image".to_string()));
     }
 }
