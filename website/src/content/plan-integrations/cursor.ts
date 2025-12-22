@@ -15,11 +15,11 @@ export const cursorContent: PlanIntegrationContent = {
     subhead:
       'Cursor Agent is the execution environment. PlanToCode is the explicit reviewable plan that prevents common Agent failures: duplicate files, wrong imports, missing dependencies, scope creep. Intelligence-Driven Development in 5 stages.',
     supporting:
-      'Stages 1-4: Spec capture (voice/text) → FileFinderWorkflow (4 stages) → Multi-model planning (GPT-5.1/Claude Sonnet 4.5/Gemini) → Human review and merge. Stage 5: Cursor Agent executes the blueprint. No surprises.',
+      'Stages 1-4: Spec capture (voice/text) → FileFinderWorkflow (4 stages) → Multi-model planning (GPT-5.2/Claude Sonnet 4.5/Gemini) → Human review and merge. Stage 5: Cursor Agent executes the blueprint. No surprises.',
   },
 
   intro:
-    "Cursor Agent Terminal and Background Agents plan internally during execution—but without pre-discovery, multi-model synthesis, or human review, they fail predictably: duplicate files, wrong paths, missing imports, scope creep. PlanToCode fixes this with Intelligence-Driven Development: (1) Specification capture via text_improvement/task_refinement, (2) Targeted file discovery via 4-stage FileFinderWorkflow, (3) Multi-model implementation planning across GPT-5.1/Claude Sonnet 4.5/Gemini, (4) Human review and plan merge, (5) Cursor Agent executes the merged blueprint. All claims verified against Cursor's official documentation.",
+    "Cursor Agent Terminal and Background Agents plan internally during execution—but without pre-discovery, multi-model synthesis, or human review, they fail predictably: duplicate files, wrong paths, missing imports, scope creep. PlanToCode fixes this with Intelligence-Driven Development: (1) Specification capture via text_improvement/task_refinement, (2) Targeted file discovery via 4-stage FileFinderWorkflow, (3) Multi-model implementation planning across GPT-5.2/Claude Sonnet 4.5/Gemini, (4) Human review and plan merge, (5) Cursor Agent executes the merged blueprint. All claims verified against Cursor's official documentation.",
 
   valueBullets: [
     {
@@ -30,12 +30,12 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'Stop wrong imports and missing dependencies',
       description:
-        'Cursor Agent improvises imports during execution, misses transitive dependencies. Stage 3 multi-model planning with GPT-5.1 and Gemini surfaces different dependency graphs. Stage 4 merge consolidates them. Cursor executes with complete import map—no runtime failures.',
+        'Cursor Agent improvises imports during execution, misses transitive dependencies. Stage 3 multi-model planning with GPT-5.2 and Gemini surfaces different dependency graphs. Stage 4 merge consolidates them. Cursor executes with complete import map—no runtime failures.',
     },
     {
       title: 'Large refactor scenario: 40 files, multi-model safety',
       description:
-        'Refactor auth system across 40 files (routes, middleware, components, tests, docs). Stage 2 FileFinderWorkflow discovers all 40. Stage 3 generates plans from GPT-5.1 (backward-compatible) and Gemini (new patterns). Stage 4 merge prioritizes GPT-5.1 rollback, Gemini test coverage. Stage 5 Cursor Agent executes with full context—no stray edits.',
+        'Refactor auth system across 40 files (routes, middleware, components, tests, docs). Stage 2 FileFinderWorkflow discovers all 40. Stage 3 generates plans from GPT-5.2 (backward-compatible) and Gemini (new patterns). Stage 4 merge prioritizes GPT-5.2 rollback, Gemini test coverage. Stage 5 Cursor Agent executes with full context—no stray edits.',
     },
     {
       title: 'Human review prevents scope creep',
@@ -45,7 +45,7 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'Multi-model blind spot prevention',
       description:
-        'Single-model Cursor runs miss edge cases (GPT-5.1 misses new patterns, Gemini misses legacy constraints). Stage 3 runs implementation_plan across 3+ models. Stage 4 merge surfaces conflicts, you choose. Cursor executes the synthesized plan—comprehensive, not narrow.',
+        'Single-model Cursor runs miss edge cases (GPT-5.2 misses new patterns, Gemini misses legacy constraints). Stage 3 runs implementation_plan across 3+ models. Stage 4 merge surfaces conflicts, you choose. Cursor executes the synthesized plan—comprehensive, not narrow.',
     },
     {
       title: 'Architect vs construction crew analogy',
@@ -58,7 +58,7 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'Large refactor scenario: 40-file auth system overhaul',
       description:
-        'Without PlanToCode: Cursor Agent rewrites src/auth/login.ts, misses lib/auth/login.ts (duplicate), breaks imports in 12 downstream files, adds unplanned OAuth flow (scope creep), fails tests. With PlanToCode: Stage 2 FileFinderWorkflow discovers both login.ts files, all 40 affected files, transitive dependencies. Stage 3 generates plans from GPT-5.1 and Gemini—each with a different approach. Stage 4 review rejects Gemini OAuth suggestion (out of scope), merges remaining. Stage 5 Cursor Agent executes merged blueprint—no duplicates, no scope creep, tests pass.',
+        'Without PlanToCode: Cursor Agent rewrites src/auth/login.ts, misses lib/auth/login.ts (duplicate), breaks imports in 12 downstream files, adds unplanned OAuth flow (scope creep), fails tests. With PlanToCode: Stage 2 FileFinderWorkflow discovers both login.ts files, all 40 affected files, transitive dependencies. Stage 3 generates plans from GPT-5.2 and Gemini—each with a different approach. Stage 4 review rejects Gemini OAuth suggestion (out of scope), merges remaining. Stage 5 Cursor Agent executes merged blueprint—no duplicates, no scope creep, tests pass.',
     },
     {
       title: 'How Stage 2 path validation prevents duplicate files',
@@ -68,7 +68,7 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'How Stage 4 merge resolves import conflicts',
       description:
-        'GPT-5.1 plan: Import { auth } from "@/lib/auth" (absolute). Gemini plan: Import { auth } from "../lib/auth" (relative). Stage 4 merge instruction: "Use absolute imports per project convention." Merged blueprint specifies @/lib/auth everywhere. Cursor Agent follows merged imports—no mismatches, no runtime errors.',
+        'GPT-5.2 plan: Import { auth } from "@/lib/auth" (absolute). Gemini plan: Import { auth } from "../lib/auth" (relative). Stage 4 merge instruction: "Use absolute imports per project convention." Merged blueprint specifies @/lib/auth everywhere. Cursor Agent follows merged imports—no mismatches, no runtime errors.',
     },
     {
       title: 'Cursor Agent Terminal vs Background Agents execution',
@@ -78,12 +78,12 @@ export const cursorContent: PlanIntegrationContent = {
     {
       title: 'Pre-resolved imports and dependency graph',
       description:
-        'Stage 3 multi-model planning: GPT-5.1 identifies direct imports (auth → user → db), Gemini identifies transitive imports (auth → session → cache → redis). Stage 4 merge consolidates full dependency graph. Merged blueprint includes import statements, dependency order, circular dependency warnings. Cursor Agent executes in correct order—no missing imports, no circular failures.',
+        'Stage 3 multi-model planning: GPT-5.2 identifies direct imports (auth → user → db), Gemini identifies transitive imports (auth → session → cache → redis). Stage 4 merge consolidates full dependency graph. Merged blueprint includes import statements, dependency order, circular dependency warnings. Cursor Agent executes in correct order—no missing imports, no circular failures.',
     },
     {
       title: 'PlanToCode + Cursor workflow: From voice to execution',
       description:
-        'Stage 1: Record voice note "Refactor auth to support SSO." Use text_improvement prompt to clarify, task_refinement to break down. Stage 2: Run FileFinderWorkflow, discover 40 files. Stage 3: Generate GPT-5.1 plan (safe), Gemini plan (fast). Stage 4: Review side-by-side, merge with instructions. Stage 5: Copy merged XML to Cursor Agent, execute. PlanToCode terminal logs progress, health checks detect failures, auto-reconnect if Cursor crashes.',
+        'Stage 1: Record voice note "Refactor auth to support SSO." Use text_improvement prompt to clarify, task_refinement to break down. Stage 2: Run FileFinderWorkflow, discover 40 files. Stage 3: Generate GPT-5.2 plan (safe), Gemini plan (fast). Stage 4: Review side-by-side, merge with instructions. Stage 5: Copy merged XML to Cursor Agent, execute. PlanToCode terminal logs progress, health checks detect failures, auto-reconnect if Cursor crashes.',
     },
   ],
 
@@ -174,7 +174,7 @@ export const cursorContent: PlanIntegrationContent = {
     },
     {
       q: 'How do I use PlanToCode plans with Cursor Agent?',
-      a: "Complete Stages 1-4 in PlanToCode: (1) Capture spec via text_improvement/task_refinement. (2) Run FileFinderWorkflow (4 stages: root selection, regex filter, AI relevance, extended path finder). (3) Generate plans from GPT-5.1, Gemini, and Claude Sonnet 4.5—each brings a different perspective. (4) Review side-by-side, write merge instructions, run implementation_plan_merge. Copy merged XML blueprint into Cursor Agent (via Composer or Agent Terminal). Cursor executes the blueprint. Alternatively, execute in PlanToCode's terminal with full logging.",
+      a: "Complete Stages 1-4 in PlanToCode: (1) Capture spec via text_improvement/task_refinement. (2) Run FileFinderWorkflow (4 stages: root selection, regex filter, AI relevance, extended path finder). (3) Generate plans from GPT-5.2, Gemini, and Claude Sonnet 4.5—each brings a different perspective. (4) Review side-by-side, write merge instructions, run implementation_plan_merge. Copy merged XML blueprint into Cursor Agent (via Composer or Agent Terminal). Cursor executes the blueprint. Alternatively, execute in PlanToCode's terminal with full logging.",
     },
     {
       q: 'What are the most common Cursor Agent failures PlanToCode prevents?',

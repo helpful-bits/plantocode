@@ -1,6 +1,7 @@
 pub mod apns_service;
 pub mod audit_service;
 pub mod auth;
+mod billing;
 pub mod billing_service;
 pub mod consent_service;
 pub mod cost_resolver;

@@ -628,7 +628,7 @@
         "title": "Intelligente Anweisungsverarbeitung"
       },
       "multiModel": {
-        "description": "Führen Sie GPT-5.1 und Gemini mehrfach aus. Jeder Durchlauf geht unterschiedlich mit großem Kontext um und bringt komplementäre Implementierungsdetails hervor.",
+        "description": "Führen Sie GPT-5.2 und Gemini mehrfach aus. Jeder Durchlauf geht unterschiedlich mit großem Kontext um und bringt komplementäre Implementierungsdetails hervor.",
         "features": [
           "Jeder Plan mit vollständigen Metadaten gespeichert",
           "Relevante Dateien automatisch extrahiert",
@@ -753,7 +753,7 @@
       "multiModel": {
         "description": "Wählen Sie aus mehreren KI-Modellen mit projektspezifischen Konfigurationen und Temperatureinstellungen.",
         "features": [
-          "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro",
+          "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro",
           "Projektspezifische Modelleinstellungen",
           "Echtzeit-Token-Schätzung",
           "Kontextfenster-Validierung"
@@ -844,7 +844,7 @@
         },
         {
           "title": "Multi-Modell-Generierung",
-          "description": "Führen Sie Modelle mehrfach aus (3x GPT-5.1, 2x Gemini). Jeder Durchlauf bringt komplementäre Implementierungsdetails hervor. Echtzeit-Streaming mit Fortschrittsverfolgung."
+          "description": "Führen Sie Modelle mehrfach aus (3x GPT-5.2, 2x Gemini). Jeder Durchlauf bringt komplementäre Implementierungsdetails hervor. Echtzeit-Streaming mit Fortschrittsverfolgung."
         },
         {
           "title": "In Monaco bearbeiten",
@@ -1054,7 +1054,7 @@
         "question": "Welche FPS-Einstellungen sollte ich verwenden?"
       },
       "model": {
-        "answer": "Verwenden Sie Gemini 2.5 Flash für einfache Bug-Erfassungen, schnelle UI-Demos und Dokumentation, wo Geschwindigkeit und Kosten wichtig sind. Wählen Sie Gemini 3 Pro für komplexe UI-Probleme, detaillierte Musteranalyse und wenn Sie tieferes kontextuelles Verständnis benötigen. Pro liefert nuanciertere Erkenntnisse, kostet aber mehr pro Frame.",
+        "answer": "Verwenden Sie Gemini 3 Flash für einfache Bug-Erfassungen, schnelle UI-Demos und Dokumentation, wo Geschwindigkeit und Kosten wichtig sind. Wählen Sie Gemini 3 Pro für komplexe UI-Probleme, detaillierte Musteranalyse und wenn Sie tieferes kontextuelles Verständnis benötigen. Pro liefert nuanciertere Erkenntnisse, kostet aber mehr pro Frame.",
         "question": "Welches KI-Modell sollte ich wählen?"
       },
       "optimization": {
@@ -1112,7 +1112,7 @@
           "Schnellere Verarbeitungszeit",
           "Gut für einfache UI-Analyse"
         ],
-        "title": "Gemini 2.5 Flash"
+        "title": "Gemini 3 Flash"
       },
       "pro": {
         "description": "Umfassende Analyse mit tieferen Erkenntnissen. Am besten für komplexe UI-Probleme, detaillierte Mustererkennung und fortgeschrittenes Debugging.",

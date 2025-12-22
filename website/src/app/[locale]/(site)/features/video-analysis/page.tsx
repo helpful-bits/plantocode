@@ -104,7 +104,7 @@ export default async function VideoAnalysisPage({ params }: { params: Promise<{ 
     "featureList": [
       "Screen recording with built-in capture",
       "Video file upload (MP4, WebM, MOV, AVI)",
-      "Gemini Vision AI analysis (2.5 Pro/Flash)",
+      "Gemini Vision AI analysis (2.5 Pro / 3 Flash)",
       "Configurable FPS control (1-10 FPS)",
       "Automatic error extraction",
       "UI state detection",

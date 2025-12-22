@@ -878,23 +878,62 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
     }
 
+    /// Parse framed terminal event with explicit sessionId (forward-looking protocol support)
+    /// Format: "PTC1" sentinel (4 bytes) + sessionIdLength (2 bytes big-endian) + sessionId (UTF-8) + payload
+    /// Returns nil for non-framed payloads, maintaining backward compatibility
+    private func parseFramedTerminalEvent(_ data: Data) -> (sessionId: String, payload: Data)? {
+        let sentinel = Data([0x50, 0x54, 0x43, 0x31]) // "PTC1"
+        guard data.count > sentinel.count + 2 else { return nil }
+        guard data.prefix(sentinel.count) == sentinel else { return nil }
+
+        var offset = sentinel.count
+        let lengthRange = offset..<(offset + 2)
+        let lengthBytes = data[lengthRange]
+        let sessionIdLength = lengthBytes.withUnsafeBytes { ptr -> UInt16 in
+            return ptr.load(as: UInt16.self).bigEndian
+        }
+        offset += 2
+
+        guard data.count >= offset + Int(sessionIdLength) else { return nil }
+        let sessionIdData = data[offset..<(offset + Int(sessionIdLength))]
+        guard let sessionId = String(data: sessionIdData, encoding: .utf8) else { return nil }
+        offset += Int(sessionIdLength)
+
+        let payload = data.suffix(from: offset)
+        return (sessionId: sessionId, payload: Data(payload))
+    }
+
     private func handleWebSocketMessage(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .string(let text):
             // In receive loop (text-only), route by root["type"]
             handleTextMessage(text)
         case .data(let data):
-            // Binary frames are raw terminal output - publish as-is without inspection
-            let sessionId = self.currentBinaryBind?.sessionId
-            logger.debug("WebSocket binary frame received: \(data.count) bytes, currentBinaryBind=\(sessionId ?? "nil")")
-            publishOnMain {
-                self.terminalBytesSubject.send(
-                    TerminalBytesEvent(
-                        data: data,
-                        timestamp: Date(),
-                        sessionId: sessionId
+            // Check for framed terminal event with explicit sessionId
+            if let framed = parseFramedTerminalEvent(data) {
+                logger.debug("WebSocket framed binary received: \(framed.payload.count) bytes, sessionId=\(framed.sessionId)")
+                publishOnMain {
+                    self.terminalBytesSubject.send(
+                        TerminalBytesEvent(
+                            data: framed.payload,
+                            timestamp: Date(),
+                            sessionId: framed.sessionId
+                        )
                     )
-                )
+                }
+            } else {
+                // Legacy: Binary frames are raw terminal output - use currentBinaryBind sessionId
+                let sessionId = self.currentBinaryBind?.sessionId
+                logger.debug("WebSocket binary frame received: \(data.count) bytes, currentBinaryBind=\(sessionId ?? "nil")")
+                publishOnMain {
+                    self.terminalBytesSubject.send(
+                        TerminalBytesEvent(
+                            data: data,
+                            timestamp: Date(),
+                            sessionId: sessionId
+                        )
+                    )
+                }
             }
         @unknown default:
             break

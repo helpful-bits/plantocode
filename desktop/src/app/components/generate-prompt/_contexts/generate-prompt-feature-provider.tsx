@@ -147,6 +147,13 @@ export function GeneratePromptFeatureProvider({
     const taskDescription = sessionState.currentSession?.taskDescription;
     const includedFiles = sessionState.currentSession?.includedFiles;
     const sessionId = sessionState.currentSession?.id;
+    const isSessionLoading = sessionState.isSessionLoading;
+
+    // Skip estimation if session is loading - wait for complete session data
+    // This prevents stale/low estimates when includedFiles hasn't loaded yet
+    if (isSessionLoading) {
+      return;
+    }
 
     if (!taskDescription || !taskDescription.trim() || !sessionId) {
       setTokenEstimate(null);
@@ -180,7 +187,9 @@ export function GeneratePromptFeatureProvider({
     sessionState.currentSession?.taskDescription,
     sessionState.currentSession?.includedFiles,
     sessionState.currentSession?.id,
+    sessionState.isSessionLoading,
     projectDirectory,
+    runtimeConfig,
   ]);
 
   // Create memoized context values

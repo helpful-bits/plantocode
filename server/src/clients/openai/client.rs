@@ -12,7 +12,10 @@ use tracing::{error, info, instrument};
 use super::polling::*;
 use super::streaming::*;
 use super::structs::*;
-use super::transcription::*;
+use super::transcription::{
+    transcribe_audio, transcribe_audio_streaming, transcribe_from_bytes, transcribe_from_data_uri,
+    validate_transcription_model,
+};
 use super::utils::*;
 
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
@@ -417,6 +420,34 @@ impl OpenAIClient {
         mime_type: &str,
     ) -> Result<String, AppError> {
         transcribe_audio(
+            &self.client,
+            &self.api_key,
+            &self.base_url,
+            audio_data,
+            filename,
+            model,
+            language,
+            prompt,
+            temperature,
+            mime_type,
+        )
+        .await
+    }
+
+    /// Transcribe audio using OpenAI's streaming API with server-side VAD chunking
+    /// This is more reliable for large files as it uses stream=true and chunking_strategy
+    #[instrument(skip(self, audio_data), fields(filename = %filename))]
+    pub async fn transcribe_audio_streaming(
+        &self,
+        audio_data: &[u8],
+        filename: &str,
+        model: &str,
+        language: Option<&str>,
+        prompt: Option<&str>,
+        temperature: Option<f32>,
+        mime_type: &str,
+    ) -> Result<String, AppError> {
+        transcribe_audio_streaming(
             &self.client,
             &self.api_key,
             &self.base_url,

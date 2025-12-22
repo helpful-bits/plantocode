@@ -11,6 +11,7 @@ pub mod model_handlers;
 pub mod notification_handlers;
 pub mod provider_handlers;
 pub mod provider_transformers;
+mod proxy;
 pub mod proxy_handlers;
 pub mod public;
 pub mod region_handlers;

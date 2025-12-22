@@ -39,7 +39,8 @@ export default function BackgroundSettings() {
   });
   const [loading, setLoading] = useState(true);
   const isInitialMount = useRef(true);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prefsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const deviceSettingsSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadPreferences();
@@ -75,11 +76,11 @@ export default function BackgroundSettings() {
   useEffect(() => {
     if (isInitialMount.current) return;
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    if (prefsSaveTimeoutRef.current) {
+      clearTimeout(prefsSaveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(async () => {
+    prefsSaveTimeoutRef.current = setTimeout(async () => {
       try {
         await invoke('set_background_prefs_command', { prefs });
       } catch (err) {
@@ -97,8 +98,8 @@ export default function BackgroundSettings() {
     }, 500);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      if (prefsSaveTimeoutRef.current) {
+        clearTimeout(prefsSaveTimeoutRef.current);
       }
     };
   }, [prefs, showNotification]);
@@ -107,11 +108,11 @@ export default function BackgroundSettings() {
   useEffect(() => {
     if (isInitialMount.current) return;
 
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    if (deviceSettingsSaveTimeoutRef.current) {
+      clearTimeout(deviceSettingsSaveTimeoutRef.current);
     }
 
-    saveTimeoutRef.current = setTimeout(async () => {
+    deviceSettingsSaveTimeoutRef.current = setTimeout(async () => {
       try {
         await updateDeviceSettings(deviceSettings);
       } catch (err) {
@@ -129,8 +130,8 @@ export default function BackgroundSettings() {
     }, 500);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+      if (deviceSettingsSaveTimeoutRef.current) {
+        clearTimeout(deviceSettingsSaveTimeoutRef.current);
       }
     };
   }, [deviceSettings, showNotification]);

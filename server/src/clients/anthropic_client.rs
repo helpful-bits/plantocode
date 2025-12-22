@@ -63,11 +63,21 @@ pub struct AnthropicContentPart {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct AnthropicImageSource {
-    #[serde(rename = "type")]
-    pub source_type: String,
-    pub media_type: String,
-    pub data: String,
+#[serde(tag = "type")]
+pub enum AnthropicImageSource {
+    #[serde(rename = "base64")]
+    Base64 {
+        media_type: String,
+        data: String,
+    },
+    #[serde(rename = "url")]
+    Url {
+        url: String,
+    },
+    #[serde(rename = "file")]
+    File {
+        file_id: String,
+    },
 }
 
 // Anthropic Chat Completion Response Structs
@@ -182,6 +192,50 @@ impl AnthropicClient {
         let mut counter = self.request_id_counter.lock().await;
         *counter += 1;
         *counter
+    }
+
+    fn parse_data_url(data_url: &str) -> Result<(String, String), AppError> {
+        if !data_url.starts_with("data:") {
+            return Err(AppError::BadRequest("Invalid data URL format".to_string()));
+        }
+
+        let parts: Vec<&str> = data_url.splitn(2, ',').collect();
+        if parts.len() != 2 {
+            return Err(AppError::BadRequest("Invalid data URL format: missing comma".to_string()));
+        }
+
+        let header = parts[0];
+        let data = parts[1];
+
+        // Extract MIME type from header like "data:image/jpeg;base64"
+        let mime_type = header
+            .strip_prefix("data:")
+            .and_then(|s| s.split(';').next())
+            .ok_or_else(|| AppError::BadRequest("Invalid data URL MIME type".to_string()))?;
+
+        Ok((mime_type.to_string(), data.to_string()))
+    }
+
+    /// Build AnthropicChatRequest from parsed vision messages
+    /// This allows integration with the canonical vision_normalizer types
+    pub fn build_chat_request_from_parts(
+        &self,
+        messages: Vec<AnthropicMessage>,
+        model: String,
+        max_tokens: u32,
+        system: Option<String>,
+        temperature: Option<f32>,
+    ) -> AnthropicChatRequest {
+        AnthropicChatRequest {
+            model,
+            messages,
+            max_tokens,
+            stream: None,
+            temperature,
+            top_p: None,
+            top_k: None,
+            system,
+        }
     }
 
     // Chat Completions

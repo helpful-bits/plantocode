@@ -74,8 +74,8 @@ export const metadata: Metadata = {
       width: 1200,
       height: 630,
     }],
-    creator: '@plantocode',
-    site: '@plantocode',
+    creator: '@helpfulbits_com',
+    site: '@helpfulbits_com',
   },
   robots: {
     index: true,
@@ -163,7 +163,7 @@ const organizationJsonLd: Organization = {
     height: '512'
   },
   sameAs: [
-    'https://x.com/plantocode',
+    'https://x.com/helpfulbits_com',
     'https://github.com/plantocode'
   ],
   description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',

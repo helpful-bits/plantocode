@@ -7,11 +7,21 @@ use crate::utils::ffmpeg_utils::{verify_sidecars_available, probe_duration_ms, s
 use crate::utils::fs_utils::get_app_temp_dir;
 use async_trait::async_trait;
 use log::{debug, error, info};
+use serde::{Serialize, Deserialize};
 use serde_json;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 use tokio::sync::Semaphore;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ChunkMeta {
+    index: usize,
+    start_ms: i64,
+    end_ms: i64,
+    filename: String,
+}
 
 pub struct VideoAnalysisProcessor;
 
@@ -63,15 +73,25 @@ impl JobProcessor for VideoAnalysisProcessor {
 
         info!("Read video file: {} bytes", video_data.len());
 
-        // Determine actual duration
+        // Determine actual duration - this is required for server API
         let duration_ms = if payload.duration_ms > 0 {
             payload.duration_ms
         } else {
+            // Try to probe duration from the video file
             match probe_duration_ms(&std::path::PathBuf::from(&payload.video_path)).await {
-                Ok(d) => d,
+                Ok(d) if d > 0 => d,
+                Ok(_) => {
+                    let error_msg = "Video duration could not be determined (probed duration is 0). Please ensure the video file is valid.".to_string();
+                    error!("{}", error_msg);
+                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+                }
                 Err(e) => {
-                    log::warn!("Failed to probe duration: {}, using payload value", e);
-                    payload.duration_ms
+                    let error_msg = format!(
+                        "Failed to determine video duration: {}. Please ensure FFmpeg is available and the video file is valid.",
+                        e
+                    );
+                    error!("{}", error_msg);
+                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
                 }
             }
         };
@@ -95,6 +115,12 @@ impl JobProcessor for VideoAnalysisProcessor {
                 .and_then(|name| name.to_str())
                 .unwrap_or("video.mp4");
 
+            // Clamp framerate to [1, 20]
+            let mut server_framerate = payload.framerate.max(1.0).round() as u32;
+            if server_framerate > 20 {
+                server_framerate = 20;
+            }
+
             // Call server proxy to analyze video
             let analysis_response = match server_proxy_client
                 .analyze_video(
@@ -105,7 +131,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                     payload.temperature,
                     payload.system_prompt.clone(),
                     duration_ms,
-                    payload.framerate.max(1.0).round() as u32,
+                    server_framerate,
                     Some(job.id.to_string()),
                 )
                 .await
@@ -200,16 +226,34 @@ impl JobProcessor for VideoAnalysisProcessor {
 
             info!("Split video into {} chunks for job {}", chunks.len(), job.id);
 
-            // Determine concurrency limit
+            // Determine concurrency limit based on FPS
+            let fps = payload.framerate;
+            let default_concurrency = if fps >= 15.0 { 2 } else { 3 };
             let max_concurrent = std::env::var("VIDEO_ANALYSIS_CHUNK_CONCURRENCY")
                 .ok()
                 .and_then(|s| s.parse().ok())
-                .unwrap_or(3);
+                .unwrap_or(default_concurrency);
             let semaphore = Arc::new(Semaphore::new(max_concurrent));
+
+            // Collect chunk metadata
+            let mut chunk_metadata = Vec::new();
 
             // Process chunks in parallel
             let mut tasks = Vec::new();
             for (index, chunk_path, start_ms, end_ms) in chunks {
+                // Store chunk metadata
+                let chunk_filename = chunk_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("chunk.mp4")
+                    .to_string();
+
+                chunk_metadata.push(ChunkMeta {
+                    index,
+                    start_ms,
+                    end_ms,
+                    filename: chunk_filename,
+                });
                 let sem = semaphore.clone();
                 let chunk_path = chunk_path.clone();
                 let server_client = server_proxy_client.clone();
@@ -227,12 +271,11 @@ impl JobProcessor for VideoAnalysisProcessor {
 
                     let chunk_duration_ms = end_ms - start_ms;
 
-                    // Determine framerate for server call (integer, min 1)
-                    let server_framerate = if payload_clone.framerate < 1.0 {
-                        1
-                    } else {
-                        payload_clone.framerate.round() as u32
-                    };
+                    // Clamp framerate to [1, 20]
+                    let mut server_framerate = payload_clone.framerate.max(1.0).round() as u32;
+                    if server_framerate > 20 {
+                        server_framerate = 20;
+                    }
 
                     // Extract filename for chunk
                     let chunk_filename = chunk_path
@@ -324,7 +367,7 @@ impl JobProcessor for VideoAnalysisProcessor {
                 .unwrap_or(0.0);
 
             // Complete job with aggregated data
-            let result_json = serde_json::json!({
+            let mut result_json = serde_json::json!({
                 "analysis": combined_analysis,
                 "usage": {
                     "promptTokens": total_prompt_tokens,
@@ -332,6 +375,12 @@ impl JobProcessor for VideoAnalysisProcessor {
                     "totalTokens": total_prompt_tokens + total_completion_tokens,
                 }
             });
+
+            // Add chunk metadata if available
+            if !chunk_metadata.is_empty() {
+                result_json["chunks"] = serde_json::to_value(&chunk_metadata)
+                    .unwrap_or(serde_json::json!([]));
+            }
 
             info!("Long video analysis completed successfully for job {}", job.id);
 

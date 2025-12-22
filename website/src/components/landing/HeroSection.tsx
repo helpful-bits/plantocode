@@ -126,7 +126,7 @@ export function HeroSection() {
               <div className="vibe-models-container">
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run1', 'Run 1 - GPT-5.1')}</span>
+                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run1', 'Run 1 - GPT-5.2')}</span>
                   </div>
                   <div className="vibe-model-card__label text-sm opacity-80">{t('hero.panel2.tags.serviceLayer', 'Service layer approach')}</div>
                 </div>
@@ -140,7 +140,7 @@ export function HeroSection() {
 
                 <div className="vibe-model-card">
                   <div className="vibe-model-card__header">
-                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run3', 'Run 3 - GPT-5.1')}</span>
+                    <span className="vibe-model-card__name">{t('hero.panel2.runs.run3', 'Run 3 - GPT-5.2')}</span>
                   </div>
                   <div className="vibe-model-card__label text-sm opacity-80">{t('hero.panel2.tags.middlewareFirst', 'Middleware approach')}</div>
                 </div>
@@ -194,7 +194,7 @@ export function HeroSection() {
               <div className="vibe-intent-box">
                 <div className="vibe-intent-box__item flex items-center gap-3">
                   <Layers className="w-5 h-5 text-foreground/60" />
-                  <span>{t('hero.panel3.merge.line1', 'Input: 4 plans (2×GPT-5.1, 2×Gemini)')}</span>
+                  <span>{t('hero.panel3.merge.line1', 'Input: 4 plans (2×GPT-5.2, 2×Gemini)')}</span>
                 </div>
                 <div className="vibe-intent-box__item flex items-center gap-3">
                   <Files className="w-5 h-5 text-foreground/60" />

@@ -67,3 +67,28 @@ public struct TaskModelSettings: Codable, Equatable {
 }
 
 public typealias ProjectTaskSettings = [String: TaskModelSettings]
+
+// MARK: - Provider Filtering
+
+public extension Array where Element == ProviderWithModels {
+    /// Filters providers and their models based on an allowed models list.
+    /// If allowedModels is nil or empty, returns self unchanged.
+    /// Otherwise, filters each provider's models to only include those in the allowed set,
+    /// and removes providers that have no models left after filtering.
+    func filtered(by allowedModels: [String]?) -> [ProviderWithModels] {
+        guard let allowedModels = allowedModels, !allowedModels.isEmpty else {
+            return self
+        }
+
+        let allowedSet = Set(allowedModels)
+
+        return self
+            .map { provider in
+                ProviderWithModels(
+                    provider: provider.provider,
+                    models: provider.models.filter { allowedSet.contains($0.id) }
+                )
+            }
+            .filter { !$0.models.isEmpty }
+    }
+}

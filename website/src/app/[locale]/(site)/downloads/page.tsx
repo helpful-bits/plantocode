@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
+import { AppStoreButton } from '@/components/ui/AppStoreButton';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
 import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
@@ -194,7 +195,7 @@ export default async function DownloadPage({ params }: { params: Promise<{ local
                     </div>
                 </GlassCard>
 
-                {/* Mobile App Coming Soon */}
+                {/* Mobile App - iOS */}
                 <GlassCard>
                     <div className="p-8 sm:p-12">
                       <div className="flex items-center gap-4 mb-6">
@@ -251,12 +252,7 @@ export default async function DownloadPage({ params }: { params: Promise<{ local
                       </div>
 
                       <div className="flex justify-center">
-                        <button
-                          disabled
-                          className="px-8 py-3 bg-gray-500 text-white font-semibold rounded-lg opacity-50 cursor-not-allowed"
-                        >
-                          {t['downloads.mobile.button']}
-                        </button>
+                        <AppStoreButton size="large" />
                       </div>
                     </div>
                 </GlassCard>

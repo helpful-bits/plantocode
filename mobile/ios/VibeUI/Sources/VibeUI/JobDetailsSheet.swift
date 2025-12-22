@@ -171,6 +171,9 @@ public struct JobDetailsSheet: View {
     }
 
     private func loadJobDetails() {
+        // Clear any existing subscriptions to prevent leaks
+        cancellables.removeAll()
+
         // Tier 1: Immediate render with in-memory job if available
         if let existingJob = jobsService.jobs.first(where: { $0.id == jobId }) {
             self.job = existingJob
@@ -210,6 +213,9 @@ public struct JobDetailsSheet: View {
     }
 
     private func cancelJob() async {
+        // Clear any existing subscriptions to prevent leaks
+        cancellables.removeAll()
+
         isCancelling = true
         let request = JobCancellationRequest(jobId: jobId, reason: "User requested cancellation")
         jobsService.cancelJob(request: request)
@@ -228,6 +234,9 @@ public struct JobDetailsSheet: View {
     }
 
     private func deleteJob() async {
+        // Clear any existing subscriptions to prevent leaks
+        cancellables.removeAll()
+
         isDeleting = true
         jobsService.deleteJob(jobId: jobId)
             .receive(on: DispatchQueue.main)

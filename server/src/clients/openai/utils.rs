@@ -8,6 +8,10 @@ use super::structs::{
     OpenAIResponsesRequest, OpenAIResponsesTextFormat, OpenAIResponsesTool,
 };
 
+/// OpenAI's hard limit for the `instructions` field is 1,048,576 characters (1MB).
+/// We use a slightly lower limit to provide a safety buffer.
+const MAX_INSTRUCTIONS_LENGTH: usize = 1_000_000;
+
 pub fn endpoint_for_model(_model: &str) -> &'static str {
     "responses"
 }
@@ -24,21 +28,79 @@ pub fn convert_messages_to_responses_input(
                         part_type: "input_text".to_string(),
                         text: Some(text.clone()),
                         image_url: None,
+                        file_id: None,
                     }]
                 }
                 OpenAIContent::Parts(parts) => {
                     parts
                         .iter()
                         .map(|part| {
-                            let part_type = match part.part_type.as_str() {
-                                "text" => "input_text",
-                                "image_url" => "input_image",
-                                _ => "input_text", // fallback
-                            };
-                            OpenAIResponsesContentPart {
-                                part_type: part_type.to_string(),
-                                text: part.text.clone(),
-                                image_url: part.image_url.clone(),
+                            match part.part_type.as_str() {
+                                "text" => {
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_text".to_string(),
+                                        text: part.text.clone(),
+                                        image_url: None,
+                                        file_id: None,
+                                    }
+                                }
+                                "image_url" => {
+                                    // Convert OpenAIImageUrl object to string URL
+                                    let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_image".to_string(),
+                                        text: None,
+                                        image_url: url_string,
+                                        file_id: part.file_id.clone(),
+                                    }
+                                }
+                                "input_text" => {
+                                    // Already in Responses API format, pass through
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_text".to_string(),
+                                        text: part.text.clone(),
+                                        image_url: None,
+                                        file_id: None,
+                                    }
+                                }
+                                "input_image" => {
+                                    // Already in Responses API format
+                                    // Extract URL from image_url object if present
+                                    let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_image".to_string(),
+                                        text: None,
+                                        image_url: url_string,
+                                        file_id: part.file_id.clone(),
+                                    }
+                                }
+                                _ => {
+                                    // Fallback: treat as text if text is available
+                                    if part.text.is_some() {
+                                        OpenAIResponsesContentPart {
+                                            part_type: "input_text".to_string(),
+                                            text: part.text.clone(),
+                                            image_url: None,
+                                            file_id: None,
+                                        }
+                                    } else if part.image_url.is_some() {
+                                        let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                        OpenAIResponsesContentPart {
+                                            part_type: "input_image".to_string(),
+                                            text: None,
+                                            image_url: url_string,
+                                            file_id: part.file_id.clone(),
+                                        }
+                                    } else {
+                                        // Empty fallback
+                                        OpenAIResponsesContentPart {
+                                            part_type: "input_text".to_string(),
+                                            text: Some(String::new()),
+                                            image_url: None,
+                                            file_id: None,
+                                        }
+                                    }
+                                }
                             }
                         })
                         .collect()
@@ -141,6 +203,28 @@ pub fn prepare_request_body(
         (instructions, user_msgs)
     };
 
+    // Handle instructions overflow: OpenAI limits the `instructions` field to 1MB.
+    // If exceeded, split the content and move overflow to a context message in input.
+    let (instructions, instructions_overflow) = match instructions {
+        Some(instr) if instr.len() > MAX_INSTRUCTIONS_LENGTH => {
+            // Find a safe split point (prefer splitting at newline or space)
+            let split_point = instr[..MAX_INSTRUCTIONS_LENGTH]
+                .rfind('\n')
+                .or_else(|| instr[..MAX_INSTRUCTIONS_LENGTH].rfind(' '))
+                .unwrap_or(MAX_INSTRUCTIONS_LENGTH);
+
+            let (main_part, overflow_part) = instr.split_at(split_point);
+            tracing::info!(
+                "Instructions exceeded {} chars (was {}), splitting {} chars to input context",
+                MAX_INSTRUCTIONS_LENGTH,
+                instr.len(),
+                overflow_part.len()
+            );
+            (Some(main_part.to_string()), Some(overflow_part.trim_start().to_string()))
+        }
+        other => (other, None),
+    };
+
     // For web search, input is typically just the user's query as a string
     // For regular requests, it's the conversation array (excluding system/developer messages)
     let input = if web_mode {
@@ -165,9 +249,24 @@ pub fn prepare_request_body(
             .filter(|msg| msg.role != "system" && msg.role != "developer")
             .cloned()
             .collect();
-        Some(serde_json::to_value(convert_messages_to_responses_input(
-            &non_system_messages,
-        ))?)
+        let mut input_items = convert_messages_to_responses_input(&non_system_messages);
+
+        // Prepend instructions overflow as a context message if it exists
+        if let Some(overflow) = &instructions_overflow {
+            let overflow_message = OpenAIResponsesInputItem {
+                item_type: "message".to_string(),
+                role: Some("user".to_string()),
+                content: Some(vec![OpenAIResponsesContentPart {
+                    part_type: "input_text".to_string(),
+                    text: Some(format!("[Additional System Context]\n{}", overflow)),
+                    image_url: None,
+                    file_id: None,
+                }]),
+            };
+            input_items.insert(0, overflow_message);
+        }
+
+        Some(serde_json::to_value(input_items)?)
     };
 
     let tools = model_requires_tools(&request.model, web_mode);
@@ -188,7 +287,7 @@ pub fn prepare_request_body(
                     },
                 }),
                 Some(OpenAIResponsesReasoning {
-                    effort: "medium".to_string(),
+                    effort: "high".to_string(),
                     summary: "auto".to_string(),
                 }),
                 Some(false), // Store is set to false for web search

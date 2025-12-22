@@ -638,8 +638,8 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                           ((relevanceTokens.value - 2800) / 1000).toFixed(1) + 'K' : '2.7K'}
                       </span>
                     </span>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
-                      google/gemini-2.5-flash
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-3-flash-preview">
+                      google/gemini-3-flash-preview
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
@@ -742,8 +742,8 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                           ((pathTokens.value - 3400) / 1000).toFixed(1) + 'K' : '3.3K'}
                       </span>
                     </span>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
-                      google/gemini-2.5-flash
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-3-flash-preview">
+                      google/gemini-3-flash-preview
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">
@@ -846,8 +846,8 @@ export function FileSearchMock({ isInView }: FileSearchMockProps) {
                           ((correctionTokens.value - 2100) / 1000).toFixed(1) + 'K' : '2.0K'}
                       </span>
                     </span>
-                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-2.5-flash">
-                      google/gemini-2.5-flash
+                    <span className="text-[9px] text-muted-foreground truncate max-w-full" title="google/gemini-3-flash-preview">
+                      google/gemini-3-flash-preview
                     </span>
                   </div>
                   <span className="text-[9px] text-muted-foreground flex-shrink-0 ml-1 self-end">

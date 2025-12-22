@@ -81,7 +81,7 @@
       },
       "intro": "PlanToCode es un entorno integral de planificación de desarrollo diseñado para trabajo de desarrollo serio donde el contexto, la trazabilidad y las herramientas profesionales importan más que las interacciones rápidas con IA. Hemos construido un sistema para implementaciones complejas de múltiples pasos donde las herramientas tradicionales de IA se quedan cortas.",
       "multiModel": {
-        "description": "Integración con GPT-5.1, Claude Sonnet 4 y Gemini 3 Pro. No solo llamadas API - orquestación inteligente con configuraciones específicas de proyecto, streaming en tiempo real y trazabilidad completa.",
+        "description": "Integración con GPT-5.2, Claude Sonnet 4 y Gemini 3 Pro. No solo llamadas API - orquestación inteligente con configuraciones específicas de proyecto, streaming en tiempo real y trazabilidad completa.",
         "title": "Inteligencia Multi-Modelo"
       },
       "title": "Lo Que Construimos"
@@ -122,7 +122,7 @@
           "title": "Humano en el Bucle"
         },
         "multiModel": {
-          "description": "Genera planes desde múltiples modelos de IA (GPT-5.1, Claude 4.5, Gemini 3 Pro) y fusiona las mejores perspectivas. Las herramientas de un solo modelo pierden perspectivas.",
+          "description": "Genera planes desde múltiples modelos de IA (GPT-5.2, Claude 4.5, Gemini 3 Pro) y fusiona las mejores perspectivas. Las herramientas de un solo modelo pierden perspectivas.",
           "title": "Planificación Multi-Modelo"
         },
         "title": "Qué Hace Diferente a PlanToCode"
@@ -501,25 +501,25 @@
       "title": "Descargar PlanToCode - macOS y Windows | Prueba Gratis"
     },
     "mobile": {
-      "button": "Próximamente en App Store",
+      "button": "Descargar en App Store",
       "connected": {
-        "description": "Únete a nuestra lista de espera para ser notificado cuando lance la app iOS. Acceso anticipado para usuarios intensivos de agentes de código.",
-        "title": "Mantente Conectado"
+        "description": "Controla tus sesiones de escritorio de PlanToCode de forma remota. Revisa planes, gestiona terminales y mantente productivo en movimiento.",
+        "title": "Control Remoto"
       },
       "features": {
         "design": "Lenguaje de diseño nativo de iOS/iPadOS",
         "monitor": "Monitorea sesiones de terminal remotamente",
         "review": "Revisa y edita planes de implementación sobre la marcha",
         "sync": "Sincroniza con workspace de escritorio sin problemas",
-        "title": "Características Planificadas",
+        "title": "Características",
         "voice": "Transcripción de voz para captura rápida de ideas"
       },
-      "subtitle": "Próximamente para iPhone e iPad",
+      "subtitle": "Control Remoto para iPhone e iPad",
       "title": "App Móvil iOS"
     },
     "trust": {
       "planning": {
-        "description": "GPT-5.1, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Enfoque de Consejo de LLMs.",
+        "description": "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Enfoque de Consejo de LLMs.",
         "title": "Planificación Multi-Modelo"
       },
       "pricing": {
@@ -666,7 +666,7 @@
         "description": "El descubrimiento de archivos con IA identifica archivos relevantes en tu base de código. Múltiples modelos de IA generan planes de implementación con granularidad archivo por archivo—rutas exactas de archivos, rangos específicos de líneas y tipos claros de operación (modificar/crear/eliminar). Esta granularidad hace que la evaluación de impacto sea cristalina.",
         "features": {
           "dependencies": "Análisis de dependencias y evaluación de impacto",
-          "models": "Soporte multi-modelo (GPT-5.1, Claude 4, Gemini 3 Pro)",
+          "models": "Soporte multi-modelo (GPT-5.2, Claude 4, Gemini 3 Pro)",
           "multiple": "Generación de múltiples planes para comparación de enfoques",
           "operations": "Tipos claros de operación (modificar, crear, eliminar)",
           "paths": "Rutas exactas de archivos de la estructura de tu repositorio",

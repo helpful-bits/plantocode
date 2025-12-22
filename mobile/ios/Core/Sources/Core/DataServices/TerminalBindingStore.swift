@@ -13,8 +13,11 @@ public final class TerminalBindingStore {
 
     private func saveToDefaults() {
         let arr = Array(byTerminalId.values)
-        if let data = try? JSONEncoder().encode(arr) {
-            UserDefaults.standard.set(data, forKey: storageKey)
+        let key = storageKey
+        Task.detached(priority: .utility) {
+            if let data = try? JSONEncoder().encode(arr) {
+                UserDefaults.standard.set(data, forKey: key)
+            }
         }
     }
 

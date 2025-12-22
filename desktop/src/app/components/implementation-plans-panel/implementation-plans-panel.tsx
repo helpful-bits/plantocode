@@ -1,14 +1,14 @@
 "use client";
 
 import { FileCode, Eye, ClipboardCopy, Loader2, CircleHelp } from "lucide-react";
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useCallback, useState, useEffect, useMemo, useRef } from "react";
 import { ExternalFoldersManager } from "../generate-prompt/_components/external-folders-manager";
 
 import { JobDetailsModal } from "@/app/components/background-jobs-sidebar/job-details-modal";
 import { useNotification } from "@/contexts/notification-context";
 import { useSessionStateContext } from "@/contexts/session";
 import { useRuntimeConfig } from "@/contexts/runtime-config-context";
-import { type BackgroundJob } from "@/types/session-types";
+import { type BackgroundJob, JOB_STATUSES } from "@/types/session-types";
 import { type CopyButtonConfig } from "@/types/config-types";
 import {
   AlertDialog,
@@ -261,11 +261,45 @@ export function ImplementationPlansPanel({
   const [preloadedPlanContent, setPreloadedPlanContent] = useState<Record<string, string>>({});
   const [isPreloadingPlan, setIsPreloadingPlan] = useState<Record<string, boolean>>({});
 
+  // Track which jobs were streaming to detect completion transitions
+  const previouslyStreamingJobIds = useRef<Set<string>>(new Set());
+
   // Clear preloaded content when dependencies change
   useEffect(() => {
     setPreloadedPromptContent(null);
     setPreloadedPlanContent({});
   }, [taskDescription, currentSession?.taskDescription, includedPaths, sessionId, projectDirectory]);
+
+  // Clear preloaded content when a job transitions from streaming to completed
+  // This prevents stale partial content from being used after streaming finishes
+  useEffect(() => {
+    const currentlyStreamingIds = new Set<string>();
+    const jobsJustCompleted: string[] = [];
+
+    for (const plan of implementationPlans) {
+      const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status);
+      if (isStreaming) {
+        currentlyStreamingIds.add(plan.id);
+      } else if (previouslyStreamingJobIds.current.has(plan.id)) {
+        // Job just transitioned from streaming to completed
+        jobsJustCompleted.push(plan.id);
+      }
+    }
+
+    // Clear preloaded content for jobs that just completed
+    if (jobsJustCompleted.length > 0) {
+      setPreloadedPlanContent(prev => {
+        const updated = { ...prev };
+        for (const jobId of jobsJustCompleted) {
+          delete updated[jobId];
+        }
+        return updated;
+      });
+    }
+
+    // Update the ref for next render
+    previouslyStreamingJobIds.current = currentlyStreamingIds;
+  }, [implementationPlans]);
 
 
   // Validation for create functionality
@@ -337,6 +371,13 @@ export function ImplementationPlansPanel({
   
   // Handle preload plan content on hover
   const handlePreloadPlanContent = useCallback(async (plan: BackgroundJob) => {
+    // Don't preload streaming jobs - their content is still changing
+    // This prevents caching partial content that would become stale
+    const isStreaming = JOB_STATUSES.ACTIVE.includes(plan.status);
+    if (isStreaming) {
+      return;
+    }
+
     // Check if already loading or content exists
     if (isPreloadingPlan[plan.id] || preloadedPlanContent[plan.id]) {
       return;
@@ -345,7 +386,7 @@ export function ImplementationPlansPanel({
     setIsPreloadingPlan(prev => ({ ...prev, [plan.id]: true }));
     try {
       const fullJobResult = await getBackgroundJobAction(plan.id);
-      
+
       if (fullJobResult.isSuccess && fullJobResult.data) {
         const fullPlan = fullJobResult.data.response || '';
         const parsedPlanContent = normalizeJobResponse(fullPlan).content;

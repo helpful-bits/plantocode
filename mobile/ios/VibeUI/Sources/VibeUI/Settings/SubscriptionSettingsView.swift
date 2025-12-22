@@ -19,19 +19,19 @@ public struct SubscriptionSettingsView: View {
                 )
             )
 
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.sm) {
                 Text("About Account Deletion")
-                    .font(.caption)
+                    .small()
                     .fontWeight(.semibold)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color.mutedForeground)
 
                 Text("Deleting your PlanToCode account removes your usage data and linked devices from our servers. App Store subscriptions must be managed separately in your Apple ID settings.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .small()
+                    .foregroundColor(Color.mutedForeground)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding()
-            .background(Color.surfaceSecondary)
+            .padding(Theme.Spacing.lg)
+            .background(Color.card)
         }
         .navigationTitle("Subscription")
         .navigationBarTitleDisplayMode(.inline)

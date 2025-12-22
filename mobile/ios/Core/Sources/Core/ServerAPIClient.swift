@@ -19,15 +19,22 @@ public enum APIError: Error, LocalizedError {
 }
 
 public final class ServerAPIClient {
-    public static let shared = ServerAPIClient(baseURL: Config.serverURL)
-    public static let auth = ServerAPIClient(baseURL: Config.authServerURL)  // Dedicated client for auth
+    public static let shared = ServerAPIClient(baseURLProvider: { Config.serverURL })
+    public static let auth = ServerAPIClient(baseURLProvider: { Config.authServerURL })  // Dedicated client for auth
 
-    private let baseURL: String
+    private let baseURLProvider: () -> String
+    private var baseURL: String { baseURLProvider() }
     private let urlSession: URLSession
     private let logger = Logger(subsystem: "PlanToCode", category: "NetworkRequest")
 
     public init(baseURL: String) {
-        self.baseURL = baseURL
+        self.baseURLProvider = { baseURL }
+        let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
+        self.urlSession = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
+    }
+
+    public init(baseURLProvider: @escaping () -> String) {
+        self.baseURLProvider = baseURLProvider
         let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
         self.urlSession = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
     }

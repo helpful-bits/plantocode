@@ -416,7 +416,7 @@ export default async function ChangelogPage({ params }: { params: Promise<{ loca
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <a
-                href="https://x.com/plantocode"
+                href="https://x.com/helpfulbits_com"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors font-medium"
                 target="_blank"
                 rel="noopener noreferrer"

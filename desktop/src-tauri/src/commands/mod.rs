@@ -6,6 +6,8 @@ pub mod auth0_commands;
 pub mod billing_commands;
 pub mod config_commands;
 pub mod db_commands;
+pub mod disk_commands;
+pub mod ffmpeg_commands;
 pub mod file_system_commands;
 pub mod geo_commands;
 pub mod job_commands;
@@ -47,12 +49,12 @@ pub mod workflow_commands;
 // Re-export all command functions for easier imports
 pub use app_commands::{get_app_info, get_config_load_error, get_database_info_command};
 pub use file_system_commands::{
-    create_directory_command, create_unique_filepath_command, delete_file_command,
-    get_app_data_directory_command, get_home_directory_command, get_temp_dir_command,
-    list_project_files_command, move_file_command, normalize_path_command, path_basename_command,
-    path_dirname_command, path_extname_command, path_is_absolute_command, path_join_command,
-    read_file_content_command, sanitize_filename_command, search_files_command,
-    write_file_content_command,
+    append_binary_file_command, create_directory_command, create_unique_filepath_command,
+    delete_file_command, get_app_data_directory_command, get_home_directory_command,
+    get_temp_dir_command, list_project_files_command, move_file_command, normalize_path_command,
+    path_basename_command, path_dirname_command, path_extname_command, path_is_absolute_command,
+    path_join_command, read_file_content_command, sanitize_filename_command,
+    search_files_command, write_file_content_command,
 };
 pub use geo_commands::detect_user_region_command;
 pub use regex_commands::{generate_regex_command, generate_regex_patterns_command};
@@ -223,5 +225,10 @@ pub use terminal_commands::{
 // Re-exports from image commands module
 pub use image_commands::save_pasted_image_command;
 
+// Re-exports from disk commands module
+pub use disk_commands::get_disk_space_command;
+
+// Re-exports from ffmpeg commands module
+pub use ffmpeg_commands::{check_ffmpeg_available_command, remux_video_command};
 
 // All command functions will return AppResult<T> directly

@@ -13,7 +13,7 @@ public struct MergeInstructionsComposeView: View {
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var isEditing: Bool = false
     @State private var forceSelectionApply: Bool = false
-    @StateObject private var undoRedoManager = UndoRedoManager()
+    @StateObject private var undoRedoManager = UndoRedoManager(maxHistorySize: 10)
 
     public init(
         mergeInstructions: Binding<String>,

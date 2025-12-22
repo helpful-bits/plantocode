@@ -5,7 +5,7 @@ export const codexContent: PlanIntegrationContent = {
   meta: {
     title: 'Codex CLI Planning - Blueprint-First Execution',
     description:
-      'PlanToCode discovers files via 4-stage workflow, generates multi-model plans across GPT-5.1/Claude Sonnet 4.5/Gemini, merges them into XML blueprint, then Codex CLI executes. Stage 5 construction crew for Intelligence-Driven Development.',
+      'PlanToCode discovers files via 4-stage workflow, generates multi-model plans across GPT-5.2/Claude Sonnet 4.5/Gemini, merges them into XML blueprint, then Codex CLI executes. Stage 5 construction crew for Intelligence-Driven Development.',
     canonical: 'https://www.plantocode.com/plan-mode/codex',
   },
 
@@ -19,7 +19,7 @@ export const codexContent: PlanIntegrationContent = {
   },
 
   intro:
-    "Intelligence-Driven Development follows 5 stages: (1) Specification capture via voice/meetings/text, (2) Targeted file discovery using 4-stage FileFinderWorkflow, (3) Multi-model implementation planning across GPT-5.1/Claude Sonnet 4.5/Gemini, (4) Human review and plan merge with merge instructions, (5) Secure execution. Codex CLI is your Stage 5 construction crew—taking the merged implementation_plan XML blueprint and building it with approval governance.",
+    "Intelligence-Driven Development follows 5 stages: (1) Specification capture via voice/meetings/text, (2) Targeted file discovery using 4-stage FileFinderWorkflow, (3) Multi-model implementation planning across GPT-5.2/Claude Sonnet 4.5/Gemini, (4) Human review and plan merge with merge instructions, (5) Secure execution. Codex CLI is your Stage 5 construction crew—taking the merged implementation_plan XML blueprint and building it with approval governance.",
 
   valueBullets: [
     {
@@ -45,7 +45,7 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'Multi-model plan synthesis prevents blind spots',
       description:
-        'Stage 3 runs implementation_plan prompts across multiple models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro). Stage 4 merges their outputs with your merge instructions. Codex gets a comprehensive blueprint, not a single model\'s narrow perspective.',
+        'Stage 3 runs implementation_plan prompts across multiple models (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro). Stage 4 merges their outputs with your merge instructions. Codex gets a comprehensive blueprint, not a single model\'s narrow perspective.',
     },
     {
       title: 'Skyscraper blueprint analogy',
@@ -58,7 +58,7 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'How to use Codex CLI with a merged implementation plan',
       description:
-        'Complete Stages 1-4 in PlanToCode: (1) Capture specification via voice/text using text_improvement and task_refinement prompts. (2) Run FileFinderWorkflow (root folder selection → regex file filter → AI relevance assessment → extended path finder) to discover all relevant files. (3) Generate multiple implementation plans using different models (GPT-5.1, Claude Sonnet 4.5, Gemini 3 Pro) via the implementation_plan prompt. (4) Review plans side-by-side, write merge instructions, run implementation_plan_merge to produce a single XML blueprint.',
+        'Complete Stages 1-4 in PlanToCode: (1) Capture specification via voice/text using text_improvement and task_refinement prompts. (2) Run FileFinderWorkflow (root folder selection → regex file filter → AI relevance assessment → extended path finder) to discover all relevant files. (3) Generate multiple implementation plans using different models (GPT-5.2, Claude Sonnet 4.5, Gemini 3 Pro) via the implementation_plan prompt. (4) Review plans side-by-side, write merge instructions, run implementation_plan_merge to produce a single XML blueprint.',
     },
     {
       title: 'Stage 5: Feeding the blueprint to Codex CLI',
@@ -73,7 +73,7 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'Real-world scenario: Database migration with schema changes',
       description:
-        'Stage 1: "Add user_preferences table with JSONB column, migrate existing settings from user_settings." Stage 2: FileFinderWorkflow discovers migrations folder, models, API routes, tests. Stage 3: Generate plans with GPT-5.1 and Gemini 3 Pro—each brings a different perspective. Stage 4: Merge with instruction "Prioritize GPT-5.1 rollback strategy, use Gemini data validation." Stage 5: Codex executes migration, updates models, runs tests—all from the merged blueprint.',
+        'Stage 1: "Add user_preferences table with JSONB column, migrate existing settings from user_settings." Stage 2: FileFinderWorkflow discovers migrations folder, models, API routes, tests. Stage 3: Generate plans with GPT-5.2 and Gemini 3 Pro—each brings a different perspective. Stage 4: Merge with instruction "Prioritize GPT-5.2 rollback strategy, use Gemini data validation." Stage 5: Codex executes migration, updates models, runs tests—all from the merged blueprint.',
     },
     {
       title: 'Monorepo workflows and build orchestration',
@@ -83,7 +83,7 @@ export const codexContent: PlanIntegrationContent = {
     {
       title: 'Model selection and Windows compatibility',
       description:
-        'Codex CLI defaults to GPT-5.1; switch to GPT-5.1-Codex via /model or --model gpt-5-codex. Windows users: WSL recommended for best CLI compatibility. PlanToCode detects WSL environments and preserves paths across Windows/Linux boundaries.',
+        'Codex CLI defaults to GPT-5.2; switch to GPT-5.2-Codex via /model or --model gpt-5-codex. Windows users: WSL recommended for best CLI compatibility. PlanToCode detects WSL environments and preserves paths across Windows/Linux boundaries.',
     },
   ],
 
@@ -94,11 +94,11 @@ export const codexContent: PlanIntegrationContent = {
     },
     {
       step: 'Stage 3: Generate multi-model plans',
-      detail: `Run implementation_plan prompt with GPT-5.1, Claude Sonnet 4.5, and Gemini 3 Pro. Each model brings a different perspective—review each plan's approach to middleware placement, config, tests.`,
+      detail: `Run implementation_plan prompt with GPT-5.2, Claude Sonnet 4.5, and Gemini 3 Pro. Each model brings a different perspective—review each plan's approach to middleware placement, config, tests.`,
     },
     {
       step: 'Stage 4: Merge with human guidance',
-      detail: 'Write merge instructions: "Use GPT-5.1 middleware architecture, Gemini test coverage, Claude Sonnet 4.5 config approach." Run implementation_plan_merge. Review merged XML blueprint.',
+      detail: 'Write merge instructions: "Use GPT-5.2 middleware architecture, Gemini test coverage, Claude Sonnet 4.5 config approach." Run implementation_plan_merge. Review merged XML blueprint.',
     },
     {
       step: 'Stage 5: Execute in Codex with approvals',
@@ -140,7 +140,7 @@ export const codexContent: PlanIntegrationContent = {
     },
     {
       claim:
-        'Codex CLI defaults to GPT-5.1. Users can switch to GPT-5.1-Codex via the /model command or --model flag.',
+        'Codex CLI defaults to GPT-5.2. Users can switch to GPT-5.2-Codex via the /model command or --model flag.',
       href: 'https://help.openai.com/en/articles/10274290-codex-cli-models',
       source: 'official',
     },

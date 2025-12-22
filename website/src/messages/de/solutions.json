@@ -651,12 +651,12 @@
         },
         "multiModelPlanning": {
           "title": "Multi-Modell-Migrationspläne",
-          "description": "Generieren Sie Migrationsstrategien von GPT-5.1, Claude Sonnet 4.5 und Gemini. Jedes Modell bringt eine andere Perspektive—kombinieren Sie die besten Ansätze mit menschlicher Review.",
+          "description": "Generieren Sie Migrationsstrategien von GPT-5.2, Claude Sonnet 4.5 und Gemini. Jedes Modell bringt eine andere Perspektive—kombinieren Sie die besten Ansätze mit menschlicher Review.",
           "link": "Über Planung erfahren"
         },
         "safeRefactoring": {
           "title": "Merge-Anweisungen für Sicherheit",
-          "description": "Schreiben Sie Klartext-Merge-Anweisungen: \"Bevorzuge GPT-5.1 Rollback-Strategie, nutze Gemini Testabdeckung.\" Kontrollieren Sie genau, wie Änderungen synthetisiert werden.",
+          "description": "Schreiben Sie Klartext-Merge-Anweisungen: \"Bevorzuge GPT-5.2 Rollback-Strategie, nutze Gemini Testabdeckung.\" Kontrollieren Sie genau, wie Änderungen synthetisiert werden.",
           "link": "Merge-Anweisungen ansehen"
         },
         "incrementalMigration": {

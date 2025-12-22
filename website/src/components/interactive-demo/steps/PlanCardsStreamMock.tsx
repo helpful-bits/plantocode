@@ -243,8 +243,8 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   
   // Natural user interaction flow - perfectly synchronized with model selection
   const buttonClicked = useIntervalGate(timeProgress, [
-    { startPct: 0.12, endPct: 0.15 }, // User clicks with GPT-5.1 (selected at 0.10)
-    { startPct: 0.22, endPct: 0.25 }, // User clicks again with GPT-5.1 still selected  
+    { startPct: 0.12, endPct: 0.15 }, // User clicks with GPT-5.2 (selected at 0.10)
+    { startPct: 0.22, endPct: 0.25 }, // User clicks again with GPT-5.2 still selected  
     { startPct: 0.32, endPct: 0.35 }, // User clicks with Gemini (switched at 0.30)
     { startPct: 0.42, endPct: 0.45 }  // User clicks again with Gemini still selected
   ]);
@@ -317,12 +317,12 @@ export function PlanCardsStreamMock({ isInView }: { isInView: boolean }) {
   };
 
   // Perfect natural timing: model selection → button click → plan processing  
-  // Timeline: 0.10=select GPT-5.1 → 0.12=click → 0.19=process → 0.30=select Gemini → 0.32=click → 0.39=process  
+  // Timeline: 0.10=select GPT-5.2 → 0.12=click → 0.19=process → 0.30=select Gemini → 0.32=click → 0.39=process  
   const allPlans = [
     createPlan('plan-gemini-2', 'API Integration Layer', 'Gemini 3 Pro', 4800, 4300, 0.49, 0.90),        // Gemini still active → clicked 0.42 → starts 0.49
     createPlan('plan-gemini-1', 'Database Schema Design', 'Gemini 3 Pro', 6100, 5200, 0.39, 0.85),      // Gemini selected 0.30 → clicked 0.32 → starts 0.39
-    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5.1', 5200, 4100, 0.29, 0.75),               // GPT-5.1 still active → clicked 0.22 → starts 0.29  
-    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5.1', 4247, 3800, 0.19, 0.65)       // GPT-5.1 selected 0.10 → clicked 0.12 → starts 0.19
+    createPlan('plan-gpt5-2', 'User Interface Components', 'GPT-5.2', 5200, 4100, 0.29, 0.75),               // GPT-5.2 still active → clicked 0.22 → starts 0.29  
+    createPlan('plan-gpt5-1', 'Authentication System Architecture', 'GPT-5.2', 4247, 3800, 0.19, 0.65)       // GPT-5.2 selected 0.10 → clicked 0.12 → starts 0.19
   ];
 
   const buttonState = buttonClicked ? 'clicking' : 'idle';

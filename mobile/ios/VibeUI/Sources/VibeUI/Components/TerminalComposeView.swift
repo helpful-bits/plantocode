@@ -12,7 +12,7 @@ public struct TerminalComposeView: View {
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @State private var isEditing: Bool = false
     @State private var forceSelectionApply: Bool = false
-    @StateObject private var undoRedoManager = UndoRedoManager()
+    @StateObject private var undoRedoManager = UndoRedoManager(maxHistorySize: 10)
 
     @State private var errorMessage: String?
     @State private var isSending = false

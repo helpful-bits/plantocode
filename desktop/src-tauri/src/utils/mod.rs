@@ -4,6 +4,7 @@ pub mod context_resolver;
 pub mod date_utils;
 pub mod device_name;
 pub mod directory_tree;
+pub mod disk_utils;
 pub mod env_utils;
 pub mod error_utils;
 pub mod ffmpeg_utils;

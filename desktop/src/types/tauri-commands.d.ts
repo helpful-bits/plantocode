@@ -172,6 +172,40 @@ export interface WriteBinaryFileCommandArgs {
   projectDirectory?: string | null;
 }
 
+export interface AppendBinaryFileCommandArgs {
+  path: string;
+  content: number[];
+  projectDirectory?: string | null;
+}
+
+export interface ReadBinaryFileCommandArgs {
+  path: string;
+  projectDirectory?: string | null;
+}
+
+export interface GetDiskSpaceCommandArgs {
+  path: string;
+}
+
+export interface DiskSpaceResponse {
+  availableBytes: number;
+}
+
+export interface CheckFfmpegAvailableResponse {
+  available: boolean;
+  message?: string;
+}
+
+export interface FileStatsResponse {
+  size: number;
+  isFile: boolean;
+  isDir: boolean;
+}
+
+export interface GetFileStatsCommandArgs {
+  path: string;
+}
+
 export interface CreateUniqueFilepathCommandArgs {
   requestId: string;
   sessionName: string;
@@ -647,6 +681,12 @@ export type TauriInvoke = {
   "read_file_content_command": (args: ReadFileContentCommandArgs) => Promise<string>;
   "write_file_content_command": (args: WriteFileContentCommandArgs) => Promise<void>;
   "write_binary_file_command": (args: WriteBinaryFileCommandArgs) => Promise<void>;
+  "append_binary_file_command": (args: AppendBinaryFileCommandArgs) => Promise<void>;
+  "read_binary_file_command": (args: ReadBinaryFileCommandArgs) => Promise<number[]>;
+  "get_disk_space_command": (args: GetDiskSpaceCommandArgs) => Promise<DiskSpaceResponse>;
+  "check_ffmpeg_available_command": () => Promise<CheckFfmpegAvailableResponse>;
+  "remux_video_command": (args: { path: string }) => Promise<void>;
+  "get_file_stats_command": (args: GetFileStatsCommandArgs) => Promise<FileStatsResponse>;
   "create_unique_filepath_command": (args: CreateUniqueFilepathCommandArgs) => Promise<string>;
   "delete_file_command": (args: DeleteFileCommandArgs) => Promise<void>;
   "move_file_command": (args: MoveFileCommandArgs) => Promise<void>;

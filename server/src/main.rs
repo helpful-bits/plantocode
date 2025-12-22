@@ -34,8 +34,9 @@ use crate::db::{
 };
 use crate::handlers::{auth0_handlers, config_handlers, region_handlers};
 use crate::middleware::{
-    api_key_middleware, auth_middleware, create_ip_rate_limiter, create_rate_limit_storage,
+    create_ip_rate_limiter, create_rate_limit_storage,
     create_strict_rate_limiter, create_user_rate_limiter, start_memory_store_cleanup_task,
+    unified_auth_middleware,
 };
 use crate::models::runtime_config::{AppState, RuntimeConfigCache};
 use crate::routes::{configure_public_auth_routes, configure_routes, configure_webhook_routes};
@@ -697,13 +698,15 @@ async fn main() -> std::io::Result<()> {
             );
 
         // Protected API routes with optional versioning
+        // Uses unified_auth_middleware which accepts both JWT (Bearer) and API keys
+        // Authentication precedence: API key headers (X-API-Key, Authorization: ApiKey) take priority over Bearer JWT
         if enable_versioning {
             app = app.service(
                 web::scope("/api")
                     .service(
                         web::scope("/v1")
                             .wrap(strict_rate_limiter.clone())
-                            .wrap(auth_middleware(
+                            .wrap(unified_auth_middleware(
                                 db_pools.user_pool.clone(),
                                 db_pools.system_pool.clone(),
                             ))
@@ -714,7 +717,7 @@ async fn main() -> std::io::Result<()> {
             app = app.service(
                 web::scope("/api")
                     .wrap(strict_rate_limiter.clone())
-                    .wrap(auth_middleware(
+                    .wrap(unified_auth_middleware(
                         db_pools.user_pool.clone(),
                         db_pools.system_pool.clone(),
                     ))
@@ -722,11 +725,13 @@ async fn main() -> std::io::Result<()> {
             );
         }
 
-        // API Key authenticated routes (same API surface as /api but with API key auth)
+        // API Key authenticated routes - kept as alias for backward compatibility
+        // Uses the same unified_auth_middleware as /api (accepts both JWT and API keys)
+        // Clients should migrate to /api with X-API-Key or Authorization: ApiKey headers
         app = app.service(
             web::scope("/api-key")
                 .wrap(api_key_rate_limiter.clone())
-                .wrap(api_key_middleware(
+                .wrap(unified_auth_middleware(
                     db_pools.user_pool.clone(),
                     db_pools.system_pool.clone(),
                 ))
@@ -740,11 +745,11 @@ async fn main() -> std::io::Result<()> {
                     .wrap(public_ip_rate_limiter.clone())
                     .configure(configure_webhook_routes),
             )
-            // WebSocket routes for device communication (authentication handled in WebSocket handler)
+            // WebSocket routes for device communication
             .service(
                 web::scope("/ws")
                     .wrap(public_ip_rate_limiter.clone())
-                    .wrap(auth_middleware(
+                    .wrap(unified_auth_middleware(
                         db_pools.user_pool.clone(),
                         db_pools.system_pool.clone(),
                     ))

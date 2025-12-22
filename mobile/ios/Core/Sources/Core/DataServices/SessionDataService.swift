@@ -32,6 +32,7 @@ public final class SessionDataService: ObservableObject {
     private var pendingRetryTasks: [String: Task<Void, Never>] = [:] // Pending retry tasks by project
     private var lastKnownDeviceId: String? // Stable device ID for cache key
     private var sessionFetchInFlight: [String: Task<Session?, Error>] = [:]
+    private var historyStateObserver: NSObjectProtocol?
 
     /// Stable device key that persists across connection transitions
     /// Uses the last known device ID to prevent cache key changes during reconnection
@@ -78,20 +79,25 @@ public final class SessionDataService: ObservableObject {
 
     /// Setup listener for history-state-changed events from relay
     private func setupHistoryStateListener() {
-        NotificationCenter.default.addObserver(
+        historyStateObserver = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("relay-event-history-state-changed"),
             object: nil,
-            queue: .main
+            queue: nil
         ) { [weak self] notification in
-            guard let self = self,
-                  let event = notification.userInfo?["event"] as? RelayEvent,
+            guard let self = self else { return }
+
+            // Extract raw data from notification quickly (stays on current thread)
+            guard let event = notification.userInfo?["event"] as? RelayEvent,
                   let sessionId = event.data["sessionId"]?.value as? String,
                   let kind = event.data["kind"]?.value as? String,
                   let stateDict = event.data["state"]?.value as? [String: Any] else {
                 return
             }
 
-            Task { @MainActor in
+            // Move heavy processing to background
+            Task.detached(priority: .utility) { [weak self] in
+                guard let self = self else { return }
+
                 let key = "\(sessionId)::\(kind)"
 
                 if kind == "files" {
@@ -111,14 +117,6 @@ public final class SessionDataService: ObservableObject {
                     }
 
                     let checksum = stateDict["checksum"] as? String
-
-                    // Dedup based on version/checksum
-                    if let lastVer = self.lastHistoryVersionBySession[key], version < lastVer {
-                        return
-                    }
-                    if let lastChecksum = self.lastHistoryChecksumBySession[key], checksum == lastChecksum {
-                        return
-                    }
 
                     // Get current index
                     let rawIndex: Int
@@ -140,6 +138,7 @@ public final class SessionDataService: ObservableObject {
                     let includedText = entryDict["included_files"] as? String ?? "[]"
                     let excludedText = entryDict["force_excluded_files"] as? String ?? "[]"
 
+                    // Heavy JSON decoding in background
                     let includedFiles: [String]
                     let forceExcludedFiles: [String]
 
@@ -157,61 +156,80 @@ public final class SessionDataService: ObservableObject {
                         forceExcludedFiles = []
                     }
 
-                    self.updateSessionFilesInMemory(
-                        sessionId: sessionId,
-                        includedFiles: includedFiles,
-                        forceExcludedFiles: forceExcludedFiles
-                    )
+                    // Update state on main actor
+                    await MainActor.run { [weak self] in
+                        guard let self = self else { return }
 
-                    self.lastHistoryVersionBySession[key] = version
-                    if let cs = checksum {
-                        self.lastHistoryChecksumBySession[key] = cs
+                        // Dedup based on version/checksum
+                        if let lastVer = self.lastHistoryVersionBySession[key], version < lastVer {
+                            return
+                        }
+                        if let lastChecksum = self.lastHistoryChecksumBySession[key], checksum == lastChecksum {
+                            return
+                        }
+
+                        self.updateSessionFilesInMemory(
+                            sessionId: sessionId,
+                            includedFiles: includedFiles,
+                            forceExcludedFiles: forceExcludedFiles
+                        )
+
+                        self.lastHistoryVersionBySession[key] = version
+                        if let cs = checksum {
+                            self.lastHistoryChecksumBySession[key] = cs
+                        }
                     }
                 } else {
                     // For other kinds (e.g., "task"), use generic HistoryState decoding
                     do {
+                        // Heavy JSON processing in background
                         let stateData = try JSONSerialization.data(withJSONObject: stateDict)
                         let historyState = try JSONDecoder().decode(HistoryState.self, from: stateData)
 
-                        if let lastVer = self.lastHistoryVersionBySession[key], historyState.version < lastVer {
-                            return
-                        }
-                        if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
-                            return
-                        }
+                        // Update state on main actor
+                        await MainActor.run { [weak self] in
+                            guard let self = self else { return }
 
-                        let newValue = self.lastNonEmptyHistoryValue(historyState) ?? ""
-
-                        if kind == "task" {
-                            var currentText = ""
-                            if let current = self.currentSession, current.id == sessionId {
-                                currentText = current.taskDescription ?? ""
-                            } else if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
-                                currentText = self.sessions[index].taskDescription ?? ""
-                            }
-
-                            let trimmedCurrent = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
-                            let trimmedNew = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                            if !trimmedNew.isEmpty && trimmedNew == trimmedCurrent {
-                                self.lastHistoryVersionBySession[key] = historyState.version
-                                self.lastHistoryChecksumBySession[key] = historyState.checksum
+                            if let lastVer = self.lastHistoryVersionBySession[key], historyState.version < lastVer {
                                 return
                             }
+                            if let lastChecksum = self.lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
+                                return
+                            }
+
+                            let newValue = self.lastNonEmptyHistoryValue(historyState) ?? ""
+
+                            if kind == "task" {
+                                var currentText = ""
+                                if let current = self.currentSession, current.id == sessionId {
+                                    currentText = current.taskDescription ?? ""
+                                } else if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
+                                    currentText = self.sessions[index].taskDescription ?? ""
+                                }
+
+                                let trimmedCurrent = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+                                let trimmedNew = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                                if !trimmedNew.isEmpty && trimmedNew == trimmedCurrent {
+                                    self.lastHistoryVersionBySession[key] = historyState.version
+                                    self.lastHistoryChecksumBySession[key] = historyState.checksum
+                                    return
+                                }
+                            }
+
+                            self.lastHistoryVersionBySession[key] = historyState.version
+                            self.lastHistoryChecksumBySession[key] = historyState.checksum
+
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("apply-history-state"),
+                                object: nil,
+                                userInfo: [
+                                    "sessionId": sessionId,
+                                    "kind": kind,
+                                    "state": historyState
+                                ]
+                            )
                         }
-
-                        self.lastHistoryVersionBySession[key] = historyState.version
-                        self.lastHistoryChecksumBySession[key] = historyState.checksum
-
-                        NotificationCenter.default.post(
-                            name: NSNotification.Name("apply-history-state"),
-                            object: nil,
-                            userInfo: [
-                                "sessionId": sessionId,
-                                "kind": kind,
-                                "state": historyState
-                            ]
-                        )
                     } catch {
                         print("Failed to decode history state: \(error)")
                     }
@@ -1678,6 +1696,16 @@ public final class SessionDataService: ObservableObject {
             includedFiles: dict["includedFiles"] as? [String] ?? [],
             forceExcludedFiles: dict["forceExcludedFiles"] as? [String] ?? []
         )
+    }
+
+    deinit {
+        if let observer = historyStateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        // Cancel all pending retry tasks
+        for (_, task) in pendingRetryTasks {
+            task.cancel()
+        }
     }
 
     // MARK: - Prompt Methods

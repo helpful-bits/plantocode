@@ -1,6 +1,6 @@
 [package]
 name = "plantocode"
-version = "1.2.5"
+version = "1.2.8"
 description = "PlanToCode Desktop"
 authors = ["kka"]
 license = ""
@@ -69,6 +69,7 @@ hostname = "0.4"
 tauri-plugin-autostart = "2.3.0"
 tauri-plugin-notification = "2.3.0"
 sysinfo = "0.30.13"
+fs2 = "0.4"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 tauri-plugin-updater = "2.9.0"

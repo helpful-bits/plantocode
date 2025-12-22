@@ -385,12 +385,12 @@
         },
         "multiModelPlanning": {
           "title": "マルチモデル移行計画",
-          "description": "GPT-5.1、Claude Sonnet 4.5、Geminiから移行戦略を生成。各モデルが異なる視点を提供—人間のレビューで最良のアプローチを統合します。",
+          "description": "GPT-5.2、Claude Sonnet 4.5、Geminiから移行戦略を生成。各モデルが異なる視点を提供—人間のレビューで最良のアプローチを統合します。",
           "link": "計画について学ぶ"
         },
         "safeRefactoring": {
           "title": "安全のためのマージ指示",
-          "description": "平文でマージ指示を書きます:「GPT-5.1のロールバック戦略を優先、Geminiのテストカバレッジを使用」。変更がどのように合成されるかを正確に制御します。",
+          "description": "平文でマージ指示を書きます:「GPT-5.2のロールバック戦略を優先、Geminiのテストカバレッジを使用」。変更がどのように合成されるかを正確に制御します。",
           "link": "マージ指示を見る"
         },
         "incrementalMigration": {
