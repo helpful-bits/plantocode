@@ -39,6 +39,15 @@ export function HeroSection() {
         <p className="mt-6 text-lg sm:text-xl text-foreground/80 max-w-4xl mx-auto">
           {tRich('hero.subtitle', '[b]AI Architect[/b] generates detailed implementation plans with exact file paths. You review and approve every change before execution. [b]Clean architecture[/b].')}
         </p>
+        <div className="mt-4 flex justify-center">
+          <iframe
+            src="https://ghbtns.com/github-btn.html?user=helpful-bits&repo=plantocode&type=star&count=true&size=large"
+            className="border-0 overflow-hidden"
+            width="170"
+            height="30"
+            title="GitHub Stars"
+          />
+        </div>
       </div>
 
       {/* Hero Content with Panels */}
