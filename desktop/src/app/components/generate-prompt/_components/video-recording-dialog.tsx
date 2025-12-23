@@ -10,7 +10,6 @@ import { AudioDeviceSelect } from '@/ui';
 import { Alert, AlertTitle, AlertDescription } from '@/ui/alert';
 import { useTaskContext } from '../_contexts/task-context';
 import { useMediaDeviceSettings } from '@/hooks/useMediaDeviceSettings';
-import { usePlausible } from '@/hooks/use-plausible';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { VideoIcon, UploadIcon, FileVideoIcon, AlertCircle } from 'lucide-react';
@@ -29,7 +28,6 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   onClose,
   onConfirm,
 }) => {
-  const { trackEvent } = usePlausible();
   const { state: taskState, actions: taskActions } = useTaskContext();
   const { activeSessionId, currentSession } = useSessionStateContext();
   const { showNotification } = useNotification();
@@ -308,12 +306,6 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
         type: 'success'
       });
 
-      trackEvent('desktop_video_analysis_file', {
-        has_prompt: Boolean(localPrompt.trim()).toString(),
-        frame_rate: selectedFrameRate,
-        location: 'video_recording_dialog'
-      });
-
       handleClose();
     } catch (error) {
       console.error('Failed to start video analysis:', error);
@@ -328,14 +320,6 @@ export const VideoRecordingDialog: React.FC<VideoRecordingDialogProps> = ({
   };
   
   const handleStart = () => {
-    // Track video recording start
-    trackEvent('desktop_video_recording_started', {
-      has_prompt: Boolean(localPrompt.trim()).toString(),
-      record_audio: recordAudio.toString(),
-      frame_rate: selectedFrameRate,
-      location: 'video_recording_dialog'
-    });
-    
     // Get task description and user prompt
     const taskDescription = taskState.taskDescriptionRef.current?.getValue() || '';
     const userPrompt = localPrompt.trim();

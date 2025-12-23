@@ -10,7 +10,6 @@ import {
 } from "@/contexts/session";
 import { Button } from "@/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/ui/tooltip";
-import { usePlausible } from "@/hooks/use-plausible";
 import { useTerminalSessions } from "@/contexts/terminal-sessions";
 
 interface TaskSectionProps {
@@ -20,7 +19,6 @@ interface TaskSectionProps {
 const TaskSection = React.memo(function TaskSection({
   disabled = false,
 }: TaskSectionProps) {
-  const { trackEvent } = usePlausible();
   const [showHelpTooltip, setShowHelpTooltip] = useState(false);
 
   const sessionState = useSessionStateContext();
@@ -135,10 +133,6 @@ const TaskSection = React.memo(function TaskSection({
         <div className="flex items-center gap-1 flex-1">
           <Button
             onClick={() => {
-              trackEvent('desktop_deep_research_started', {
-                task_length: sessionState.currentSession?.taskDescription?.length || 0,
-                location: 'task_section'
-              });
               handleWebSearch(false);
             }}
             isLoading={isDoingWebSearch}
