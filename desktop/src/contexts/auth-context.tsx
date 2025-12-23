@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import { type AuthContextType } from "../auth/auth-context-interface";
 import { useAuth0AuthHandler } from "../auth/use-auth0-auth-handler";
 import { logError } from "@/utils/error-handling";
-import { usePlausible } from "@/hooks/use-plausible";
 import { setGlobalAuthErrorHandler } from '@/utils/auth-error-handler';
 
 // No more need for separate handleRedirectResult in the context
@@ -15,7 +14,6 @@ const AuthContext = createContext<DesktopAuthContextType | undefined>(
 );
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { trackEvent } = usePlausible();
   const {
     user,
     loading,
@@ -28,23 +26,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   } = useAuth0AuthHandler();
 
   const [isTokenExpired, setTokenExpired] = useState(false);
-  const [hasTrackedLogin, setHasTrackedLogin] = useState(false);
 
   // Reset token expired state when user successfully logs in
   useEffect(() => {
     if (user && token) {
       setTokenExpired(false);
-      
-      // Track successful login (only once per session)
-      if (!hasTrackedLogin) {
-        trackEvent('desktop_login_completed', {
-          user_email: user.email || 'unknown',
-          location: 'auth_context'
-        });
-        setHasTrackedLogin(true);
-      }
     }
-  }, [user, token, hasTrackedLogin, trackEvent]);
+  }, [user, token]);
 
   useEffect(() => {
     setGlobalAuthErrorHandler(() => {

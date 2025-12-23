@@ -54,10 +54,6 @@ debug.log
 .env.development.local
 .env.test.local
 .env.production.local
-.env.backup
-.env.secrets-backup
-*.env.backup
-*.env.secrets-backup
 .env.sqlx
 core/.env
 core/.env.local

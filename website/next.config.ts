@@ -95,7 +95,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 
-  // Rewrites are handled by withPlausibleProxy wrapper
+  // Rewrites (currently none needed)
   // async rewrites() {
   //   return [];
   // },

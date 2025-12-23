@@ -15,7 +15,7 @@
     "macOSPrivateApi": false,
     "withGlobalTauri": false,
     "security": {
-      "csp": "default-src 'self' blob:; object-src 'none'; base-uri 'none'; connect-src 'self' ipc: http://ipc.localhost https: https://plausible.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com https://plausible.io; frame-src 'self' https:; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; worker-src 'self' blob:; child-src 'self' blob:;",
+      "csp": "default-src 'self' blob:; object-src 'none'; base-uri 'none'; connect-src 'self' ipc: http://ipc.localhost https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline' https://*.googleapis.com https://*.gstatic.com; frame-src 'self' https:; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; worker-src 'self' blob:; child-src 'self' blob:;",
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPDATA/**", "$DOCUMENT/**", "$CACHE/**", "$DATA/**"]

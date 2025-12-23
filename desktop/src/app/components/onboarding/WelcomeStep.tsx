@@ -4,17 +4,13 @@ import { Card } from '@/ui/card';
 import { Button } from '@/ui/button';
 import { H1, P } from '@/ui/typography';
 import { CheckCircle } from 'lucide-react';
-import { usePlausible } from '@/hooks/use-plausible';
 
 interface WelcomeStepProps {
   onGetStarted: () => void;
 }
 
 export function WelcomeStep({ onGetStarted }: WelcomeStepProps) {
-  const { trackEvent } = usePlausible();
-
   const handleGetStarted = () => {
-    trackEvent('desktop_onboarding_started', { location: 'welcome_step' });
     onGetStarted();
   };
 

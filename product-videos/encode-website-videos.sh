@@ -13,7 +13,7 @@ echo "Review each video before encoding!"
 echo ""
 
 # Navigate to the Remotion project directory
-cd /path/to/project/product-videos/remotion-project
+cd "$(dirname "$0")/remotion-project"
 
 # Create exports directory if it doesn't exist
 mkdir -p ../exports/website
