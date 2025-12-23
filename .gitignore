@@ -186,3 +186,4 @@ infrastructure/ansible/group_vars/*/secrets.yml
 /desktop/desktop/src-tauri/target/
 /example-project-claude/
 /example-project-cursor/
+__pycache__

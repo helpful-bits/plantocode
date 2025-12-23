@@ -180,4 +180,4 @@ To use this shared package in a new project:
 
 ## License
 
-Internal use only - all rights reserved.
+Licensed under the **Business Source License 1.1** (`BUSL-1.1`). See [`../../LICENSE`](../../LICENSE).

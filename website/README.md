@@ -572,4 +572,4 @@ The Voice Transcription feature page includes an interactive WER chart (D3.js) a
 
 ## License
 
-Copyright (c) 2024 PlanToCode. All rights reserved.
+Licensed under the **Business Source License 1.1** (`BUSL-1.1`). See [`../LICENSE`](../LICENSE).
