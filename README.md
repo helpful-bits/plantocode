@@ -14,19 +14,19 @@
 <td align="center" width="33%">
 <a href="https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/stable/latest.dmg">
 <strong>macOS</strong><br/>
-Direct Download (.dmg)
+Download&nbsp;(.dmg)
 </a>
 </td>
 <td align="center" width="33%">
 <a href="https://apps.microsoft.com/store/detail/9PNF5PVHN5K8">
 <strong>Windows</strong><br/>
-Microsoft Store
+Microsoft&nbsp;Store
 </a>
 </td>
 <td align="center" width="33%">
 <a href="https://apps.apple.com/app/plantocode-remote/id6752567525">
 <strong>iOS</strong><br/>
-App Store
+App&nbsp;Store
 </a>
 </td>
 </tr>
@@ -47,6 +47,16 @@ This is the **complete source code** for PlanToCode - the same code that powers 
 - Self-host your own instance
 
 **The one restriction:** You may not use this code to create a competing product or service. See the [Business Source License 1.1](./LICENSE) for details. Each version converts to Apache 2.0 four years after release.
+
+**~270,000 lines of code** across 5 components - 8 months of development, fully readable end-to-end:
+
+| Component | Technology | Lines of Code |
+|-----------|------------|---------------|
+| Desktop App | TypeScript + Rust (Tauri) | 120,000 |
+| Backend Server | Rust (Actix-Web) | 47,000 |
+| iOS App | Swift (SwiftUI) | 51,000 |
+| Marketing Website | TypeScript (Next.js) | 46,000 |
+| Infrastructure | Ansible + SQL | 6,000 |
 
 ---
 
