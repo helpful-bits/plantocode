@@ -687,7 +687,7 @@ class SessionListEventMonitor: ObservableObject {
 
 #Preview {
     SessionSelectionView(
-        projectDirectory: "/path/to/project",
+        projectDirectory: "/path/to/your/project",
         onSessionSelected: { _ in }
     )
 }

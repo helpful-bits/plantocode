@@ -1,29 +1,25 @@
 # PlanToCode
 
-PlanToCode is a powerful AI coding assistant that helps you write and manage code.
+AI-powered coding assistant that helps you plan and implement code changes. Generate implementation plans from voice, video, or text descriptions.
+
+## Features
+
+- **Voice & Video Input** - Describe your coding task by speaking or recording your screen
+- **AI-Powered Planning** - Get detailed implementation plans with step-by-step instructions
+- **Multi-Platform** - Desktop (macOS, Windows, Linux), iOS, and web
+- **Multiple AI Models** - Support for Claude, GPT-4, Gemini, and more via OpenRouter
 
 ## Project Structure
 
-This monorepo is organized into three main parts:
-
 ```
 plantocode/
-├── core/               # Core web application (Next.js)
-├── desktop/            # Desktop application (Tauri)
-└── server/             # Backend server (Rust)
+├── desktop/            # Desktop application (Tauri + Next.js)
+├── mobile/             # iOS application (Swift)
+├── website/            # Marketing website (Next.js)
+├── server/             # Backend server (Rust)
+├── infrastructure/     # Deployment configs (Ansible)
+└── docs/               # Documentation
 ```
-
-### Core
-
-The `core` directory contains the main web application built with Next.js. This is the foundation of the application with all the business logic, UI components, and API clients.
-
-### Desktop
-
-The `desktop` directory contains the Tauri-based desktop application. It imports and reuses code from the `core` application through aliases.
-
-### Server
-
-The `server` directory contains the Rust backend server. It provides authentication, handles proxying requests to AI services, and manages user data with PostgreSQL.
 
 ## Getting Started
 
@@ -36,202 +32,103 @@ The `server` directory contains the Rust backend server. It provides authenticat
 
 ### Installation
 
-Install dependencies for all packages:
-
 ```bash
+# Clone the repository
+git clone https://github.com/helpful-bits/plantocode.git
+cd plantocode
+
+# Install dependencies
 pnpm install -r
 ```
 
 ### Development
 
-#### Option 1: Running Components Individually
+#### Server
 
-Run the core web application:
-
-```bash
-cd core
-pnpm dev
-```
-
-Run the server (required for desktop app):
+The server handles authentication, billing, and proxies AI requests.
 
 ```bash
 cd server
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your API keys
+
+# Run the server
 cargo run
 ```
 
-Run the desktop application (requires server running):
+Required environment variables:
+- `OPENROUTER_API_KEY` - For AI model access via [OpenRouter](https://openrouter.ai/)
+- `AUTH0_DOMAIN`, `AUTH0_API_AUDIENCE` - For authentication
+- `DATABASE_URL` - PostgreSQL connection string
+
+#### Desktop Application
 
 ```bash
 cd desktop
 pnpm tauri:dev
 ```
 
-#### Option 2: Running the Full System
+#### Website
 
-For the full desktop experience, you need to run both the server and desktop app:
-
-1. First, set up environment variables:
-   - Create a `.env` file in the `server` directory using `.env.example` as a template
-   - Make sure to include the required API keys:
-     - `OPENROUTER_API_KEY` - API key for OpenRouter (used for all AI model access)
-     - `FIREBASE_API_KEY` and `FIREBASE_PROJECT_ID` - For authentication
-     - `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` - For billing/subscription functionality
-
-2. Start the server:
-   ```bash
-   cd server
-   cargo run
-   ```
-
-3. In another terminal, start the desktop app:
-   ```bash
-   cd desktop
-   pnpm tauri:dev
-   ```
-
-The desktop app will automatically connect to the server, which will handle authentication and proxy requests to the AI services.
-
-## Running the Server with OpenRouter
-
-The server now acts as a proxy for all AI requests using OpenRouter. To set this up:
-
-1. Get an API key from [OpenRouter](https://openrouter.ai/)
-2. Add `OPENROUTER_API_KEY=<your-key>` to your server's `.env` file
-3. The server will automatically route all AI requests through OpenRouter's unified API
-4. Usage data is tracked for each user in the `api_usage` table
-
-## Desktop Login Flow
-
-The desktop app now uses a simplified login flow:
-
-1. User authenticates with Firebase (Google, GitHub, etc.)
-2. The Firebase token is exchanged for a server JWT
-3. The token is stored in the new `TokenManager` (not directly in Stronghold)
-4. After successful login, the app fetches runtime configuration
-5. The token is used for authenticating all server requests
-
-This approach avoids Stronghold-dependent startup crashes and makes authentication more robust.
+```bash
+cd website
+pnpm dev
+```
 
 ## Building
 
-### Build the core web application:
-
-```bash
-cd core
-pnpm build
-```
-
-### Build the desktop application:
+### Desktop
 
 ```bash
 cd desktop
 pnpm tauri:build
 ```
 
-### Build the server:
+### Server
 
 ```bash
 cd server
 cargo build --release
 ```
 
-## Architecture
+### Website
 
-The application follows a modular architecture:
-
-1. The core web app contains all the UI components and business logic
-2. The desktop app reuses the core app's components but provides native features through Tauri
-3. The server provides authentication, billing, AI model proxying, and data persistence
-
-### AI Integration Architecture
-
-PlanToCode uses a server-proxy architecture for all AI model access:
-
-1. The desktop application communicates with the server through a `ServerProxyClient`
-2. The server handles authentication, billing, and rate limiting
-3. The server proxies all AI requests to OpenRouter, which provides access to various AI models
-4. OpenRouter handles routing to the appropriate model provider (Anthropic, OpenAI, etc.)
-5. Usage data and costs are tracked in the server's database for billing purposes
-6. Models, pricing, and usage data are stored in dedicated database tables
-
-## Remote Control Surface
-
-This section documents the RPC methods and events available for remote control via DeviceLink.
-
-### RPCs (Remote Procedure Calls)
-
-The following RPC methods are available for controlling implementation plans remotely:
-
-#### Plan Management
-- `actions.createImplementationPlan` - Create a new implementation plan from a task description
-- `actions.mergePlans` - Merge multiple implementation plans into one
-- `plans.save` - Save changes to an implementation plan
-- `plans.get` - Retrieve an implementation plan by ID (alias: `actions.readImplementationPlan`)
-- `plans.list` - List all implementation plans (includes both `implementation_plan` and `implementation_plan_merge` types)
-
-### Events
-
-The following events are emitted and relayed via `device-link-event`:
-
-#### Job Events (canonical names with `:` separator)
-- `job:created` - Fired when a new job is created
-- `job:deleted` - Fired when a job is deleted
-- `job:status-changed` - Fired when job status changes
-- `job:response-appended` - Fired when content is streamed/appended to job response
-- `job:stream-progress` - Fired during streaming progress updates
-- `job:finalized` - Fired when job is finalized
-- `job:tokens-updated` - Fired when token counts are updated
-- `job:cost-updated` - Fired when cost estimates are updated
-- `job:error-details` - Fired when error details are available
-- `job:metadata-updated` - Fired when job metadata changes
-
-#### Plan-Specific Events
-- `PlanCreated` - Emitted when a plan is created (includes `jobId`, `sessionId`, `projectDirectory`)
-- `PlanModified` - Emitted when plan content is saved/updated (includes `jobId`)
-- `PlanDeleted` - Emitted when a plan is deleted (includes `jobId`)
-
-### DeviceLink Relay
-
-All events are forwarded through the DeviceLink relay using the `device-link-event` wrapper:
-```json
-{
-  "type": "event-name",
-  "payload": { /* event data */ }
-}
+```bash
+cd website
+pnpm build
 ```
 
-This enables real-time synchronization between desktop and mobile clients.
+## Architecture
+
+PlanToCode uses a client-server architecture:
+
+1. **Desktop/Mobile Apps** - Native applications that provide the user interface
+2. **Server** - Rust backend handling:
+   - Authentication (Auth0)
+   - AI request proxying (OpenRouter)
+   - Usage tracking and billing (Stripe)
+   - Data persistence (PostgreSQL)
+3. **AI Integration** - All AI requests go through OpenRouter, supporting multiple providers
+
+## Self-Hosting
+
+See the [infrastructure documentation](./infrastructure/README.md) for deployment guides using Ansible.
 
 ## License
 
-Proprietary - All rights reserved
+This project is licensed under the [Functional Source License, Version 1.1, Apache 2.0 Future License](./LICENSE).
 
-## Mobile Parity Reference
+- **Free to use** for personal and internal business purposes
+- **Cannot compete** with PlanToCode's commercial offering
+- **Converts to Apache 2.0** on January 1, 2030
 
-When porting features from desktop to mobile iOS, consult these desktop implementation files:
+## Contributing
 
-### Theme and Core UI Tokens
-- `desktop/src/app/globals.css` - Colors (OKLCH), radii, animations
-- `desktop/src/ui/button.tsx` - Button variants and sizes
-- `desktop/src/ui/card.tsx` - Card spacing and borders
+Contributions are welcome! Please open an issue to discuss your proposed changes before submitting a PR.
 
-### Files Feature
-- `desktop/src/app/components/generate-prompt/file-browser.tsx` - File browser layout
-- `desktop/src/app/components/generate-prompt/_components/file-item.tsx` - File item rendering
-- `desktop/src/app/components/generate-prompt/_hooks/use-file-selection.ts` - File selection logic
+## Support
 
-### Plans Feature
-- `desktop/src/app/components/implementation-plans-panel/implementation-plans-panel.tsx` - Plans panel
-- `desktop/src/app/components/implementation-plans-panel/_components/*.tsx` - Cards, modals
-
-### Text Improvement
-- `desktop/src/contexts/text-improvement/TextImprovementProvider.tsx` - Text improvement context
-- `desktop/src/contexts/text-improvement/TextImprovementPopover.tsx` - Sparkles popover
-
-### Jobs Monitoring
-- `desktop/src/app/components/background-jobs-sidebar/*` - Job list, details, status badges
-
-### External Folders/Scoping
-- `desktop/src/app/components/generate-prompt/_components/external-folders-manager.tsx` - Folders UI
-- `desktop/src-tauri/src/jobs/workflow_orchestrator/query_service.rs` - Root directories query
+- [Website](https://www.plantocode.com)
+- [Issues](https://github.com/helpful-bits/plantocode/issues)

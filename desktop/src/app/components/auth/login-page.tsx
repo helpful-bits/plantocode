@@ -9,7 +9,6 @@ import { open } from "@/utils/shell-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
 import { Alert, AlertDescription } from "@/ui/alert";
 import { AlertCircle, Info } from "lucide-react";
-import { usePlausible } from "@/hooks/use-plausible";
 
 const logger = createLogger({ namespace: "LoginPage" });
 
@@ -39,7 +38,6 @@ const MicrosoftIcon = ({ className }: { className?: string }) => (
 );
 
 export default function LoginPage() {
-  const { trackEvent } = usePlausible();
   const { signIn, loading, error } = useAuth();
   const appName = "PlanToCode";
   const [authInProgress, setAuthInProgress] = useState(false);
@@ -80,12 +78,6 @@ export default function LoginPage() {
 
   // Handle sign-in with Auth0
   const handleSignIn = async (providerHint?: string) => {
-    // Track login attempt
-    trackEvent('desktop_login_started', {
-      provider: providerHint || 'default',
-      location: 'login_page'
-    });
-    
     // Clear any previous errors and timeout
     setLastError(null);
     setAuthInProgress(true);

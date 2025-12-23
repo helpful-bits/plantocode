@@ -18,7 +18,6 @@ import {
 import { useVoiceTranscription } from "@/hooks/use-voice-recording";
 import { TRANSCRIPTION_LANGUAGES } from "@/app/components/settings/shared/task-settings-types";
 import { AudioLevelMeter } from "./audio-level-meter";
-import { usePlausible } from "@/hooks/use-plausible";
 
 interface VoiceTranscriptionProps {
   onTranscribed: (text: string) => void;
@@ -31,7 +30,6 @@ const VoiceTranscription = function VoiceTranscription({
   onInteraction,
   disabled = false,
 }: VoiceTranscriptionProps) {
-  const { trackEvent } = usePlausible();
   const {
     // State
     status,
@@ -61,16 +59,11 @@ const VoiceTranscription = function VoiceTranscription({
   // Helper to toggle recording
   const handleToggleRecording = useCallback(async () => {
     if (isRecording) {
-      trackEvent('desktop_voice_recording_stopped', {
-        duration: recordingDuration,
-        location: 'voice_input'
-      });
       await stopRecording();
     } else {
-      trackEvent('desktop_voice_recording_started', { location: 'voice_input' });
       await startRecording();
     }
-  }, [isRecording, startRecording, stopRecording, trackEvent, recordingDuration]);
+  }, [isRecording, startRecording, stopRecording]);
 
   // Computed values
   const hasAudioDevice = availableAudioInputs.length > 0;

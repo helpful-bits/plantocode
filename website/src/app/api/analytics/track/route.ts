@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getClientIpFromHeaders } from '@/lib/request';
 
 interface TrackingEvent {
   event: string;
@@ -9,80 +8,27 @@ interface TrackingEvent {
   referrer?: string;
 }
 
-// Server-side Plausible analytics tracking (cookie-free, GDPR compliant)
-// Note: X Pixel tracking is handled client-side via XPixel component
+// Server-side analytics tracking endpoint
+// GA4 tracking is handled client-side, X Pixel is handled via XPixel component
 export async function POST(req: NextRequest) {
   try {
-    // Extract headers for proper analytics attribution
-    const userAgent = req.headers.get('user-agent') || '';
-    const clientIp = getClientIpFromHeaders(req.headers);
-    const referer = req.headers.get('referer') || '';
-    
     // Parse request body
     const body: TrackingEvent = await req.json();
-    const { event, props = {}, url, screen_width, referrer: clientReferrer } = body;
-    
+    const { event } = body;
+
     if (!event) {
       return NextResponse.json({ error: 'Event name is required' }, { status: 400 });
     }
 
-    const trackingUrl = url || referer || 'https://www.plantocode.com';
-
-    // Track with Plausible (server-side) - handles all event types
-    // Domain should match what's configured in Plausible dashboard (typically without www)
-    const plausibleDomain = process.env.NEXT_PUBLIC_PLAUSIBLE_DOMAIN || 'plantocode.com';
-    // Use the actual canonical URL (with www) for the URL field
-    const canonicalOrigin = 'https://www.plantocode.com';
-
-    // Make URL absolute
-    let plausibleUrl = trackingUrl;
-    if (plausibleUrl.startsWith('/')) {
-      plausibleUrl = canonicalOrigin.replace(/\/$/, '') + plausibleUrl;
-    }
-
-    // Sanitize props (flat, scalar, ≤30 keys)
-    const sanitizedProps: Record<string, string | number | boolean> = {};
-    if (props && typeof props === 'object' && !Array.isArray(props)) {
-      const keys = Object.keys(props).slice(0, 30);
-      for (const k of keys) {
-        const v = props[k];
-        if (v == null) continue;
-        const t = typeof v;
-        if (t === 'string' || t === 'number' || t === 'boolean') {
-          sanitizedProps[k] = v;
-        }
-      }
-    }
-
-    const plausibleRequest = {
-      name: event,
-      props: sanitizedProps,
-      domain: plausibleDomain,
-      url: plausibleUrl,
-      referrer: clientReferrer || '',
-      screen_width: screen_width || 0,
-    };
-
-    const plausibleFetch = fetch('https://plausible.io/api/event', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': userAgent,
-        'X-Forwarded-For': clientIp || '',
-      },
-      body: JSON.stringify(plausibleRequest),
-    });
-
-    // Fire and forget - don't wait for response
-    plausibleFetch.catch(() => {});
-
+    // This endpoint exists for future server-side tracking needs
+    // Currently, GA4 is tracked client-side and X Pixel via consent-gated component
     return NextResponse.json({
       success: true,
-      message: 'Event tracked with Plausible Analytics (cookie-free)'
+      message: 'Event received'
     });
   } catch (error) {
     console.error('Analytics tracking error:', error);
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to track event',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });

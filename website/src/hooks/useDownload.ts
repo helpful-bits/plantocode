@@ -22,7 +22,7 @@ export function useDownload({ location }: UseDownloadOptions): UseDownloadReturn
       event.preventDefault();
     }
 
-    // Track with Plausible (server-side, cookie-free)
+    // Track download click
     track({
       event: 'download_click',
       props: {

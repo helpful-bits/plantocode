@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { WelcomeStep } from './WelcomeStep';
 import { TrayExplanationStep } from './TrayExplanationStep';
-import { usePlausible } from '@/hooks/use-plausible';
 
 type OnboardingState = 'welcome' | 'tray-explanation';
 
@@ -12,7 +11,6 @@ interface OnboardingFlowProps {
 }
 
 export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
-  const { trackEvent } = usePlausible();
   const [state, setState] = useState<OnboardingState>('welcome');
 
   const handleGetStarted = () => {
@@ -21,10 +19,6 @@ export function OnboardingFlow({ onOnboardingComplete }: OnboardingFlowProps) {
   };
 
   const handleTrayExplanationContinue = () => {
-    // Track completion
-    trackEvent('desktop_onboarding_completed', {
-      location: 'onboarding_flow'
-    });
     // Complete onboarding after tray explanation
     onOnboardingComplete();
   };

@@ -144,7 +144,7 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public folder / static assets
      * Note: Legal pages remain accessible worldwide for transparency
-     * Note: Plausible proxy paths (/js/script*, /api/event) are handled by withPlausibleProxy
+     * Note: Analytics handled via GA4 and consent-gated X Pixel
      * Note: This matcher also handles locale routing for all content pages
      */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
