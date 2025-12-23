@@ -2,6 +2,7 @@
   "name": "plantocode-ad-components",
   "version": "1.0.0",
   "description": "Marketing ad components for PlanToCode",
+  "private": true,
   "main": "index.js",
   "scripts": {
     "dev": "serve .",
@@ -21,7 +22,7 @@
     "plantocode"
   ],
   "author": "PlanToCode Team",
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "devDependencies": {
     "serve": "^14.2.1",
     "typescript": "^5.3.3"

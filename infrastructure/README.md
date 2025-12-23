@@ -89,14 +89,12 @@ ansible/
 └── site-app.yml          # Application deployment only
 ```
 
-## Server Information
+## Server Requirements
 
-- **Server**: Hetzner Dedicated (Server Auction #2759303)
-- **IP**: YOUR_EU_SERVER_IP
-- **OS**: Ubuntu 24.04 LTS
-- **RAM**: 64GB
-- **PostgreSQL**: 17 (configured for 16GB shared_buffers)
-- **Redis**: 7 (configured for 4GB max memory)
+- **OS**: Ubuntu 24.04 LTS (recommended)
+- **RAM**: 8GB minimum, 16GB+ recommended
+- **PostgreSQL**: 17+
+- **Redis**: 7+
 
 ## Common Operations
 
@@ -465,4 +463,6 @@ Configure cache rules to bypass specific paths to prevent API and analytics inte
 
 ## Additional Documentation
 
-- [RUST_DEPLOYMENT.md](./RUST_DEPLOYMENT.md) - Rust binary deployment guide
+- [rust-deployment.md](./ansible/rust-deployment.md) - Rust binary deployment guide
+- [zero-downtime-deployment.md](./ansible/zero-downtime-deployment.md) - Zero-downtime deployment strategy
+- [operations.md](./ansible/operations.md) - Day-to-day operations guide
