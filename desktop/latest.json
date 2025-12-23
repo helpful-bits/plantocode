@@ -1,11 +1,11 @@
 {
-  "version": "1.2.7",
-  "notes": "Version 1.2.7 Release\n\n- Fixed device link client initialization on fresh installs\n- Improved server URL resolution for mobile connectivity\n- Fixed settings save race condition in background settings UI",
-  "pub_date": "2025-12-03T12:35:00Z",
+  "version": "1.2.8",
+  "notes": "Version 1.2.8 Release",
+  "pub_date": "2025-12-22T09:45:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3Y1WUd6ODk0bjdNU3dmQk5PQXNaVVk4ZDVXMUNzUGZUdlBhQmd6ZEJPaFJmTXgrRy9iNlVWNzllc2M3TXY4dkNMVnoyUnZwR1RzR3FGYzV6bXFLV3dFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY0NzY1MjQ3CWZpbGU6UGxhblRvQ29kZV8xLjIuN19hYXJjaDY0LmFwcC50YXIuZ3oKWXNhVEVjOG1iTm9IRDBkVkRNcXMySzJUTXRHM0FSNzBMeGxQM0hidDZVRWtHYXB2VXNsYzk5UTBaMGppcjRiYzNDWGVDN3d5NUhUYzk5UHhMZzdkQWc9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.7/PlanToCode-1.2.7.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN25JdmZGNUJhQTJnZmtXTGZYNDhqUS9NR1NRWXIvWlhIYzB0c2ErT2RyUXpvWVFpQ1RzTlFIT0Ftc0pyK05oTFdtUndPSm0ySHVuNytmM05xUnhKaVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY2Mzk2NzM3CWZpbGU6UGxhblRvQ29kZV8xLjIuOF9hYXJjaDY0LmFwcC50YXIuZ3oKLzNOT2dIUmFPYytLNFlVWi9LUDZjWVJTRkZjTks5V3YrSERzVTBqTTlVR3hOdVZYZWczNkZidk5FbGZMNXJKRjE5ay9MTkNWVHpsOEhVRjRFOFhYQVE9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.8/PlanToCode-1.2.8.tar.gz"
     }
   }
 }
