@@ -40,13 +40,18 @@ export function HeroSection() {
           {tRich('hero.subtitle', '[b]AI Architect[/b] generates detailed implementation plans with exact file paths. You review and approve every change before execution. [b]Clean architecture[/b].')}
         </p>
         <div className="mt-4 flex justify-center">
-          <iframe
-            src="https://ghbtns.com/github-btn.html?user=helpful-bits&repo=plantocode&type=star&count=true&size=large"
-            className="border-0 overflow-hidden"
-            width="170"
-            height="30"
-            title="GitHub Stars"
-          />
+          <a
+            href="https://github.com/helpful-bits/plantocode/stargazers"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:opacity-80 transition-opacity"
+          >
+            <img
+              src="https://img.shields.io/github/stars/helpful-bits/plantocode?style=social"
+              alt="GitHub Stars"
+              className="h-8"
+            />
+          </a>
         </div>
       </div>
 
