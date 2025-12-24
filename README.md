@@ -60,31 +60,40 @@ This is the **complete source code** for PlanToCode - the same code that powers 
 
 ---
 
-PlanToCode helps developers bridge the gap between *what they want to build* and *how to build it*. Describe your coding task naturally - speak it, record your screen, or type it - and get a detailed, step-by-step implementation plan powered by AI.
+PlanToCode helps developers create **detailed architectural implementation plans** for coding agents. Describe your task naturally - speak it, record your screen, or type it - and get a structured plan with exact file operations, validation checkpoints, and context slices from your codebase.
 
 ## Why PlanToCode?
 
-Traditional AI coding assistants give you code snippets. PlanToCode gives you a **complete implementation strategy**:
+PlanToCode creates **detailed architectural implementation plans** designed for safe handoff to coding agents. Instead of generating code directly, it:
 
-- **Natural Input**  -  Describe tasks the way you think about them: voice recordings, screen captures, or text
-- **Detailed Plans**  -  Get step-by-step instructions, not just code fragments
-- **Context-Aware**  -  Analyzes your project structure and selected files
-- **Model Flexibility**  -  Use Claude, GPT-4, Gemini, or 10+ other AI models
+- **Isolates Work Scope**  -  Intelligently identifies relevant files from large codebases using multi-stage AI filtering
+- **Creates Verifiable Context**  -  Builds a precise context slice with exact file contents and project structure
+- **Architectural Focus**  -  Generates step-by-step plans detailing what changes to make in each file
+- **Enables Safe Handoff**  -  Produces machine-readable plans with validation checkpoints for coding agents
+
+### Input Methods
+- **Voice Input**  -  Speak naturally - OpenAI's GPT-4o auto-detects language and applies intelligent corrections
+- **Screen Recording**  -  Record your screen with AI-powered video analysis to show exactly what you're working on
+- **Rich Text Editor**  -  Write and refine your task description with persistent undo/redo history
+
+### Additional Features
+- **Model Flexibility**  -  Use Claude, GPT, Gemini, Grok, or other AI models
 - **Cost Transparent**  -  See token usage and costs before and after generation
 
 ## Features
 
 ### Multi-Modal Input
-- **Voice Recording**  -  Speak your task description with real-time transcription
-- **Screen Recording**  -  Capture your screen to show what you're working on
-- **Video Analysis**  -  AI vision models extract context from recordings
-- **Text Input**  -  Traditional text description with AI-powered enhancement
+- **Voice Recording**  -  OpenAI's GPT-4o transcription with automatic language detection and intelligent corrections
+- **Screen Recording**  -  Capture screen areas with configurable frame rate and optional audio
+- **Video Analysis**  -  Import existing videos or analyze recordings with AI vision models
+- **Text Editor**  -  Full-featured editor with SQLite-persisted undo/redo history
 
 ### Implementation Planning
-- **Step-by-Step Plans**  -  Detailed instructions organized by file and task
-- **Terminal Commands**  -  Execute commands directly from your plan
-- **Plan Merging**  -  Combine multiple approaches into one cohesive strategy
-- **Web Search Integration**  -  Optionally include web research for up-to-date solutions
+- **Architectural Plans**  -  File operations with exact paths, changes, and validation checkpoints
+- **Intelligent File Discovery**  -  Multi-stage AI filtering to identify relevant files from large codebases
+- **Plan Merging**  -  Synthesize multiple approaches into a superior consolidated strategy
+- **Web Search Integration**  -  Incorporate web research findings into implementation plans
+- **Coding Agent Ready**  -  Machine-readable XML format designed for handoff to coding agents
 
 ### Project Integration
 - **File Browser**  -  Select relevant files to include as context
@@ -94,18 +103,21 @@ Traditional AI coding assistants give you code snippets. PlanToCode gives you a 
 
 ### Cross-Platform
 - **Desktop**  -  Native apps for macOS, Windows, and Linux (Tauri)
-- **iOS**  -  Native mobile app with full feature parity
-- **Synced**  -  Real-time synchronization between devices
+- **iOS Companion**  -  Remote control your desktop, dictate tasks, monitor jobs, and access terminal from anywhere
+- **Real-time Sync**  -  Changes sync instantly between mobile and desktop via relay connections
 
 ## Project Structure
 
 ```
 plantocode/
 ├── desktop/            # Desktop app (Tauri + React + TypeScript)
-├── mobile/             # iOS app (Swift + SwiftUI)
+├── mobile/
+│   └── ios/            # iOS app (Swift + SwiftUI)
 ├── server/             # Backend API (Rust + Actix-Web)
-├── website/            # Marketing site (Next.js)
-├── infrastructure/     # Deployment automation (Ansible)
+├── website/            # Marketing website (Next.js)
+├── marketing/          # Marketing tools and ad campaigns
+├── product-videos/     # Product video assets (Remotion)
+├── infrastructure/     # Deployment (Ansible) + database migrations
 └── docs/               # Documentation
 ```
 
@@ -126,7 +138,7 @@ git clone https://github.com/helpful-bits/plantocode.git
 cd plantocode
 
 # Install dependencies
-pnpm install -r
+pnpm install
 ```
 
 ### Running the Server
@@ -140,10 +152,13 @@ cargo run
 ```
 
 **Required environment variables:**
+
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `OPENROUTER_API_KEY` | AI model access via [OpenRouter](https://openrouter.ai/) |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API access |
+| `OPENAI_API_KEY` | OpenAI API access |
+| `GOOGLE_API_KEYS` | Google Gemini API access |
 | `AUTH0_DOMAIN` | Auth0 tenant domain |
 | `AUTH0_API_AUDIENCE` | Auth0 API identifier |
 | `REDIS_URL` | Redis connection for rate limiting |
@@ -192,43 +207,48 @@ pnpm build
 ## Architecture
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   Desktop   │     │     iOS     │     │   Website   │
-│    (Tauri)  │     │   (Swift)   │     │  (Next.js)  │
-└──────┬──────┘     └──────┬──────┘     └──────┬──────┘
-       │                   │                   │
-       └───────────────────┼───────────────────┘
-                           │
-                    ┌──────▼──────┐
-                    │   Server    │
-                    │   (Rust)    │
-                    └──────┬──────┘
-                           │
-       ┌───────────────────┼───────────────────┐
-       │                   │                   │
-┌──────▼──────┐     ┌──────▼──────┐     ┌──────▼──────┐
-│  OpenRouter │     │ PostgreSQL  │     │    Redis    │
-│  (AI Models)│     │  (Database) │     │   (Cache)   │
-└─────────────┘     └─────────────┘     └─────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        Client Apps                           │
+│  ┌─────────────┐     ┌─────────────┐                         │
+│  │   Desktop   │     │     iOS     │      ┌─────────────┐    │
+│  │   (Tauri)   │     │   (Swift)   │      │   Website   │    │
+│  └──────┬──────┘     └──────┬──────┘      │  (Next.js)  │    │
+│         │                   │             │  static only│    │
+│         └─────────┬─────────┘             └─────────────┘    │
+└───────────────────┼──────────────────────────────────────────┘
+                    │
+         ┌──────────┼──────────┐
+         ▼                     ▼
+   ┌───────────┐        ┌─────────────┐
+   │   Auth0   │        │   Server    │
+   │   (Auth)  │◄──────►│   (Rust)    │
+   └───────────┘        └──────┬──────┘
+                               │
+         ┌─────────────────────┼─────────────────────┐
+         ▼                     ▼                     ▼
+   ┌───────────┐        ┌───────────┐         ┌───────────┐
+   │    AI     │        │ PostgreSQL│         │  Stripe   │
+   │ Providers │        │   Redis   │         │ (Billing) │
+   └───────────┘        └───────────┘         └───────────┘
 ```
 
 ### Server Capabilities
 
 - **Authentication**  -  Auth0 with OAuth (Google, GitHub, Microsoft, Apple)
-- **AI Proxying**  -  Routes requests to OpenRouter or direct provider APIs
+- **AI Proxying**  -  Routes requests directly to AI provider APIs (Anthropic, OpenAI, Google, xAI)
 - **Billing**  -  Stripe integration with usage-based pricing
 - **Rate Limiting**  -  Redis-backed protection against abuse
 - **Multi-Region**  -  Deploy to US and EU for data residency
 
 ### Supported AI Models
 
-Via [OpenRouter](https://openrouter.ai/), PlanToCode supports:
-- Anthropic Claude (3.5 Sonnet, 3 Opus, etc.)
-- OpenAI GPT-4, GPT-4 Turbo, GPT-4o
-- Google Gemini Pro, Gemini Flash
-- And many more...
+PlanToCode connects directly to AI providers for optimal performance and reliability:
+- **Anthropic** - Claude models
+- **OpenAI** - GPT and reasoning models
+- **Google** - Gemini models
+- **xAI** - Grok models
 
-You can also configure direct API access for specific providers.
+[OpenRouter](https://openrouter.ai/) is available as a fallback and for additional model access.
 
 ## Self-Hosting
 
@@ -260,7 +280,7 @@ See [infrastructure/README.md](./infrastructure/README.md) for detailed deployme
 | Database | PostgreSQL, Redis |
 | Auth | Auth0 (PKCE OAuth) |
 | Payments | Stripe |
-| AI | OpenRouter, direct provider APIs |
+| AI | Direct provider APIs (Anthropic, OpenAI, Google, xAI) |
 | Infrastructure | Ansible, systemd |
 
 ## What You Can Learn
@@ -271,14 +291,18 @@ This repository is a comprehensive example of building a modern, production-read
 - Building cross-platform desktop apps with Tauri 2.x
 - React 19 with TypeScript and Vite
 - Native system integration (file system, screen recording, audio capture)
-- SQLite for local data persistence
+- SQLite for local data persistence (sessions, undo/redo history, settings)
 - IPC communication between Rust backend and React frontend
 
 ### Mobile Development (Swift + SwiftUI)
-- Native iOS app architecture with SwiftUI
+- Native iOS companion app with SwiftUI
+- WebSocket relay connections to desktop devices
+- Remote terminal via PTY over RPC
+- Voice dictation with AVAudioEngine
+- Push notifications for job completion
 - Keychain integration for secure credential storage
 - Auth0 PKCE authentication flow
-- Region-aware API client patterns
+- StoreKit 2 for in-app subscriptions
 
 ### Backend Development (Rust)
 - Actix-Web REST API design
@@ -289,7 +313,7 @@ This repository is a comprehensive example of building a modern, production-read
 - Middleware for auth, rate limiting, and logging
 
 ### AI Integration
-- OpenRouter API integration for multi-model support
+- Direct API integration with multiple providers (Anthropic, OpenAI, Google, xAI)
 - Streaming AI responses to clients
 - Token counting and cost estimation
 - Vision model integration for video/image analysis
@@ -323,7 +347,7 @@ This project is licensed under the [Business Source License 1.1](./LICENSE).
 - **Not Allowed**  -  Creating a competing product or service
 - **Future**  -  Converts to Apache 2.0 four years after each version's release
 
-For commercial licensing inquiries, contact [helpful bits GmbH](https://www.plantocode.com).
+For commercial licensing inquiries, contact [helpful bits GmbH](https://www.helpfulbits.com).
 
 ## Contributing
 
@@ -342,4 +366,4 @@ Contributions are welcome! Please:
 
 ---
 
-Built with care by [helpful bits GmbH](https://www.plantocode.com)
+Built with care by [helpful bits GmbH](https://www.helpfulbits.com)
