@@ -263,6 +263,77 @@
           when: old_releases.files | length > 5
 
     # ========================================
+    # ZERO-DOWNTIME DEPLOYMENT (Blue-Green)
+    # ========================================
+    - name: Zero-Downtime Deploy with Blue-Green
+      tags: [deploy-zerodowntime]
+      block:
+        - name: Check if local binary exists
+          delegate_to: localhost
+          become: no
+          stat:
+            path: "{{ local_binary_path }}"
+          register: binary_stat
+
+        - name: Fail if binary not found
+          fail:
+            msg: "Binary not found at {{ local_binary_path }}. Build it first with: cross build --release --target x86_64-unknown-linux-gnu"
+          when: not binary_stat.stat.exists
+
+        - name: Create environment file from template
+          template:
+            src: templates/app.env.j2
+            dest: "{{ app_dir }}/config/app.env"
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0600'
+
+        - name: Generate deployment timestamp
+          set_fact:
+            deploy_timestamp: "{{ ansible_date_time.epoch }}"
+
+        - name: Upload new binary to releases directory
+          copy:
+            src: "{{ local_binary_path }}"
+            dest: "{{ app_dir }}/releases/{{ app_binary }}.{{ deploy_timestamp }}"
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            mode: '0755'
+
+        - name: Create/update current symlink
+          file:
+            src: "{{ app_dir }}/releases/{{ app_binary }}.{{ deploy_timestamp }}"
+            dest: "{{ app_dir }}/bin/{{ app_binary }}"
+            state: link
+            owner: "{{ app_user }}"
+            group: "{{ app_group }}"
+            force: yes
+
+        - name: Execute zero-downtime deployment
+          command: /usr/local/bin/plantocode-zero-downtime deploy {{ app_dir }}/bin/{{ app_binary }}
+          register: deploy_result
+
+        - name: Show deployment result
+          debug:
+            msg: "{{ deploy_result.stdout_lines }}"
+
+        - name: Verify deployment health
+          uri:
+            url: "http://localhost:{{ app_port }}/health"
+            status_code: 200
+          register: health_check
+          until: health_check.status == 200
+          retries: 30
+          delay: 1
+
+        - name: Deployment complete
+          debug:
+            msg:
+              - "Zero-downtime deployment successful!"
+              - "Timestamp: {{ deploy_timestamp }}"
+              - "Health Check: Passed"
+
+    # ========================================
     # BLUE/GREEN DEPLOYMENT SETUP
     # ========================================
     - name: Blue/Green prerequisites (services, upstream, tools)

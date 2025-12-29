@@ -1189,8 +1189,12 @@ public struct CommandRouter {
                 throw ServerRelayError.serverError("rpc_error", error.message)
             }
 
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
+            if let result = response.result?.value, !(result is NSNull) {
+                let sanitized = HistoryStateSanitizer.sanitizeForRPC(result)
+                guard JSONSerialization.isValidJSONObject(sanitized) else {
+                    throw ServerRelayError.invalidState("Invalid history state response")
+                }
+                let data = try JSONSerialization.data(withJSONObject: sanitized)
                 return try JSONDecoder().decode(HistoryState.self, from: data)
             }
         }
@@ -1228,8 +1232,12 @@ public struct CommandRouter {
                 throw ServerRelayError.serverError("rpc_error", error.message)
             }
 
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
+            if let result = response.result?.value, !(result is NSNull) {
+                let sanitized = HistoryStateSanitizer.sanitizeForRPC(result)
+                guard JSONSerialization.isValidJSONObject(sanitized) else {
+                    throw ServerRelayError.invalidState("Invalid sync result response")
+                }
+                let data = try JSONSerialization.data(withJSONObject: sanitized)
                 return try JSONDecoder().decode(HistoryState.self, from: data)
             }
         }
@@ -1264,8 +1272,12 @@ public struct CommandRouter {
                 throw ServerRelayError.serverError("rpc_error", error.message)
             }
 
-            if let result = response.result?.value {
-                let data = try JSONSerialization.data(withJSONObject: result)
+            if let result = response.result?.value, !(result is NSNull) {
+                let sanitized = HistoryStateSanitizer.sanitizeForRPC(result)
+                guard JSONSerialization.isValidJSONObject(sanitized) else {
+                    throw ServerRelayError.invalidState("Invalid merge result response")
+                }
+                let data = try JSONSerialization.data(withJSONObject: sanitized)
                 return try JSONDecoder().decode(HistoryState.self, from: data)
             }
         }

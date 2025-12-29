@@ -6,7 +6,8 @@ import Cookies from 'js-cookie';
 /**
  * GDPR-Compliant Cookie Consent Banner
  *
- * Manages user consent for non-essential cookies (X/Twitter Pixel).
+ * Manages user consent for non-essential cookies and analytics tracking.
+ * Used by: X/Twitter Pixel, Google Analytics, and other marketing tools.
  * Styled to match the PlanToCode design system (OKLCH colors, glass effects).
  *
  * Cookie: plantocode_cookie_consent
@@ -72,7 +73,7 @@ export function CookieConsent() {
                 🍪 We use cookies
               </h3>
               <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-2xl">
-                By clicking "Accept", you consent to the use of cookies for X (Twitter) ad conversion tracking.{' '}
+                We use cookies and similar technologies to improve your experience, analyze site traffic, and for marketing purposes.{' '}
                 <a
                   href="/legal/eu/privacy"
                   className="text-primary hover:text-primary/80 underline underline-offset-2 transition-colors"

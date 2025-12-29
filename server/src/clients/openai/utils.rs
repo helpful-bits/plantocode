@@ -287,7 +287,7 @@ pub fn prepare_request_body(
                     },
                 }),
                 Some(OpenAIResponsesReasoning {
-                    effort: "high".to_string(),
+                    effort: "xhigh".to_string(),
                     summary: "auto".to_string(),
                 }),
                 Some(false), // Store is set to false for web search

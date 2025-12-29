@@ -1,6 +1,6 @@
 # Upstream configuration for blue-green deployment
-# NOTE: Provisioning-only template. Live updates are managed by /usr/local/bin/vibe-zero-downtime during deployments.
-upstream vibe_backend {
+# NOTE: Provisioning-only template. Live updates are managed by /usr/local/bin/plantocode-zero-downtime during deployments.
+upstream plantocode_backend {
     # Blue server (port 8080)
     {% if active_color == 'blue' or active_color == 'both' %}
     server 127.0.0.1:8080{% if active_color == 'both' %} weight={% if preferred_color == 'blue' %}10{% else %}1{% endif %}{% endif %};

@@ -18,6 +18,13 @@ import UIKit
 
 private let MOBILE_TERMINAL_RING_MAX_BYTES = 8 * 1_048_576
 
+/// Maximum snapshot size to emit on subscription: 64KB
+/// Larger snapshots are trimmed to prevent overwhelming SwiftTerm
+private let MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES = 64 * 1024
+
+/// Chunk size for emitting snapshots: 16KB chunks with delays
+private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 16 * 1024
+
 private enum TerminalSessionLifecycle: Equatable {
     case initializing
     case active
@@ -43,6 +50,29 @@ private struct ByteRing {
 
     func snapshot() -> Data {
         return self.storage
+    }
+
+    /// Returns a trimmed snapshot limited to the last `maxSize` bytes.
+    func trimmedSnapshot(maxSize: Int) -> Data {
+        if self.storage.count <= maxSize {
+            return self.storage
+        }
+        return Data(self.storage.suffix(maxSize))
+    }
+
+    /// Returns the snapshot as an array of chunks for gradual emission.
+    func chunkedSnapshot(maxTotalSize: Int, chunkSize: Int) -> [Data] {
+        let trimmed = trimmedSnapshot(maxSize: maxTotalSize)
+        guard !trimmed.isEmpty else { return [] }
+
+        var chunks: [Data] = []
+        var offset = 0
+        while offset < trimmed.count {
+            let endIndex = min(offset + chunkSize, trimmed.count)
+            chunks.append(Data(trimmed[offset..<endIndex]))
+            offset = endIndex
+        }
+        return chunks
     }
 
     var isEmpty: Bool {
@@ -803,11 +833,16 @@ public class TerminalDataService: ObservableObject {
     ///
     /// This method solves the PassthroughSubject race condition where terminal output sent
     /// before subscription would be lost. It returns a publisher that:
-    /// 1. First emits the current ring buffer snapshot (historical output)
+    /// 1. First emits the ring buffer snapshot in small chunks (prevents overwhelming SwiftTerm)
     /// 2. Then streams live binary frames from the desktop
     ///
     /// The ring buffer is NOT cleared on subscription, so reopening the terminal sheet
     /// always shows the most recent output immediately.
+    ///
+    /// **Key optimizations to prevent infinite scrolling:**
+    /// - Snapshot is trimmed to the last 64KB (vs. full 8MB ring buffer)
+    /// - Large snapshots are emitted in 16KB chunks with small delays
+    /// - This prevents overwhelming SwiftTerm and causing scroll physics conflicts
     ///
     /// - Parameter jobId: The terminal job ID
     /// - Returns: A publisher emitting raw terminal bytes (Data)
@@ -816,17 +851,31 @@ public class TerminalDataService: ObservableObject {
             return Empty().eraseToAnyPublisher()
         }
         let live = ensureBytesPublisher(for: session.id)
-        let ringSnapshot = outputRings[session.id]?.snapshot() ?? Data()
 
-        // DO NOT clear ring - keep it persistent for future subscriptions
-        // Return snapshot as single emission, then live stream
-        if !ringSnapshot.isEmpty {
-            return Just(ringSnapshot)
-                .append(live)
-                .eraseToAnyPublisher()
-        } else {
+        // Get chunked snapshot (trimmed to 64KB and split into 16KB pieces)
+        let chunks = outputRings[session.id]?.chunkedSnapshot(
+            maxTotalSize: MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES,
+            chunkSize: MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE
+        ) ?? []
+
+        if chunks.isEmpty {
             return live.eraseToAnyPublisher()
         }
+
+        // Emit chunks with small delays to allow SwiftTerm to process each chunk
+        // and calculate scroll positions before the next chunk arrives.
+        // This prevents the "fighting loop" where layout updates trigger scroll
+        // corrections that trigger new layout passes.
+        let chunkedPublisher = Publishers.Sequence(sequence: chunks)
+            .flatMap(maxPublishers: .max(1)) { chunk in
+                Just(chunk)
+                    .delay(for: .milliseconds(8), scheduler: DispatchQueue.main)
+            }
+            .eraseToAnyPublisher()
+
+        return chunkedPublisher
+            .append(live)
+            .eraseToAnyPublisher()
     }
 
     /// Get terminal log for a job (historical output)

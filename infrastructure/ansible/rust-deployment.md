@@ -37,29 +37,45 @@ codegen-units = 1
 
 ## Deployment
 
-All deployment is managed through Ansible:
+All deployment is managed through Ansible with blue-green zero-downtime deployment.
 
 ### First Time Setup
 ```bash
 # Run complete application setup (database, migrations, deployment)
 cd infrastructure/ansible
-ansible-playbook -i inventory/hosts.yml site-app.yml
+ansible-playbook -i inventory/hosts.yml -i inventory/local.yml site-app.yml --vault-password-file .vault_pass
+
+# Setup blue-green infrastructure (run once)
+ansible-playbook -i inventory/hosts.yml -i inventory/local.yml playbooks/plantocode/rust-deploy.yml --tags bluegreen --vault-password-file .vault_pass
 ```
 
-### Deploy New Version
+### Deploy New Version (Zero-Downtime)
 ```bash
 # Build locally
 cd server
 cross build --release --target x86_64-unknown-linux-gnu
 
-# Deploy to server
+# Deploy with zero downtime (recommended)
 cd ../infrastructure/ansible
-ansible-playbook -i inventory/hosts.yml site-app.yml --tags deploy
+ansible-playbook -i inventory/hosts.yml -i inventory/local.yml playbooks/plantocode/rust-deploy.yml --tags deploy-zerodowntime --vault-password-file .vault_pass
+```
+
+The zero-downtime deployment:
+1. Starts the new version on the alternate port (blue/green)
+2. Health checks the new instance
+3. Gradually migrates traffic (99% new, 1% old)
+4. Waits for old connections to drain
+5. Stops the old instance
+
+### Legacy Deploy (causes brief downtime)
+```bash
+# Only use if blue-green is not set up
+ansible-playbook -i inventory/hosts.yml -i inventory/local.yml playbooks/plantocode/rust-deploy.yml --tags deploy --vault-password-file .vault_pass
 ```
 
 ### Rollback if Needed
 ```bash
-ansible-playbook -i inventory/hosts.yml playbooks/plantocode/rust-deploy.yml --tags rollback
+ansible-playbook -i inventory/hosts.yml -i inventory/local.yml playbooks/plantocode/rust-deploy.yml --tags rollback --vault-password-file .vault_pass
 ```
 
 **Warning:** This is a potentially dangerous operation. The 'rollback' tag is intentionally marked with 'never' in the playbook to prevent accidental execution. You must explicitly use '--tags rollback' to run it.
