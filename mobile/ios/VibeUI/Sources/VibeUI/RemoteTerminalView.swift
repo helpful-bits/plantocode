@@ -689,11 +689,10 @@ class SwiftTermController: NSObject, ObservableObject {
     private var framesSinceLastData: Int = 0
     private static let burstThreshold: TimeInterval = 0.1 // 100ms between chunks = burst mode
     private static let burstCooldown: TimeInterval = 0.5 // Stay in burst mode for 500ms after last data
-    private static let minFlushInterval: TimeInterval = 0.15 // ~6-7fps - aggressive coalescing to eliminate TUI flicker
+    // Flush interval: 250ms (~4fps) - aggressive coalescing to collect complete TUI screen states
+    // This prevents "scrolling up and down" artifact from flushing mid-redraw during Claude Code updates
+    private static let minFlushInterval: TimeInterval = 0.25
     private var lastFlushAt: Date = .distantPast
-
-    // Escape sequence buffering to avoid flushing mid-sequence
-    private static let escapeChar: UInt8 = 0x1B // ESC
 
     // Background/foreground handling: pause feeding when app is backgrounded
     private var isFeedingPaused: Bool = false
@@ -886,84 +885,36 @@ class SwiftTermController: NSObject, ObservableObject {
         guard let terminalView = terminalView else { return }
         guard !batchBuffer.isEmpty || !pendingData.isEmpty else { return }
 
-        var didFeedData = false
+        // CRITICAL: Capture buffer contents BEFORE any operations that might trigger reentrancy.
+        // terminalView.feed() can pump the run loop, allowing feedBytes() to be called again.
+        // If we don't snapshot first, the buffer indices can become invalid mid-iteration,
+        // causing EXC_BREAKPOINT crashes in Data subscript operations.
+        let pendingDataSnapshot = pendingData
+        let batchBufferSnapshot = batchBuffer
+        pendingData.removeAll()
+        batchBuffer.removeAll(keepingCapacity: true)
 
-        // Wrap all feed and scroll operations in performWithoutAnimation
+        // Wrap feed operations in performWithoutAnimation
         // to prevent Core Animation from interpolating between terminal frames
-        UIView.performWithoutAnimation { [self] in
+        UIView.performWithoutAnimation {
             // Feed any pre-terminal buffered data first
-            if !pendingData.isEmpty {
-                for buffered in pendingData {
-                    let buffer = ArraySlice([UInt8](buffered))
-                    terminalView.feed(byteArray: buffer)
-                }
-                pendingData.removeAll()
-                didFeedData = true
+            for buffered in pendingDataSnapshot {
+                let buffer = ArraySlice([UInt8](buffered))
+                terminalView.feed(byteArray: buffer)
             }
 
-            // Feed batched data
-            if !batchBuffer.isEmpty {
-                // Check if buffer ends with incomplete escape sequence
-                // If so, hold back the incomplete part for next flush
-                let holdbackData = extractIncompleteEscapeSequence()
-
-                if !batchBuffer.isEmpty {
-                    let buffer = ArraySlice([UInt8](batchBuffer))
-                    terminalView.feed(byteArray: buffer)
-                    batchBuffer.removeAll(keepingCapacity: true)
-                    didFeedData = true
-                }
-
-                // Put back the incomplete escape sequence for next flush
-                if let holdback = holdbackData {
-                    batchBuffer.append(holdback)
-                }
+            // Feed batched data directly - SwiftTerm handles incomplete escape sequences internally
+            if !batchBufferSnapshot.isEmpty {
+                let buffer = ArraySlice([UInt8](batchBufferSnapshot))
+                terminalView.feed(byteArray: buffer)
             }
 
-            // Let SwiftTerm handle scrolling naturally - don't force repositionVisibleFrame
-            // Forcing scroll on every flush causes visible jumping with TUI output
+            // CRITICAL: Do NOT call repositionVisibleFrame() here!
+            // SwiftTerm handles cursor visibility internally. Calling repositionVisibleFrame()
+            // causes "fighting loop" where our scroll conflicts with SwiftTerm's cursor-following
+            // behavior during TUI redraws (like Claude Code's progress display).
+            // Let SwiftTerm manage all scrolling naturally.
         }
-    }
-
-    /// Extract incomplete escape sequence from end of buffer to avoid mid-sequence flush
-    /// Returns the incomplete portion to hold back, and modifies batchBuffer in place
-    private func extractIncompleteEscapeSequence() -> Data? {
-        guard batchBuffer.count > 0 else { return nil }
-
-        // Look for ESC character in last 32 bytes (escape sequences are typically short)
-        let searchStart = max(0, batchBuffer.count - 32)
-        let searchRange = searchStart..<batchBuffer.count
-
-        // Find last ESC character
-        guard let escIndex = batchBuffer[searchRange].lastIndex(of: Self.escapeChar) else {
-            return nil
-        }
-
-        // Check if this escape sequence is complete
-        // Most escape sequences end with a letter (a-zA-Z) or specific terminators
-        let sequenceData = batchBuffer[escIndex...]
-
-        // If sequence is just ESC or ESC[, it's definitely incomplete
-        if sequenceData.count <= 2 {
-            let holdback = Data(batchBuffer[escIndex...])
-            batchBuffer.removeSubrange(escIndex...)
-            return holdback
-        }
-
-        // Check if CSI sequence (ESC [) - these end with a letter
-        if sequenceData.count >= 2 && sequenceData[sequenceData.startIndex + 1] == 0x5B { // '['
-            // CSI sequence - check if terminated
-            let lastByte = sequenceData[sequenceData.endIndex - 1]
-            let isTerminated = (lastByte >= 0x40 && lastByte <= 0x7E) // @ to ~
-
-            if !isTerminated {
-                let holdback = Data(batchBuffer[escIndex...])
-                batchBuffer.removeSubrange(escIndex...)
-                return holdback
-            }
-        }
-
-        return nil
     }
 
     func send(data: [UInt8]) {
@@ -1179,8 +1130,9 @@ struct SwiftTerminalView: UIViewRepresentable {
             terminalView.setValue(true, forKey: "applicationCursor")
         }
 
-        // Note: repositionVisibleFrame() is called after each batch flush in flushBatchBuffer()
-        // and after resize transitions complete to keep the terminal scrolled to latest output
+        // Note: We intentionally do NOT call repositionVisibleFrame() after batch flushes.
+        // SwiftTerm handles cursor visibility and scrolling internally. Forcing scroll position
+        // causes "fighting loop" during TUI redraws (like Claude Code's progress display).
 
         // Enable keyboard input
         terminalView.isUserInteractionEnabled = true

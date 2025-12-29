@@ -12,7 +12,7 @@ HEALTH_CHECK_RETRIES=30
 HEALTH_CHECK_DELAY=2
 # Default drain timeout in seconds. Set to 0 for indefinite wait.
 # For long-running streams (e.g., 15+ minutes), use 0 or a very high value
-# Can be overridden: DRAIN_TIMEOUT=0 vibe-zero-downtime deploy /path/to/binary
+# Can be overridden: DRAIN_TIMEOUT=0 plantocode-zero-downtime deploy /path/to/binary
 DRAIN_TIMEOUT=${DRAIN_TIMEOUT:-120}
 
 # Deployment API token for authenticated endpoints

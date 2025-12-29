@@ -3,6 +3,11 @@ import CoreGraphics
 
 public enum JSONSanitizer {
     public static func sanitize(_ value: Any) -> Any {
+        // NSNull passthrough
+        if value is NSNull {
+            return value
+        }
+
         // Unwrap Optionals
         if let optional = value as? (any OptionalProtocol) {
             if let unwrapped = optional.wrappedValue {
@@ -25,8 +30,14 @@ public enum JSONSanitizer {
            value is UInt || value is UInt8 || value is UInt16 || value is UInt32 || value is UInt64 {
             return value
         }
-        if let float = value as? Float { return Double(float) }
-        if value is Double { return value }
+        if let float = value as? Float {
+            if float.isNaN || float.isInfinite { return NSNull() }
+            return Double(float)
+        }
+        if let double = value as? Double {
+            if double.isNaN || double.isInfinite { return NSNull() }
+            return double
+        }
 
         // Bool
         if let bool = value as? Bool { return bool }

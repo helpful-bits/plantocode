@@ -10,6 +10,8 @@ import { CSSFix } from '@/components/system/CSSFix';
 import { cdnUrl } from '@/lib/cdn';
 import { XPixel } from '@/components/analytics/XPixel';
 import { CookieConsent } from '@/components/analytics/CookieConsent';
+import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
+import { DatafastAnalytics } from '@/components/analytics/DatafastAnalytics';
 import Script from 'next/script';
 import { I18nProvider } from '@/components/i18n/I18nProvider';
 import { NextIntlClientProvider } from 'next-intl';
@@ -199,42 +201,6 @@ export default async function LocaleLayout({
 
   return (
     <>
-      {/* Google Analytics - GA4 */}
-      {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
-        <>
-          <Script
-            src={`https://www.googletagmanager.com/gtag/js?id=${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}`}
-            strategy="afterInteractive"
-          />
-          <Script
-            id="ga-init"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){dataLayer.push(arguments);}
-                gtag('js', new Date());
-                gtag('config', '${process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}', {
-                  page_path: window.location.pathname,
-                  send_page_view: false
-                });
-              `
-            }}
-          />
-          <Script
-            id="ga-locale"
-            strategy="afterInteractive"
-            dangerouslySetInnerHTML={{
-              __html: `
-                if (window.gtag) {
-                  window.gtag('set', {'language': '${locale}'});
-                }
-              `
-            }}
-          />
-        </>
-      )}
-
       {/* Crisp Chat Widget */}
       <Script
         id="crisp-chat"
@@ -258,6 +224,19 @@ export default async function LocaleLayout({
           {/* X Pixel - Loads ONLY after consent */}
           {process.env.NEXT_PUBLIC_X_PIXEL_ID && (
             <XPixel pixelId={process.env.NEXT_PUBLIC_X_PIXEL_ID} />
+          )}
+          {/* Google Analytics - Loads ONLY after consent */}
+          {process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID && (
+            <GoogleAnalytics
+              measurementId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}
+              locale={locale}
+            />
+          )}
+          {/* Datafast Analytics - Loads ONLY after consent */}
+          {process.env.NEXT_PUBLIC_DATAFAST_WEBSITE_ID && (
+            <DatafastAnalytics
+              websiteId={process.env.NEXT_PUBLIC_DATAFAST_WEBSITE_ID}
+            />
           )}
         </ClientProviders>
         <StructuredData data={websiteJsonLd} />
