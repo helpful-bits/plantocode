@@ -8,12 +8,11 @@ use actix::prelude::*;
 use actix_web_actors::{ws, ws::Message, ws::CloseCode, ws::CloseReason};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::repositories::device_repository::{DeviceRepository, HeartbeatRequest};
 use crate::error::AppError;
@@ -23,6 +22,113 @@ use crate::services::pending_command_queue::queue;
 use crate::services::relay_session_store::RelaySessionStore;
 use sqlx::types::BigDecimal;
 use std::str::FromStr;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterPayload {
+    pub device_id: String,
+    #[serde(default)]
+    pub device_name: Option<String>,
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub resume_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    #[serde(default)]
+    pub payload: Option<RegisterPayload>,
+    #[serde(flatten)]
+    pub root_payload: Option<RegisterPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayRequest {
+    pub method: String,
+    #[serde(default)]
+    pub params: JsonValue,
+    #[serde(default)]
+    pub correlation_id: Option<String>,
+    #[serde(default)]
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayEventPayload {
+    pub target_device_id: String,
+    pub request: RelayRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayEventMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub payload: RelayEventPayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayResponsePayload {
+    pub correlation_id: String,
+    #[serde(default)]
+    pub result: Option<JsonValue>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default = "default_true")]
+    pub is_final: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayResponseMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub client_id: String,
+    pub response: RelayResponsePayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutboundRelayMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub client_id: String,
+    #[serde(default)]
+    pub user_id: Option<String>,
+    pub request: RelayRequest,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ErrorMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub code: String,
+    pub message: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+impl ErrorMessage {
+    pub fn new(code: &str, message: &str) -> Self {
+        Self {
+            message_type: "error".to_string(),
+            code: code.to_string(),
+            message: message.to_string(),
+            timestamp: chrono::Utc::now(),
+        }
+    }
+}
 
 /// How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
@@ -140,28 +246,23 @@ impl DeviceLinkWs {
         });
     }
 
-    /// Send error message to client
     fn send_error(&self, code: &str, message: &str, ctx: &mut ws::WebsocketContext<Self>) {
-        let error_response = serde_json::json!({
-            "type": "error",
-            "code": code,
-            "message": message,
-            "timestamp": chrono::Utc::now()
-        });
-
-        ctx.text(error_response.to_string());
+        let error = ErrorMessage::new(code, message);
+        if let Ok(json) = serde_json::to_string(&error) {
+            ctx.text(json);
+        }
     }
 
     /// Parse and handle incoming message
     fn handle_message(&mut self, msg: &str, ctx: &mut ws::WebsocketContext<Self>) {
         let parsed: JsonValue = match serde_json::from_str(msg) {
             Ok(json) => json,
-            Err(e) => {
+            Err(_) => {
                 warn!(
                     connection_id = %self.connection_id,
                     "Failed to parse WebSocket message"
                 );
-                self.send_error("invalid_json", "Invalid JSON format", ctx);
+                self.send_error("invalidJson", "Invalid JSON format", ctx);
                 return;
             }
         };
@@ -232,13 +333,7 @@ impl DeviceLinkWs {
                     message_type = %message_type,
                     "Unknown message type received"
                 );
-                let error_response = serde_json::json!({
-                    "type": "error",
-                    "code": "unknown_message_type",
-                    "message": format!("Unknown message type: {}", message_type),
-                    "timestamp": chrono::Utc::now()
-                });
-                ctx.text(error_response.to_string());
+                self.send_error("unknownMessageType", &format!("Unknown message type: {}", message_type), ctx);
             }
         }
     }
@@ -286,7 +381,7 @@ impl Actor for DeviceLinkWs {
             }
         }
 
-        // Broadcast device-status offline event before cleanup
+        // Broadcast device-status disconnected event before cleanup
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager)
         {
@@ -294,7 +389,8 @@ impl Actor for DeviceLinkWs {
                 "type": "device-status",
                 "payload": {
                     "deviceId": device_id,
-                    "status": "offline"
+                    "status": "disconnected",
+                    "reason": "ws_closed"
                 }
             });
 
@@ -317,14 +413,14 @@ impl Actor for DeviceLinkWs {
                             user_id = %uid,
                             device_id = %src_dev.as_deref().unwrap_or("unknown"),
                             devices_reached = count,
-                            "Broadcasted device-status:offline event"
+                            "Broadcasted device-status:disconnected event"
                         );
                     }
                     Err(e) => {
                         warn!(
                             user_id = %uid,
                             error = %e,
-                            "Failed to broadcast device-status offline event"
+                            "Failed to broadcast device-status disconnected event"
                         );
                     }
                 }
@@ -371,48 +467,30 @@ impl Handler<RelayMessage> for DeviceLinkWs {
             "Delivering relay message to client"
         );
 
-        // Parse and validate message structure
-        if let Ok(mut obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&msg.message) {
-            let mut final_value = serde_json::Value::Object(obj.clone());
-
-            // Only wrap messages that lack both "type" and "messageType" fields
+        if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&msg.message) {
             if !obj.contains_key("type") && !obj.contains_key("messageType") {
                 warn!(
                     connection_id = %self.connection_id,
-                    log_stage = "relay:missing_type",
-                    "Wrapping untyped relay message"
+                    log_stage = "relay:invalid_message",
+                    "Rejecting message without type field"
                 );
-                final_value = serde_json::json!({
-                    "type": "relayPassthrough",
-                    "data": obj
-                });
-                obj = final_value.as_object().unwrap().clone();
-            }
-
-            // Check for snake_case keys at transport edge (rate-limited diagnostic)
-            let has_snake_case = obj.keys().any(|k| k.contains('_'));
-            if has_snake_case {
-                // Rate limit: only warn once per minute
-                static LAST_SNAKE_WARN: AtomicU64 = AtomicU64::new(0);
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_secs();
-                let last = LAST_SNAKE_WARN.load(Ordering::Relaxed);
-                if now - last > 60 {
-                    warn!(
-                        connection_id = %self.connection_id,
-                        log_stage = "relay:contract_violation",
-                        "Transport contract violation: snake_case keys at edge"
-                    );
-                    LAST_SNAKE_WARN.store(now, Ordering::Relaxed);
+                let error = ErrorMessage::new("invalid_message", "Message must have a type field");
+                if let Ok(json) = serde_json::to_string(&error) {
+                    ctx.text(json);
                 }
+                return;
             }
-
-            ctx.text(final_value.to_string());
+            ctx.text(msg.message);
         } else {
-            // Fallback: send original if parse fails
-            ctx.text(msg.message.clone());
+            warn!(
+                connection_id = %self.connection_id,
+                log_stage = "relay:invalid_json",
+                "Rejecting invalid JSON in relay message"
+            );
+            let error = ErrorMessage::new("invalid_json", "Invalid JSON in relay message");
+            if let Ok(json) = serde_json::to_string(&error) {
+                ctx.text(json);
+            }
         }
     }
 }
@@ -618,7 +696,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                             code = "invalid_payload",
                             "Registration failed: invalid payload structure"
                         );
-                        self.send_error("invalid_payload", "Invalid payload structure in register message", ctx);
+                        self.send_error("invalidPayload", "Invalid payload structure in register message", ctx);
                         return;
                     }
                 }
@@ -646,7 +724,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     "Registration failed: missing deviceId"
                 );
                 // STEP 3.2: Send proper error with message field
-                self.send_error("missing_device_id", "Device ID is required", ctx);
+                self.send_error("missingDeviceId", "Device ID is required", ctx);
                 // STEP 3.4: Explicit return after error
                 return;
             }
@@ -678,7 +756,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     "Registration failed: authentication required"
                 );
                 // STEP 3.3: Send proper error with message field
-                self.send_error("auth_required", "Authentication required", ctx);
+                self.send_error("authRequired", "Authentication required", ctx);
                 // STEP 3.4: Explicit return after error
                 return;
             }
@@ -695,7 +773,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                         code = "invalid_device_id",
                         "Registration failed: invalid device ID format"
                     );
-                    self.send_error("invalid_device_id", "Invalid device ID format", ctx);
+                    self.send_error("invalidDeviceId", "Invalid device ID format", ctx);
                     return;
                 }
             };
@@ -815,7 +893,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     log_stage = "register:resume_failed",
                     "Session resume failed, sending error and creating new session"
                 );
-                self.send_error("invalid_resume", "Session resume failed, please re-register", ctx);
+                self.send_error("invalidResume", "Session resume failed, please re-register", ctx);
 
                 // Create new session for backward compatibility
                 if let Some(relay_store) = &self.relay_store {
@@ -963,7 +1041,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 );
 
                 self.send_error(
-                    "serialization_error",
+                    "serializationError",
                     "Failed to serialize registration response",
                     ctx,
                 );
@@ -1275,7 +1353,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         let root = match msg.payload.as_object() {
             Some(obj) => obj,
             None => {
-                self.send_error("invalid_payload", "Root must be an object", ctx);
+                self.send_error("invalidPayload", "Root must be an object", ctx);
                 return;
             }
         };
@@ -1283,7 +1361,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         let outer = match root.get("payload").and_then(|v| v.as_object()) {
             Some(obj) => obj,
             None => {
-                self.send_error("invalid_payload", "Missing payload object", ctx);
+                self.send_error("invalidPayload", "Missing payload object", ctx);
                 return;
             }
         };
@@ -1291,7 +1369,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         let target_device_id = match outer.get("targetDeviceId").and_then(|v| v.as_str()) {
             Some(id) if !id.trim().is_empty() => id,
             _ => {
-                self.send_error("missing_target_device_id", "Missing or empty targetDeviceId", ctx);
+                self.send_error("missingTargetDeviceId", "Missing or empty targetDeviceId", ctx);
                 return;
             }
         };
@@ -1299,7 +1377,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         let request_obj = match outer.get("request").and_then(|v| v.as_object()) {
             Some(obj) => obj,
             None => {
-                self.send_error("invalid_rpc_payload", "Missing request object", ctx);
+                self.send_error("invalidRpcPayload", "Missing request object", ctx);
                 return;
             }
         };
@@ -1307,7 +1385,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
         let method = match request_obj.get("method").and_then(|v| v.as_str()) {
             Some(m) if !m.trim().is_empty() => m,
             _ => {
-                self.send_error("missing_method", "Missing or empty method", ctx);
+                self.send_error("missingMethod", "Missing or empty method", ctx);
                 return;
             }
         };
@@ -1325,7 +1403,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             let params_obj = match params.as_object() {
                 Some(obj) => obj,
                 None => {
-                    self.send_error("invalid_rpc_payload", "params must be an object for session.syncHistoryState", ctx);
+                    self.send_error("invalidRpcPayload", "params must be an object for session.syncHistoryState", ctx);
                     return;
                 }
             };
@@ -1333,13 +1411,13 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             let state_value = match params_obj.get("state") {
                 Some(val) => val,
                 None => {
-                    self.send_error("invalid_rpc_payload", "Missing state field", ctx);
+                    self.send_error("invalidRpcPayload", "Missing state field", ctx);
                     return;
                 }
             };
 
             if !state_value.is_object() {
-                self.send_error("invalid_rpc_payload", "state must be an object", ctx);
+                self.send_error("invalidRpcPayload", "state must be an object", ctx);
                 return;
             }
 
@@ -1396,7 +1474,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             let user_id = match self.user_id {
                 Some(id) => id,
                 None => {
-                    self.send_error("auth_required", "Authentication required", ctx);
+                    self.send_error("authRequired", "Authentication required", ctx);
                     return;
                 }
             };
@@ -1430,9 +1508,8 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                             if let Ok(envelope_value) = serde_json::from_str::<serde_json::Value>(&envelope_str) {
                                 queue().enqueue(key, envelope_value);
 
-                                // Send queued response back to mobile
                                 let queued_response = serde_json::json!({
-                                    "type": "relay_response",
+                                    "type": "relayResponse",
                                     "clientId": device_id_clone,
                                     "response": {
                                         "correlationId": correlation_id_clone,
@@ -1448,14 +1525,13 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                                     message: queued_response.to_string(),
                                 });
                             } else {
-                                // Fallback to error response if we can't parse the envelope
                                 let error_response = serde_json::json!({
-                                    "type": "relay_response",
+                                    "type": "relayResponse",
                                     "clientId": device_id_clone,
                                     "response": {
                                         "correlationId": correlation_id_clone,
                                         "result": null,
-                                        "error": "relay_failed",
+                                        "error": "relayFailed",
                                         "isFinal": true
                                     }
                                 });
@@ -1480,13 +1556,13 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
         let user_id = match self.user_id {
             Some(id) => id,
             None => {
-                self.send_error("auth_required", "Authentication required", ctx);
+                self.send_error("authRequired", "Authentication required", ctx);
                 return;
             }
         };
 
         if self.device_id.is_none() {
-            self.send_error("auth_required", "Authentication required", ctx);
+            self.send_error("authRequired", "Authentication required", ctx);
             return;
         }
 
@@ -1494,7 +1570,7 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
             Some(id) => id,
             None => {
                 self.send_error(
-                    "missing_client_id",
+                    "missingClientId",
                     "Missing clientId in relay_response message",
                     ctx,
                 );
@@ -1509,9 +1585,8 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
             .unwrap_or(JsonValue::Null);
 
         if let Some(connection_manager) = &self.connection_manager {
-            // Forward to the target mobile device
             let relay_response = serde_json::json!({
-                "type": "relay_response",
+                "type": "relayResponse",
                 "clientId": client_id,
                 "response": response_payload
             });
@@ -1540,7 +1615,7 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
                         "Failed to forward relay response"
                     );
                     self.send_error(
-                        "relay_failed",
+                        "relayFailed",
                         &format!("Failed to forward relay response: {}", e),
                         ctx,
                     );
@@ -1751,7 +1826,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
         let user_id = match self.user_id {
             Some(id) => id,
             None => {
-                self.send_error("auth_required", "Authentication required", ctx);
+                self.send_error("authRequired", "Authentication required", ctx);
                 return;
             }
         };
@@ -1763,7 +1838,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
         let payload = match payload {
             Some(p) => p,
             None => {
-                self.send_error("missing_payload", "Missing or invalid payload in terminal.binary.bind message", ctx);
+                self.send_error("missingPayload", "Missing or invalid payload in terminal.binary.bind message", ctx);
                 return;
             }
         };
@@ -1771,7 +1846,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
         let producer_device_id_original = match payload.get("producerDeviceId").and_then(|v| v.as_str()) {
             Some(id) => id.to_string(),
             None => {
-                self.send_error("missing_producer_device_id", "Missing producerDeviceId in bind request", ctx);
+                self.send_error("missingProducerDeviceId", "Missing producerDeviceId in bind request", ctx);
                 return;
             }
         };
@@ -1781,7 +1856,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
         let session_id = match payload.get("sessionId").and_then(|v| v.as_str()) {
             Some(id) => id,
             None => {
-                self.send_error("missing_session_id", "Missing sessionId in bind request", ctx);
+                self.send_error("missingSessionId", "Missing sessionId in bind request", ctx);
                 return;
             }
         };
@@ -1792,7 +1867,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
 
         if let Some(connection_manager) = &self.connection_manager {
             if !connection_manager.is_device_connected(&user_id, &producer_device_id) {
-                self.send_error("producer_not_connected", "Producer device not connected", ctx);
+                self.send_error("producerNotConnected", "Producer device not connected", ctx);
                 return;
             }
 
@@ -1802,7 +1877,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                     return;
                 }
             } else {
-                self.send_error("producer_not_found", "Producer device not found", ctx);
+                self.send_error("producerNotFound", "Producer device not found", ctx);
                 return;
             }
 
@@ -1838,7 +1913,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                         producer = %producer_device_id,
                         "Failed to forward bind request to producer"
                     );
-                    self.send_error("forward_failed", "Failed to forward bind request to producer", ctx);
+                    self.send_error("forwardFailed", "Failed to forward bind request to producer", ctx);
                 }
             }
         }

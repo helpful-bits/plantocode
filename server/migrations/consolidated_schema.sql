@@ -784,7 +784,7 @@ CREATE INDEX IF NOT EXISTS idx_credit_transactions_api_usage ON credit_transacti
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_created ON credit_transactions(created_at DESC);
 
 -- Add UNIQUE constraint for duplicate purchase prevention
-CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS uq_credit_transactions_unique_purchase ON credit_transactions(stripe_charge_id) WHERE transaction_type = 'purchase';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_credit_transactions_unique_purchase ON credit_transactions(stripe_charge_id) WHERE transaction_type = 'purchase';
 
 -- Add check constraint to ensure stripe_charge_id is required for purchases
 DO $$ 

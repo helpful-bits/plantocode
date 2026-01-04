@@ -1,8 +1,7 @@
 use crate::db::repositories::api_usage_repository::ApiUsageRepository;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
-use crate::models::auth_jwt_claims::Claims;
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, web};
+use actix_web::{HttpResponse, web};
 use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use log::{error, info};
@@ -68,18 +67,10 @@ pub struct UsageDebugQuery {
 /// Admin-only endpoint to get raw usage data for debugging
 pub async fn get_usage_debug_data(
     user: web::ReqData<AuthenticatedUser>,
-    req: HttpRequest,
     query: web::Query<UsageDebugQuery>,
     api_usage_repo: web::Data<ApiUsageRepository>,
 ) -> Result<HttpResponse, AppError> {
-    // Extract JWT claims to verify admin role
-    let extensions = req.extensions();
-    let claims = extensions
-        .get::<Claims>()
-        .ok_or_else(|| AppError::Unauthorized("JWT claims not found".to_string()))?;
-
-    // Check if user has admin role
-    if claims.role != "admin" {
+    if user.role != "admin" {
         error!(
             "User {} attempted to access admin-only usage debug endpoint",
             user.user_id

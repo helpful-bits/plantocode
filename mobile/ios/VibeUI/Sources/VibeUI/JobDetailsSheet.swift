@@ -213,44 +213,57 @@ public struct JobDetailsSheet: View {
     }
 
     private func cancelJob() async {
-        // Clear any existing subscriptions to prevent leaks
-        cancellables.removeAll()
-
         isCancelling = true
+        error = nil
+
         let request = JobCancellationRequest(jobId: jobId, reason: "User requested cancellation")
-        jobsService.cancelJob(request: request)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        self.error = "Failed to cancel: \(error.localizedDescription)"
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var localCancellable: AnyCancellable?
+            localCancellable = jobsService.cancelJob(request: request)
+                .receive(on: DispatchQueue.main)
+                .sink(
+                    receiveCompletion: { completion in
+                        localCancellable?.cancel()
+                        continuation.resume()
+                    },
+                    receiveValue: { response in
+                        if response.success {
+                            self.isCancelling = false
+                            self.dismiss()
+                        } else {
+                            self.error = response.message.isEmpty ? "Cancellation failed" : response.message
+                            self.isCancelling = false
+                        }
                     }
-                    self.isCancelling = false
-                    self.dismiss()
-                },
-                receiveValue: { _ in }
-            )
-            .store(in: &cancellables)
+                )
+        }
     }
 
     private func deleteJob() async {
-        // Clear any existing subscriptions to prevent leaks
-        cancellables.removeAll()
-
         isDeleting = true
-        jobsService.deleteJob(jobId: jobId)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { completion in
-                    if case .failure(let error) = completion {
-                        self.error = "Failed to delete: \(error.localizedDescription)"
+        error = nil
+
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var localCancellable: AnyCancellable?
+            localCancellable = jobsService.deleteJob(jobId: jobId)
+                .receive(on: DispatchQueue.main)
+                .sink(
+                    receiveCompletion: { completion in
+                        localCancellable?.cancel()
+                        continuation.resume()
+                    },
+                    receiveValue: { success in
+                        if success {
+                            self.isDeleting = false
+                            self.dismiss()
+                        } else {
+                            self.error = "Deletion failed"
+                            self.isDeleting = false
+                        }
                     }
-                    self.isDeleting = false
-                    self.dismiss()
-                },
-                receiveValue: { _ in }
-            )
-            .store(in: &cancellables)
+                )
+        }
     }
 }
 

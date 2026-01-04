@@ -293,11 +293,7 @@ public struct JobsMonitoringView: View {
                     }
                     self.cancellingJobs.remove(jobId)
                 },
-                receiveValue: { _ in
-                    Task {
-                        await self.loadJobs()
-                    }
-                }
+                receiveValue: { _ in }
             )
             .store(in: &cancellables)
     }

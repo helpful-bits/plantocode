@@ -22,6 +22,7 @@ pub(crate) async fn handle_openrouter_request(
     billing_service: Arc<BillingService>,
     model_repository: Arc<ModelRepository>,
     request_id: String,
+    request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
     let client = OpenRouterClient::new(app_settings, model_repository)?;
 
@@ -29,25 +30,33 @@ pub(crate) async fn handle_openrouter_request(
 
     request.model = model.id.clone();
 
-    let (response, _headers, _, _, _, _) = client
+    let (response, _headers, _, _, _, _) = match client
         .chat_completion(request, &user_id.to_string())
-        .await?;
+        .await
+    {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = billing_service
+                .fail_api_charge(&request_id, user_id, &error.to_string())
+                .await;
+            request_tracker.remove_request(&request_id).await;
+            return Err(error);
+        }
+    };
 
-    // Serialize response to get HTTP body for usage extraction
     let response_body = serde_json::to_string(&response)?;
 
-    // Get usage from provider using unified extraction
     let usage = client
         .extract_from_response_body(response_body.as_bytes(), &model.id)
         .await?;
 
-    // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
         .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
-    // Update response with centrally resolved cost using standardized usage
+    request_tracker.remove_request(&request_id).await;
+
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
         let usage_response = create_standardized_usage_response(&usage, &cost)?;
@@ -95,7 +104,6 @@ pub(crate) async fn handle_openrouter_streaming_request(
     // Instantiate OpenRouter stream transformer
     let transformer = Box::new(OpenRouterStreamTransformer::new(&model.id));
 
-    // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
@@ -104,6 +112,7 @@ pub(crate) async fn handle_openrouter_streaming_request(
         billing_service.clone(),
         request_id,
         cancellation_token,
+        request_tracker.clone(),
     );
 
     // Convert to SSE stream and return as HttpResponse

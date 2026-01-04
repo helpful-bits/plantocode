@@ -1,5 +1,61 @@
 import Foundation
 
+// MARK: - Mobile Device Registration Types
+
+public struct RegisterMobileDeviceBody: Codable {
+    public let deviceName: String
+    public let platform: String
+    public let appVersion: String
+    public let capabilities: [String: AnyCodable]?
+    public let pushToken: String?
+
+    public init(
+        deviceName: String,
+        platform: String,
+        appVersion: String,
+        capabilities: [String: AnyCodable]? = nil,
+        pushToken: String? = nil
+    ) {
+        self.deviceName = deviceName
+        self.platform = platform
+        self.appVersion = appVersion
+        self.capabilities = capabilities
+        self.pushToken = pushToken
+    }
+}
+
+public struct UpsertPushTokenBody: Codable {
+    public let platform: String
+    public let token: String
+
+    public init(platform: String, token: String) {
+        self.platform = platform
+        self.token = token
+    }
+}
+
+public struct DeviceResponse: Codable {
+    public let deviceId: UUID
+    public let deviceName: String
+    public let deviceType: String
+    public let platform: String
+    public let appVersion: String
+    public let status: String
+    public let isConnected: Bool
+    public let createdAt: Date
+    public let updatedAt: Date?
+}
+
+public struct HeartbeatBody: Codable {
+    public let status: String?
+    public let metadata: [String: AnyCodable]?
+
+    public init(status: String? = nil, metadata: [String: AnyCodable]? = nil) {
+        self.status = status
+        self.metadata = metadata
+    }
+}
+
 // MARK: - Device Management API Extension
 
 extension ServerAPIClient {
@@ -11,12 +67,12 @@ extension ServerAPIClient {
             path += "&device_type=\(deviceType)"
         }
 
-        let serverDevices: [ServerDeviceInfo] = try await deviceRequest(
+        let devices: [DeviceDTO] = try await deviceRequest(
             path: path,
             method: .GET,
             token: try await getAuthToken()
         )
-        return serverDevices.map(RegisteredDevice.from)
+        return devices.map(RegisteredDevice.from)
     }
 
     /// Get status of a specific device
@@ -69,42 +125,91 @@ extension ServerAPIClient {
         )
     }
 
+    // MARK: - Mobile Device Registration
+
+    public func registerMobileDevice(_ body: RegisterMobileDeviceBody) async throws -> DeviceResponse {
+        return try await deviceRequest(
+            path: "api/devices/mobile/register",
+            method: .POST,
+            body: body,
+            token: try await getAuthToken()
+        )
+    }
+
+    public func upsertPushToken(platform: String, token: String) async throws {
+        let body = UpsertPushTokenBody(platform: platform, token: token)
+        let (_, response) = try await requestRaw(
+            path: "api/devices/push-token",
+            method: .PUT,
+            body: body,
+            token: try await getAuthToken()
+        )
+
+        guard (200...299).contains(response.statusCode) else {
+            throw NetworkError.invalidResponse(statusCode: response.statusCode, data: nil)
+        }
+    }
+
+    public func unregisterDevice(deviceId: UUID) async throws {
+        let (_, response) = try await requestRaw(
+            path: "api/devices/\(deviceId.uuidString)",
+            method: .DELETE,
+            token: try await getAuthToken()
+        )
+
+        guard (200...299).contains(response.statusCode) else {
+            throw NetworkError.invalidResponse(statusCode: response.statusCode, data: nil)
+        }
+    }
+
+    public func sendHeartbeat(_ body: HeartbeatBody? = nil) async throws {
+        let (_, response) = try await requestRaw(
+            path: "api/devices/heartbeat",
+            method: .POST,
+            body: body,
+            token: try await getAuthToken()
+        )
+
+        guard (200...299).contains(response.statusCode) else {
+            throw NetworkError.invalidResponse(statusCode: response.statusCode, data: nil)
+        }
+    }
+
+    public func listDevices(deviceType: String? = nil, connectedOnly: Bool = false) async throws -> [RegisteredDevice] {
+        var path = "api/devices"
+        var queryParams: [String] = []
+        if let deviceType = deviceType {
+            queryParams.append("device_type=\(deviceType)")
+        }
+        if connectedOnly {
+            queryParams.append("connected_only=true")
+        }
+        if !queryParams.isEmpty {
+            path += "?" + queryParams.joined(separator: "&")
+        }
+
+        let devices: [DeviceDTO] = try await deviceRequest(
+            path: path,
+            method: .GET,
+            token: try await getAuthToken()
+        )
+        return devices.map(RegisteredDevice.from)
+    }
+
     // MARK: - Helper Methods
 
-    /// Get authentication token from AuthService
     private func getAuthToken() async throws -> String {
-        // This will need to be implemented based on your existing auth system
-        // For now, return a placeholder that would work with your AuthService
         guard let token = await AuthService.shared.getValidAccessToken() else {
-            throw APIError.requestFailed(AuthError.notAuthenticated)
+            throw NetworkError.requestFailed(AuthError.notAuthenticated)
         }
         return token
     }
 
-    /// Register device with the server
-    public func registerDevice(deviceId: String) async throws {
-        let baseURLString = Config.serverURL
-        guard let baseURL = URL(string: baseURLString) else {
-            throw APIError.invalidURL
-        }
-
-        let url = baseURL.appendingPathComponent("api/devices/register")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue(AuthConstants.HTTPHeaders.applicationJson, forHTTPHeaderField: AuthConstants.HTTPHeaders.contentType)
-
-        guard let token = await AuthService.shared.getValidAccessToken() else {
-            throw APIError.requestFailed(AuthError.notAuthenticated)
-        }
-
-        request.setValue("Bearer \(token)", forHTTPHeaderField: AuthConstants.HTTPHeaders.authorization)
-        request.setValue(deviceId, forHTTPHeaderField: AuthConstants.HTTPHeaders.deviceId)
-        request.setValue(deviceId, forHTTPHeaderField: AuthConstants.HTTPHeaders.tokenBinding)
-        request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
-
+    public func registerDevice() async throws {
+        let token = try await getAuthToken()
         let deviceInfo = DeviceManager.shared.getDeviceInfo()
         let registerRequest = DeviceRegisterRequest(
-            deviceId: deviceId,
+            deviceId: deviceInfo.deviceID,
             deviceName: deviceInfo.deviceModel,
             deviceType: "mobile",
             platform: "ios",
@@ -113,19 +218,20 @@ extension ServerAPIClient {
             relayEligible: true
         )
 
-        request.httpBody = try JSONEncoder().encode(registerRequest)
+        let (data, response) = try await requestRaw(
+            path: "api/devices/register",
+            method: .POST,
+            body: registerRequest,
+            token: token
+        )
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        if response.statusCode == 409 {
+            return
+        }
 
-        if let httpResponse = response as? HTTPURLResponse {
-            if httpResponse.statusCode == 409 {
-                // 409 Conflict = already registered, treat as success
-                return
-            }
-
-            guard (200...299).contains(httpResponse.statusCode) else {
-                throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
-            }
+        guard (200...299).contains(response.statusCode) else {
+            let apiError = decodeError(data, statusCode: response.statusCode)
+            throw NetworkError.serverError(apiError)
         }
     }
 }
@@ -141,16 +247,6 @@ public struct DeviceRegisterRequest: Codable {
     let platformVersion: String
     let appVersion: String
     let relayEligible: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case deviceId = "device_id"
-        case deviceName = "device_name"
-        case deviceType = "device_type"
-        case platform
-        case platformVersion = "platform_version"
-        case appVersion = "app_version"
-        case relayEligible = "relay_eligible"
-    }
 }
 
 /// Empty response for endpoints that don't return data
@@ -220,7 +316,6 @@ extension JSONDecoder {
 }
 
 extension ServerAPIClient {
-    /// Enhanced request method with custom decoder for device API
     public func deviceRequest<T: Decodable>(
         path: String,
         method: HTTPMethod = .GET,
@@ -235,13 +330,14 @@ extension ServerAPIClient {
         )
 
         guard (200...299).contains(response.statusCode) else {
-            throw APIError.invalidResponse(statusCode: response.statusCode, data: data)
+            let apiError = decodeError(data, statusCode: response.statusCode)
+            throw NetworkError.serverError(apiError)
         }
 
         do {
             return try JSONDecoder.deviceAPIDecoder.decode(T.self, from: data)
         } catch {
-            throw APIError.decodingFailed(error)
+            throw NetworkError.decodingFailed(error)
         }
     }
 }

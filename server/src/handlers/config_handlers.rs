@@ -1,6 +1,7 @@
 use actix_web::{HttpResponse, web};
-use bigdecimal::{BigDecimal, ToPrimitive};
+use bigdecimal::BigDecimal;
 use std::collections::{BTreeMap, HashMap};
+use std::str::FromStr;
 use tracing::{info, instrument};
 
 use crate::db::{ModelRepository, SettingsRepository};
@@ -309,10 +310,12 @@ pub async fn update_billing_config(
 
     // Update free credits amount if provided
     if let Some(amount_str) = &request.free_credits_amount {
-        let amount = BigDecimal::try_from(amount_str.parse::<f64>().map_err(|_| {
-            AppError::InvalidArgument("Invalid free credits amount format".to_string())
-        })?)
-        .map_err(|_| AppError::InvalidArgument("Invalid free credits amount".to_string()))?;
+        let amount = BigDecimal::from_str(amount_str)
+            .map_err(|_| AppError::Validation("Invalid free credits amount format".to_string()))?;
+
+        if amount < BigDecimal::from(0) {
+            return Err(AppError::Validation("Free credits amount cannot be negative".to_string()));
+        }
 
         settings_repo.set_free_credits_amount(&amount).await?;
     }

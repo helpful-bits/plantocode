@@ -657,8 +657,6 @@ pub async fn update_implementation_plan_content_command(
         )));
     }
 
-    // Update the job response with the new content
-    // Keep the status, metadata, and token counts unchanged, only update the response content
     repo.update_job_response(&job_id, &new_content, None, None, None, None, None)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to update job response: {}", e)))?;
@@ -670,6 +668,8 @@ pub async fn update_implementation_plan_content_command(
             "payload": { "jobId": job_id }
         })
     ).ok();
+
+    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(&app_handle, &job.session_id);
 
     info!(
         "Successfully updated implementation plan content for job: {}",

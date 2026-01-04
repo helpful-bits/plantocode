@@ -3,6 +3,7 @@
 //! This library exports the core modules used by both the server binary
 //! and utility binaries like the migration runner.
 
+pub mod api_contract;
 pub mod auth_stores;
 pub mod clients;
 pub mod config;

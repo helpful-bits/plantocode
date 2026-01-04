@@ -1,7 +1,7 @@
 use crate::error::AppResult;
 use crate::models::{
     CreateSessionRequest, FileSelectionHistoryEntryWithTimestamp,
-    Session,
+    JobStatus, Session,
 };
 use crate::utils::hash_utils::hash_string;
 use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
@@ -588,11 +588,11 @@ pub async fn get_session_overview_command(
     let jobs = job_repo.get_jobs_by_session_id(&session_id).await?;
 
     // Count jobs by status
-    let completed_jobs = jobs.iter().filter(|j| j.status == "completed").count();
-    let failed_jobs = jobs.iter().filter(|j| j.status == "failed").count();
+    let completed_jobs = jobs.iter().filter(|j| j.status == JobStatus::Completed.to_string()).count();
+    let failed_jobs = jobs.iter().filter(|j| j.status == JobStatus::Failed.to_string()).count();
     let active_jobs = jobs
         .iter()
-        .filter(|j| j.status != "completed" && j.status != "failed" && j.status != "canceled")
+        .filter(|j| j.status != JobStatus::Completed.to_string() && j.status != JobStatus::Failed.to_string() && j.status != JobStatus::Canceled.to_string())
         .count();
 
     // Get task description history count
@@ -655,7 +655,7 @@ pub async fn get_session_contents_command(
     // Filter implementation plan jobs
     let plan_jobs: Vec<serde_json::Value> = jobs
         .iter()
-        .filter(|j| j.task_type == "implementation_plan" && j.status == "completed")
+        .filter(|j| j.task_type == "implementation_plan" && j.status == JobStatus::Completed.to_string())
         .map(|j| {
             json!({
                 "id": j.id,

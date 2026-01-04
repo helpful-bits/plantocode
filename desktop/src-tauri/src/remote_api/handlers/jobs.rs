@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use serde_json::{json, Value};
 use crate::remote_api::types::{RpcRequest, RpcResponse};
 use crate::remote_api::error::{RpcError, RpcResult};
@@ -7,9 +7,62 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
-use crate::db_utils::SessionRepository;
+use crate::db_utils::{SessionRepository, BackgroundJobRepository};
 use std::sync::Arc;
 use crate::utils::hash_utils::generate_project_hash;
+
+const MAX_PAGE_SIZE: u32 = 200;
+const DEFAULT_PAGE_SIZE: u32 = 50;
+
+fn optional_string_vec(params: &Value, key: &str) -> RpcResult<Option<Vec<String>>> {
+    match params.get(key) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(None),
+        Some(Value::Array(arr)) => {
+            let mut result = Vec::with_capacity(arr.len());
+            for (i, item) in arr.iter().enumerate() {
+                match item.as_str() {
+                    Some(s) => result.push(s.to_string()),
+                    None => {
+                        return Err(RpcError::invalid_params(format!(
+                            "{}[{}] must be a string",
+                            key, i
+                        )));
+                    }
+                }
+            }
+            Ok(Some(result))
+        }
+        Some(_) => Err(RpcError::invalid_params(format!(
+            "{} must be an array of strings",
+            key
+        ))),
+    }
+}
+
+fn optional_u32(params: &Value, key: &str) -> RpcResult<Option<u32>> {
+    match params.get(key) {
+        None => Ok(None),
+        Some(Value::Null) => Ok(None),
+        Some(v) => {
+            if let Some(n) = v.as_u64() {
+                if n <= u32::MAX as u64 {
+                    Ok(Some(n as u32))
+                } else {
+                    Err(RpcError::invalid_params(format!("{} exceeds maximum value", key)))
+                }
+            } else if let Some(n) = v.as_i64() {
+                if n >= 0 && n <= u32::MAX as i64 {
+                    Ok(Some(n as u32))
+                } else {
+                    Err(RpcError::invalid_params(format!("{} must be a non-negative integer", key)))
+                }
+            } else {
+                Err(RpcError::invalid_params(format!("{} must be an integer", key)))
+            }
+        }
+    }
+}
 
 struct CacheEntry {
     inserted_at: Instant,
@@ -29,14 +82,12 @@ const MAX_SESSION_MAP_ENTRIES: usize = 512;
 static SESSION_PROJECT_MAP: Lazy<Mutex<HashMap<String, SessionProjectEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub fn invalidate_job_list_cache_for_session(session_id: &str) {
-    // Remove session-scoped cache key
     let session_key = format!("jobs::session::{}", session_id);
     {
         let mut cache = JOB_LIST_CACHE.lock().unwrap();
         cache.remove(&session_key);
     }
 
-    // Remove mapped project-scoped cache key
     let maybe_project_key = {
         let mut map = SESSION_PROJECT_MAP.lock().unwrap();
         map.remove(session_id).map(|e| e.project_cache_key)
@@ -46,6 +97,14 @@ pub fn invalidate_job_list_cache_for_session(session_id: &str) {
         let mut cache = JOB_LIST_CACHE.lock().unwrap();
         cache.remove(&project_key);
     }
+}
+
+pub fn invalidate_job_list_for_session(app_handle: &AppHandle, session_id: &str) {
+    invalidate_job_list_cache_for_session(session_id);
+    let _ = app_handle.emit("device-link-event", json!({
+        "type": "jobs:list-invalidated",
+        "payload": { "sessionId": session_id }
+    }));
 }
 
 // Job list filtering architecture:
@@ -116,58 +175,101 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
+    let status_filter = optional_string_vec(&request.params, "statusFilter")?;
+    let task_type_filter = optional_string_vec(&request.params, "taskTypeFilter")?;
+    let page = optional_u32(&request.params, "page")?.unwrap_or(0);
+    let mut page_size = optional_u32(&request.params, "pageSize")?.unwrap_or(DEFAULT_PAGE_SIZE);
+    if page_size > MAX_PAGE_SIZE {
+        page_size = MAX_PAGE_SIZE;
+    }
+    if page_size == 0 {
+        page_size = DEFAULT_PAGE_SIZE;
+    }
+
+    let has_filters = status_filter.is_some() || task_type_filter.is_some() || page > 0;
+
     if session_id.is_none() && project_directory.is_none() {
         return Err(RpcError::invalid_params("Missing required sessionId or projectDirectory"));
+    }
+
+    let pool = app_handle.try_state::<Arc<sqlx::SqlitePool>>()
+        .ok_or_else(|| RpcError::database_error("Database not available"))?
+        .inner()
+        .clone();
+
+    let project_hash = if let Some(ref dir) = project_directory {
+        Some(generate_project_hash(dir))
+    } else {
+        None
+    };
+
+    if has_filters {
+        let job_repo = BackgroundJobRepository::new(pool.clone());
+
+        let effective_project_hash = if project_hash.is_some() {
+            project_hash.clone()
+        } else if let Some(ref sid) = session_id {
+            let session_repo = SessionRepository::new(pool.clone());
+            match session_repo.get_session_by_id(sid).await {
+                Ok(Some(session)) => Some(session.project_hash),
+                Ok(None) | Err(_) => {
+                    return Err(RpcError::not_found("Invalid sessionId: not found"));
+                }
+            }
+        } else {
+            None
+        };
+
+        let (jobs, total_count, has_more) = job_repo
+            .get_jobs_filtered(
+                effective_project_hash,
+                session_id.clone(),
+                status_filter,
+                task_type_filter,
+                page,
+                page_size,
+            )
+            .await
+            .map_err(RpcError::from)?;
+
+        return Ok(json!({
+            "jobs": jobs,
+            "totalCount": total_count,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": has_more
+        }));
     }
 
     let cache_key = if let Some(ref session_id) = session_id {
         format!("jobs::session::{}", session_id)
     } else {
-        let dir = project_directory
+        let hash = project_hash
             .as_ref()
-            .expect("projectDirectory must be present when sessionId is missing");
-        let hash = generate_project_hash(dir);
+            .expect("project_hash must be present when sessionId is missing");
         format!("jobs::project::{}", hash)
     };
 
-    // Fast path: return cached result without DB lookup
     if !bypass_cache {
         let cache = JOB_LIST_CACHE.lock().unwrap();
         if let Some(entry) = cache.get(&cache_key) {
             if entry.inserted_at.elapsed() < CACHE_TTL {
-                log::debug!("Cache hit for key {}, skipping DB validation", cache_key);
                 return Ok(entry.value.clone());
             }
         }
     }
 
-    // Cache miss: ensure we have the right scope and fetch jobs
-    // Track effective project directory for session→project mapping
     let mut effective_project_directory: Option<String> = None;
-    
-    let jobs_result = if let Some(session_id) = session_id.clone() {
-        // Resolve effective project directory from session to maintain existing invariants
-        let pool = app_handle.try_state::<Arc<sqlx::SqlitePool>>()
-            .ok_or_else(|| RpcError::database_error("Database not available"))?
-            .inner()
-            .clone();
 
+    let jobs_result = if let Some(session_id) = session_id.clone() {
         let session_repo = SessionRepository::new(pool.clone());
         let resolved_dir = match session_repo.get_session_by_id(&session_id).await {
-            Ok(Some(session)) => {
-                log::debug!(
-                    "Validated session {} with project directory {}",
-                    session_id,
-                    session.project_directory
-                );
-                Some(session.project_directory)
-            }
+            Ok(Some(session)) => Some(session.project_directory),
             Ok(None) | Err(_) => {
                 return Err(RpcError::not_found("Invalid sessionId: not found"));
             }
         };
 
-        // Store for mapping
         effective_project_directory = resolved_dir.clone();
 
         job_commands::get_all_visible_jobs_command_with_content(
@@ -194,13 +296,10 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
     let jobs = jobs_result.map_err(RpcError::from)?;
     let result_value = json!({ "jobs": jobs });
 
-    // Store in cache and update session→project mapping
     {
         let mut cache = JOB_LIST_CACHE.lock().unwrap();
         if cache.len() >= MAX_ENTRIES {
-            // Evict oldest
             if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
-                // Clean up SESSION_PROJECT_MAP if we're evicting a session key
                 if let Some(session_id) = oldest_key.strip_prefix("jobs::session::") {
                     let mut map = SESSION_PROJECT_MAP.lock().unwrap();
                     map.remove(session_id);
@@ -214,15 +313,12 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         });
     }
 
-    // Update SESSION_PROJECT_MAP if this was a session-scoped query
     if let Some(ref session_id) = session_id {
-        // Compute project key for mapping using effective project directory
         if let Some(ref proj_dir) = effective_project_directory {
             let project_hash = generate_project_hash(proj_dir);
             let project_key = format!("jobs::project::{}", project_hash);
 
             let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-            // Evict oldest if at capacity
             if map.len() >= MAX_SESSION_MAP_ENTRIES {
                 if let Some(old_k) = map.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
                     map.remove(&old_k);

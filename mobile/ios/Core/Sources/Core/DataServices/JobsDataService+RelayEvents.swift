@@ -28,9 +28,7 @@ extension JobsDataService {
 
     func decodeJob(from dictionary: [String: Any]) -> BackgroundJob? {
         do {
-            let jsonData = try JSONSerialization.data(withJSONObject: dictionary)
-            let decoder = JSONDecoder()
-            return try decoder.decode(BackgroundJob.self, from: jsonData)
+            return try JobsDecoding.decodeJob(dict: dictionary)
         } catch {
             let jobId = dictionary["id"] as? String ?? "unknown"
             logger.error("Failed to decode job \(jobId): \(error.localizedDescription)")
@@ -138,10 +136,11 @@ extension JobsDataService {
     // MARK: - Coalesced List Jobs
 
     @MainActor
-    func scheduleCoalescedListJobsForActiveSession() {
+    func scheduleCoalescedListJobsForActiveSession(bypassCache: Bool = false) {
         coalescedResyncWorkItem?.cancel()
 
-        guard let sessionId = activeSessionId else {
+        let (sid, proj) = effectiveJobListScope(sessionId: activeSessionId, projectDirectory: activeProjectDirectory)
+        guard sid != nil || proj != nil else {
             return
         }
 
@@ -150,20 +149,22 @@ extension JobsDataService {
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             Task { @MainActor in
-                let isMobileSession = sessionId.hasPrefix("mobile-session-")
-
                 let request = JobListRequest(
-                    projectDirectory: isMobileSession ? nil : self.activeProjectDirectory,
-                    sessionId: isMobileSession ? nil : sessionId,
+                    projectDirectory: proj,
+                    sessionId: sid,
                     pageSize: 100
                 )
 
-                self.listJobsViaRPC(request: request, shouldReplace: false)
+                self.listJobsViaRPC(request: request, shouldReplace: bypassCache)
                     .sink(
                         receiveCompletion: { _ in },
                         receiveValue: { [weak self] response in
                             guard let self = self else { return }
-                            self.mergeJobs(fetchedJobs: response.jobs)
+                            if bypassCache {
+                                self.replaceJobsArray(with: response.jobs)
+                            } else {
+                                self.mergeJobs(fetchedJobs: response.jobs)
+                            }
                             self.updateWorkflowCountsFromJobs(self.jobs)
                             self.updateImplementationPlanCountsFromJobs(self.jobs)
                         }
@@ -384,7 +385,7 @@ extension JobsDataService {
     @MainActor
     public func applyRelayEvent(_ event: RelayEvent) {
         // Handle job:* events and plan events
-        guard event.eventType.hasPrefix("job:") || event.eventType == "PlanCreated" || event.eventType == "PlanModified" else { return }
+        guard event.eventType.hasPrefix("job:") || event.eventType == "PlanCreated" || event.eventType == "PlanModified" || event.eventType == "PlanDeleted" else { return }
 
         // Update job counters (only for job:* events)
         if event.eventType.hasPrefix("job:") {
@@ -636,9 +637,10 @@ extension JobsDataService {
                 }
             }
 
-        case "PlanCreated", "PlanModified":
-            // Plan events trigger a coalesced list refresh to ensure convergence
-            scheduleCoalescedListJobsForActiveSession()
+        case "PlanCreated", "PlanModified", "PlanDeleted":
+            let sessionId = payload["sessionId"] as? String
+            let projectDirectory = payload["projectDirectory"] as? String
+            handleJobsListInvalidated(sessionId: sessionId, projectDirectory: projectDirectory)
 
         default:
             break

@@ -519,15 +519,12 @@ impl DeviceRepository {
         Ok(tokens)
     }
 
-    /// Upsert push token for a device, validating ownership
     pub async fn upsert_push_token(
         &self,
         user_id: &Uuid,
         device_id: &Uuid,
-        platform: &str,
         token: &str,
     ) -> Result<(), AppError> {
-        // Store push token in capabilities as device_push_token and validate user ownership
         let result = query!(
             r#"
             UPDATE devices
@@ -547,6 +544,56 @@ impl DeviceRepository {
         if result.rows_affected() == 0 {
             return Err(AppError::NotFound(
                 "Device not found or not owned by user".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn upsert_mobile_push_token(
+        &self,
+        user_id: &Uuid,
+        device_id: &Uuid,
+        platform: &str,
+        token: &str,
+    ) -> Result<(), AppError> {
+        let capabilities = serde_json::json!({
+            "device_push_token": token
+        });
+
+        let result = sqlx::query(
+            r#"
+            INSERT INTO devices (
+                device_id, user_id, device_name, device_type, platform,
+                app_version, capabilities, status, relay_eligible
+            ) VALUES (
+                $1, $2, 'Mobile Device', 'mobile', $3,
+                '', $4, 'online', false
+            )
+            ON CONFLICT (device_id) DO UPDATE SET
+                capabilities = jsonb_set(
+                    COALESCE(devices.capabilities, '{}'::jsonb),
+                    '{device_push_token}',
+                    $5,
+                    true
+                ),
+                platform = $3,
+                updated_at = NOW()
+            WHERE devices.user_id = $2
+            "#,
+        )
+        .bind(device_id)
+        .bind(user_id)
+        .bind(platform)
+        .bind(&capabilities)
+        .bind(JsonValue::String(token.to_string()))
+        .execute(&*self.db_pool)
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to upsert mobile push token: {}", e)))?;
+
+        if result.rows_affected() == 0 {
+            return Err(AppError::Forbidden(
+                "Device not owned by user".to_string(),
             ));
         }
 

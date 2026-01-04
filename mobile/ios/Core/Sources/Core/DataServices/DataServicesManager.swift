@@ -20,6 +20,7 @@ public class DataServicesManager: ObservableObject {
     public let subscriptionManager: SubscriptionManager
     public let onboardingService: OnboardingContentService
     public let accountService: AccountDataService
+    public let consentService: ConsentDataService
 
     // MARK: - Connection Management
     @Published public var connectionStatus: ConnectionStatus = .disconnected
@@ -45,6 +46,8 @@ public class DataServicesManager: ObservableObject {
     private var authStateCancellable: AnyCancellable?
     private var lastReconnectionSyncAt: Date?
     private var lastBroadcastedSessionId: String? = nil
+    private var activeDeviceOfflineGraceTasks: [UUID: Task<Void, Never>] = [:]
+    private let activeDeviceOfflineGraceSeconds: TimeInterval = 20
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -76,6 +79,7 @@ public class DataServicesManager: ObservableObject {
         self.subscriptionManager = SubscriptionManager()
         self.onboardingService = OnboardingContentService()
         self.accountService = AccountDataService()
+        self.consentService = ConsentDataService()
 
         Task { [weak settingsService] in
             try? await settingsService?.loadNotificationSettings()
@@ -184,10 +188,52 @@ public class DataServicesManager: ObservableObject {
         taskSyncService.tasks.removeAll()
         taskSyncService.conflicts.removeAll()
 
-        // Reset account service state
+        // Reset account and consent service state
         accountService.clearError()
+        consentService.clearError()
 
         NotificationCenter.default.post(name: Notification.Name("connection-hard-reset-completed"), object: nil)
+    }
+
+    @MainActor
+    private func handleActiveDesktopOfflineSignal(deviceId: UUID, source: String) {
+        guard MultiConnectionManager.shared.activeDeviceId == deviceId else { return }
+
+        // Cancel any existing grace task for this device
+        if let existing = activeDeviceOfflineGraceTasks[deviceId] {
+            existing.cancel()
+            activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
+        }
+
+        // Trigger aggressive reconnect without evicting active device
+        MultiConnectionManager.shared.triggerAggressiveReconnect(
+            reason: .connectionLoss(deviceId),
+            deviceIds: [deviceId]
+        )
+
+        let graceSeconds = activeDeviceOfflineGraceSeconds
+        let task = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(graceSeconds * 1_000_000_000))
+            await MainActor.run {
+                guard let self = self else { return }
+
+                // If active device changed, do nothing
+                guard MultiConnectionManager.shared.activeDeviceId == deviceId else {
+                    self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
+                    return
+                }
+
+                // If connection has recovered, do nothing
+                if let state = MultiConnectionManager.shared.connectionStates[deviceId], state.isConnected {
+                    self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
+                    return
+                }
+
+                self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
+            }
+        }
+
+        activeDeviceOfflineGraceTasks[deviceId] = task
     }
 
     /// Test connection to desktop app
@@ -531,25 +577,25 @@ public class DataServicesManager: ObservableObject {
                     self.logger.info("Received device-status event: device=\(deviceIdStr ?? "nil"), status=\(statusStr)")
 
                     Task { @MainActor in
-                        // If this is an offline status for our active device, disconnect immediately
-                        if statusStr == "offline",
-                           let deviceIdStr = deviceIdStr,
-                           let deviceId = UUID(uuidString: deviceIdStr),
-                           MultiConnectionManager.shared.activeDeviceId == deviceId {
-                            self.logger.warning("Active device went offline, disconnecting")
-                            MultiConnectionManager.shared.removeConnection(deviceId: deviceId)
+                        if let deviceIdStr = deviceIdStr,
+                           let deviceId = UUID(uuidString: deviceIdStr) {
+                            switch statusStr {
+                            case "offline", "disconnected":
+                                self.logger.warning("Active device reported \(statusStr) via device-status (\(deviceId)), entering offline grace window")
+                                self.handleActiveDesktopOfflineSignal(deviceId: deviceId, source: "device-status-\(statusStr)")
+                            case "online":
+                                // Cancel any pending offline grace for this device
+                                if let existing = self.activeDeviceOfflineGraceTasks[deviceId] {
+                                    existing.cancel()
+                                    self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
+                                }
+                            default:
+                                break
+                            }
                         }
 
                         // Always refresh device list to update statuses
                         await DeviceDiscoveryService.shared.refreshDevices()
-
-                        // Also check if active device was removed from list
-                        if let activeId = MultiConnectionManager.shared.activeDeviceId {
-                            let ids = DeviceDiscoveryService.shared.devices.map { $0.deviceId }
-                            if !ids.contains(activeId) {
-                                MultiConnectionManager.shared.removeConnection(deviceId: activeId)
-                            }
-                        }
                     }
 
                 case "device-unlinked":
@@ -614,6 +660,11 @@ public class DataServicesManager: ObservableObject {
 
                 case "PlanCreated", "PlanModified", "PlanDeleted":
                     self.jobsService.applyRelayEvent(event)
+
+                case "jobs:list-invalidated":
+                    let sessionId = dict["sessionId"] as? String
+                    let projectDirectory = dict["projectDirectory"] as? String
+                    self.jobsService.handleJobsListInvalidated(sessionId: sessionId, projectDirectory: projectDirectory)
 
                 default:
                     if eventType.hasPrefix("job:") {

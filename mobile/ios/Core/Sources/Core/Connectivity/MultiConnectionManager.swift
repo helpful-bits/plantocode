@@ -37,6 +37,7 @@ public final class MultiConnectionManager: ObservableObject {
     private var deviceCancellables = [UUID: Set<AnyCancellable>]()
     private var connectionStateSubscriptions: [UUID: AnyCancellable] = [:]
     private var connectingTasks: [UUID: Task<Result<UUID, Error>, Never>] = [:]
+    private let connectionSemaphore = AsyncSemaphore(value: 1)
     private var verifyingDevices = Set<UUID>()
     private var relayHandshakeByDevice = [UUID: ConnectionHandshake]()
     private var isHardResetInProgress = false
@@ -247,6 +248,36 @@ public final class MultiConnectionManager: ObservableObject {
         await DeviceDiscoveryService.shared.refreshDevices()
     }
 
+    /// Suspends connections for background mode without clearing activeDeviceId.
+    /// Unlike hardReset, this preserves the active device selection so users
+    /// return directly to their workspace when the app comes back to foreground.
+    @MainActor
+    public func suspendConnectionsForBackground() async {
+        // Stop any pending reconnection attempts
+        stopAllReconnectTimers()
+
+        // Cancel health grace task but don't mark as dead yet
+        healthGraceTask?.cancel()
+        healthGraceTask = nil
+
+        // Disconnect all relay clients gracefully (but keep activeDeviceId)
+        for (deviceId, relay) in storage {
+            relay.disconnect(isUserInitiated: false)
+            connectionStates[deviceId] = .disconnected
+        }
+
+        // Set health to unstable (not dead) to allow reconnection on foreground
+        connectionHealth = .unstable
+
+        // Clear verifying state since we're disconnecting
+        verifyingDevices.removeAll()
+
+        // Note: We intentionally do NOT clear:
+        // - activeDeviceId (so user returns to workspace)
+        // - storage (so we can reconnect to same clients)
+        // - persisted device IDs (for quick restoration)
+    }
+
     /// Performs system ping to verify desktop connection (handshaking step)
     /// Reduced timeout from 5s to 3s for faster connection verification
     private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 3) async throws {
@@ -353,9 +384,17 @@ public final class MultiConnectionManager: ObservableObject {
             return .failure(MultiConnectionError.authenticationRequired)
         }
 
+        // Guard against stale sessions: if AppState indicates user is not authenticated, abort
+        let isAuthValid = await MainActor.run { AppState.shared.isAuthenticated }
+        if !isAuthValid {
+            await MainActor.run {
+                connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
+            }
+            return .failure(MultiConnectionError.authenticationRequired)
+        }
+
         // Check if we have an existing connection that's actually connected
         if let existingClient = storage[deviceId] {
-            // Verify the connection is actually healthy
             if existingClient.isConnected {
                 do {
                     try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
@@ -364,7 +403,6 @@ public final class MultiConnectionManager: ObservableObject {
                     }
                     return .success(deviceId)
                 } catch {
-                    // Verification failed - fall through to rebuild connection
                     existingClient.disconnect()
                     await MainActor.run {
                         storage.removeValue(forKey: deviceId)
@@ -372,7 +410,6 @@ public final class MultiConnectionManager: ObservableObject {
                     }
                 }
             } else {
-                // Connection exists but is not healthy - remove it and create a new one
                 existingClient.disconnect()
                 await MainActor.run {
                     storage.removeValue(forKey: deviceId)
@@ -410,10 +447,24 @@ public final class MultiConnectionManager: ObservableObject {
                 return .failure(MultiConnectionError.invalidConfiguration)
             }
 
+            // Serialize WS connection attempts: acquire semaphore before connecting
+            await self.connectionSemaphore.acquire()
             defer {
+                Task {
+                    await self.connectionSemaphore.release()
+                }
                 Task { @MainActor in
                     self.connectingTasks.removeValue(forKey: deviceId)
                 }
+            }
+
+            // Re-check AppState after acquiring semaphore to avoid stale session connections
+            let stillAuthenticated = await MainActor.run { AppState.shared.isAuthenticated }
+            if !stillAuthenticated {
+                await MainActor.run {
+                    self.connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
+                }
+                return .failure(MultiConnectionError.authenticationRequired)
             }
 
             do {
@@ -665,6 +716,12 @@ public final class MultiConnectionManager: ObservableObject {
         Array(storage.keys)
     }
 
+    /// Check if a specific device is currently connected
+    public func isDeviceConnected(deviceId: UUID) -> Bool {
+        guard let state = connectionStates[deviceId] else { return false }
+        return state.isConnected
+    }
+
     /// Check if the active device is connected
     public var isActiveDeviceConnected: Bool {
         guard let activeId = activeDeviceId,
@@ -718,6 +775,68 @@ public final class MultiConnectionManager: ObservableObject {
             return state.isConnectedOrConnecting
         }
         return false
+    }
+
+    /// Marks a device as temporarily offline without clearing activeDeviceId or wiping persistence.
+    /// Use this for transient network events instead of removeConnection.
+    @MainActor
+    public func markDeviceTemporarilyOffline(_ deviceId: UUID, reason: ReconnectReason?) {
+        guard var state = connectionStates[deviceId] else { return }
+
+        // Transition to disconnected state but keep activeDeviceId and persistence
+        switch state {
+        case .connected, .connecting, .reconnecting, .handshaking:
+            state = .disconnected
+        default:
+            break
+        }
+
+        connectionStates[deviceId] = state
+        updateConnectionHealth(for: deviceId, state: state)
+
+        // Trigger reconnect if reason provided
+        if let reason = reason {
+            triggerAggressiveReconnect(reason: reason, deviceIds: [deviceId])
+        }
+    }
+
+    /// Suspend connections for background without destroying state.
+    /// Unlike hardReset, this preserves activeDeviceId and persisted device list.
+    /// Call triggerAggressiveReconnect when returning to foreground.
+    @MainActor
+    public func suspendConnectionsForBackground() async {
+        // Stop ongoing reconnect tasks, but keep state
+        stopAllReconnectTimers()
+
+        // Cancel health grace task
+        healthGraceTask?.cancel()
+        healthGraceTask = nil
+
+        // Gracefully disconnect each relay without treating as user-initiated removal
+        for (deviceId, relay) in storage {
+            relay.disconnect(isUserInitiated: false)
+
+            // Transition state to disconnected but keep the entry
+            if var state = connectionStates[deviceId] {
+                switch state {
+                case .connected, .connecting, .reconnecting, .handshaking:
+                    state = .disconnected
+                default:
+                    break
+                }
+                connectionStates[deviceId] = state
+                updateConnectionHealth(for: deviceId, state: state)
+            }
+        }
+
+        // Update overall health to unstable (not dead, since we expect to reconnect)
+        if activeDeviceId != nil {
+            connectionHealth = .unstable
+        }
+
+        // DO NOT clear activeDeviceId
+        // DO NOT clear persisted devices
+        // DO NOT call resetAllState on dataServices
     }
 
     // MARK: - Workspace Connectivity Predicates
@@ -1133,7 +1252,6 @@ public enum MultiConnectionError: Error, LocalizedError {
 // MARK: - Extensions
 
 extension Publisher {
-    /// Convert Publisher to async/await
     public func asyncValue() async throws -> Output {
         try await withCheckedThrowingContinuation { continuation in
             var cancellable: AnyCancellable?
@@ -1154,6 +1272,34 @@ extension Publisher {
                         cancellable?.cancel()
                     }
                 )
+        }
+    }
+}
+
+actor AsyncSemaphore {
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(value: Int) {
+        self.permits = value
+    }
+
+    func acquire() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        if let waiter = waiters.first {
+            waiters.removeFirst()
+            waiter.resume()
+        } else {
+            permits += 1
         }
     }
 }

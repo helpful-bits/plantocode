@@ -564,12 +564,9 @@ impl WorkflowOrchestrator {
                         };
 
                         // Parse job status from database
-                        let job_status = match job.status.as_str() {
-                            "completed" => crate::models::JobStatus::Completed,
-                            "running" => crate::models::JobStatus::Running,
-                            "failed" => crate::models::JobStatus::Failed,
-                            "queued" => crate::models::JobStatus::Queued,
-                            _ => continue,
+                        let job_status = match std::str::FromStr::from_str(&job.status) {
+                            Ok(status) => status,
+                            Err(_) => continue,
                         };
 
                         // Create a proper WorkflowStageJob with correct status

@@ -304,6 +304,114 @@ impl ConsentService {
         Ok(())
     }
 
+    /// Withdraw consent for a legal document
+    pub async fn withdraw_current(
+        &self,
+        user_id: &Uuid,
+        doc_type: &ConsentDocumentType,
+        region: &ConsentRegion,
+        ip_address: Option<IpAddr>,
+        user_agent: Option<String>,
+        metadata: Option<serde_json::Value>,
+    ) -> Result<(), AppError> {
+        info!(
+            "User {} withdrawing consent for {:?} in region {:?}",
+            user_id, doc_type, region
+        );
+
+        let doc_type_str = match doc_type {
+            ConsentDocumentType::Terms => "terms",
+            ConsentDocumentType::Privacy => "privacy",
+        };
+
+        let region_str = match region {
+            ConsentRegion::Eu => "eu",
+            ConsentRegion::Us => "us",
+        };
+
+        let current_doc = self
+            .consent_repository
+            .get_current_document(doc_type_str, region_str)
+            .await?
+            .ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "No current legal document found for {} in {}",
+                    doc_type_str, region_str
+                ))
+            })?;
+
+        let event = self
+            .consent_repository
+            .insert_event(
+                *user_id,
+                doc_type_str,
+                region_str,
+                current_doc.version.clone(),
+                "withdrawn",
+                "api",
+                ip_address,
+                user_agent.clone(),
+                metadata.clone(),
+            )
+            .await?;
+
+        self.consent_repository
+            .upsert_user_consent(
+                *user_id,
+                doc_type_str,
+                region_str,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await?;
+
+        let mut audit_context = AuditContext::new(*user_id);
+
+        if let Some(ip) = ip_address {
+            if let Ok(ip_network) = IpNetwork::from_str(&ip.to_string()) {
+                audit_context = audit_context.with_ip_address(ip_network);
+            }
+        }
+
+        if let Some(ua) = user_agent {
+            audit_context = audit_context.with_user_agent(ua);
+        }
+
+        let audit_metadata = json!({
+            "doc_type": doc_type_str,
+            "region": region_str,
+            "version": current_doc.version,
+            "url": current_doc.url,
+            "content_hash": current_doc.content_hash,
+            "event_id": event.id,
+        });
+
+        let audit_event = AuditEvent {
+            action_type: "consent_withdrawn".to_string(),
+            entity_type: "legal_document".to_string(),
+            entity_id: Some(format!("{}:{}", doc_type_str, region_str)),
+            old_values: None,
+            new_values: Some(audit_metadata.clone()),
+            metadata: Some(audit_metadata),
+            performed_by: user_id.to_string(),
+            status: Some("success".to_string()),
+            error_message: None,
+        };
+
+        self.audit_service
+            .log_event(&audit_context, audit_event)
+            .await?;
+
+        info!(
+            "Successfully recorded consent withdrawal for user {} - {:?} in {:?}",
+            user_id, doc_type, region
+        );
+
+        Ok(())
+    }
+
     /// Generate consent report for admin users
     pub async fn generate_consent_report(
         &self,

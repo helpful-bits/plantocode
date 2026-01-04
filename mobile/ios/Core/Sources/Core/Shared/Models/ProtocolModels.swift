@@ -1,34 +1,5 @@
 import Foundation
 
-// RPC Request/Response models matching desktop
-public struct DesktopRpcRequest: Codable {
-    public let method: String
-    public let params: AnyCodable
-    public let correlationId: String
-    public let auth: String?
-    public var idempotencyKey: String?
-
-    public init(method: String, params: AnyCodable, correlationId: String, auth: String? = nil, idempotencyKey: String? = nil) {
-        self.method = method
-        self.params = params
-        self.correlationId = correlationId
-        self.auth = auth
-        self.idempotencyKey = idempotencyKey
-    }
-}
-
-public struct DesktopRpcResponse: Codable {
-    public let correlationId: String
-    public let result: AnyCodable?
-    public let error: String?
-
-    public init(correlationId: String, result: AnyCodable? = nil, error: String? = nil) {
-        self.correlationId = correlationId
-        self.result = result
-        self.error = error
-    }
-}
-
 // Server Event model
 public struct ServerEvent: Codable {
     public let id: String

@@ -121,6 +121,25 @@ public class JobsDataService: ObservableObject {
         return "sess:\(sessionPart)|proj:\(projectPart)|status:\(statusPart)|task:\(taskTypePart)|page:\(pagePart)|size:\(pageSizePart)"
     }
 
+    func effectiveJobListScope(sessionId: String?, projectDirectory: String?) -> (sessionId: String?, projectDirectory: String?) {
+        if let sid = sessionId, !sid.hasPrefix("mobile-session-") {
+            return (sid, projectDirectory)
+        }
+        guard let project = projectDirectory, !project.isEmpty else {
+            return (nil, nil)
+        }
+        return (nil, project)
+    }
+
+    public func handleJobsListInvalidated(sessionId: String?, projectDirectory: String?) {
+        let (sid, proj) = effectiveJobListScope(
+            sessionId: sessionId ?? activeSessionId,
+            projectDirectory: projectDirectory ?? activeProjectDirectory
+        )
+        guard sid != nil || proj != nil else { return }
+        scheduleCoalescedListJobsForActiveSession(bypassCache: true)
+    }
+
     // MARK: - Public Methods
 
     /// List jobs with filtering and pagination
@@ -152,20 +171,19 @@ public class JobsDataService: ObservableObject {
                 do {
                     var jobData: [String: Any]?
 
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
-                        if let error = response.error {
-                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = rpcResponse.error {
+                            promise(.failure(.serverError(error.message)))
                             return
                         }
 
-                        if let result = response.result?.value as? [String: Any] {
-                            // Unwrap the "job" envelope if present, otherwise use result directly
+                        if let result = rpcResponse.result?.value as? [String: Any] {
                             if let jobEnvelope = result["job"] as? [String: Any] {
                                 jobData = jobEnvelope
                             } else {
                                 jobData = result
                             }
-                            if response.isFinal {
+                            if rpcResponse.isFinal {
                                 break
                             }
                         }
@@ -203,22 +221,6 @@ public class JobsDataService: ObservableObject {
     /// Delete a job
     public func deleteJob(jobId: String) -> AnyPublisher<Bool, DataServiceError> {
         return deleteJobViaRPC(jobId: jobId)
-    }
-
-    /// Subscribe to real-time job progress updates
-    public func subscribeToJobUpdates(clientId: String) -> AnyPublisher<JobProgressUpdate, DataServiceError> {
-        return apiClient.requestStream(
-            endpoint: .subscribeJobUpdates,
-            method: .POST,
-            body: ["clientId": clientId]
-        )
-        .decode(type: JobProgressUpdate.self, decoder: JSONDecoder.apiDecoder)
-        .receive(on: DispatchQueue.main)
-        .handleEvents(receiveOutput: { [weak self] update in
-            self?.handleJobProgressUpdate(update)
-        })
-        .mapError { DataServiceError.networkError($0) }
-        .eraseToAnyPublisher()
     }
 
     /// Lightweight session setter - updates session context and recomputes counts from cache.
@@ -343,18 +345,6 @@ public class JobsDataService: ObservableObject {
         validateWorkflowCache()
     }
 
-    /// Get status updates for specific jobs
-    public func getJobStatusUpdates(jobIds: [String]) -> AnyPublisher<[JobProgressUpdate], DataServiceError> {
-        return apiClient.request(
-            endpoint: .getJobStatusUpdates,
-            method: .POST,
-            body: ["jobIds": jobIds]
-        )
-        .decode(type: [JobProgressUpdate].self, decoder: JSONDecoder.apiDecoder)
-        .mapError { DataServiceError.networkError($0) }
-        .eraseToAnyPublisher()
-    }
-
     /// Prefetch job details for multiple jobs in background (best-effort, no loading state)
     public func prefetchJobDetails(jobIds: [String], limit: Int = 20) {
         let idsToFetch = Array(jobIds.prefix(limit))
@@ -448,34 +438,47 @@ public class JobsDataService: ObservableObject {
             .eraseToAnyPublisher()
     }
 
-    /// Update job content (for plan edits)
-    public func updateJobContent(jobId: String, newContent: String) -> AsyncThrowingStream<Any, Error> {
-        return AsyncThrowingStream { continuation in
-            Task {
-                do {
-                    for try await response in CommandRouter.updateImplementationPlanContent(
-                        jobId: jobId,
-                        newContent: newContent
-                    ) {
-                        if let error = response.error {
-                            continuation.finish(throwing: DataServiceError.serverError("RPC Error: \(error.message)"))
-                            return
-                        }
+    public struct JobUpdateResult {
+        public let job: BackgroundJob
+        public let success: Bool
+    }
 
-                        if let result = response.result?.value {
-                            continuation.yield(result)
-                            if response.isFinal {
-                                continuation.finish()
-                                return
-                            }
-                        }
-                    }
-                    continuation.finish()
-                } catch {
-                    continuation.finish(throwing: error)
+    public func updateJobContent(jobId: String, newContent: String) async throws -> JobUpdateResult {
+        var finalResponse: [String: Any]?
+
+        for try await rpcResponse in CommandRouter.updateImplementationPlanContent(
+            jobId: jobId,
+            newContent: newContent
+        ) {
+            if let error = rpcResponse.error {
+                throw DataServiceError.serverError(error.message)
+            }
+
+            if let result = rpcResponse.result?.value as? [String: Any] {
+                finalResponse = result
+                if rpcResponse.isFinal {
+                    break
                 }
             }
         }
+
+        guard let responseData = finalResponse else {
+            throw DataServiceError.invalidResponse("No update response received")
+        }
+
+        let updatedJob: BackgroundJob
+        if let jobData = responseData["job"] as? [String: Any] {
+            updatedJob = try JobsDecoding.decodeJob(dict: jobData)
+        } else {
+            updatedJob = try JobsDecoding.decodeJob(dict: responseData)
+        }
+
+        await MainActor.run {
+            self.insertOrReplace(job: updatedJob)
+            self.lastAccumulatedLengths[jobId] = updatedJob.response?.count ?? 0
+        }
+
+        return JobUpdateResult(job: updatedJob, success: true)
     }
 
     // MARK: - Internal Methods

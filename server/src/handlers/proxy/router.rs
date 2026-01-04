@@ -93,8 +93,9 @@ pub async fn llm_chat_completion_handler(
                             (canonicalize_mime(mime_type), Some(data_base64.len()))
                         }
                         ImageSource::Url { .. } => {
-                            // For URLs, we can't easily determine size without fetching
-                            (image.media_type.clone().unwrap_or_else(|| "image/jpeg".to_string()), None)
+                            return Err(AppError::Validation(
+                                "Remote image URLs are not supported; please send base64/data URLs".to_string()
+                            ));
                         }
                         ImageSource::ProviderFileId { .. } => {
                             // File IDs don't need size validation
@@ -302,6 +303,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             }
@@ -330,6 +332,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     model_repository.clone(),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             }
@@ -357,12 +360,12 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             }
         }
         "openrouter" => {
-            // Route OpenRouter models
             if is_streaming {
                 openrouter::handle_openrouter_streaming_request(
                     payload_value.clone(),
@@ -384,6 +387,7 @@ pub async fn llm_chat_completion_handler(
                     billing_service.get_ref().clone(),
                     Arc::clone(&model_repository),
                     request_id.clone(),
+                    request_tracker.clone(),
                 )
                 .await
             }

@@ -1,40 +1,20 @@
-use actix_web::{HttpRequest, HttpResponse, Result, web};
-use serde::{Deserialize, Serialize};
+use actix_web::{HttpResponse, Result, web};
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
-use tracing::{error, info, warn};
-use uuid::Uuid;
+use tracing::{error, info};
 
-use crate::db::repositories::device_repository::{DeviceRepository, RegisterDeviceRequest};
 use crate::error::AppError;
 use crate::models::authenticated_user::AuthenticatedUser;
 use crate::services::apns_service::{ApnsService, NotificationRequest};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JobNotificationPayload {
     pub job_id: String,
     pub title: String,
     pub body: String,
     pub custom_data: Option<Value>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RegisterPushTokenPayload {
-    pub device_id: Uuid,
-    pub platform: String,
-    pub token: String,
-}
-
-#[derive(Deserialize)]
-pub struct PushTokenRegistrationRequest {
-    pub deviceToken: String,
-    pub platform: String,
-    pub environment: String,
-}
-
-#[derive(Serialize)]
-pub struct PushTokenRegistrationResponse {
-    pub success: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -299,122 +279,3 @@ pub async fn test_notification_handler(
     }
 }
 
-pub async fn register_push_token(
-    user: web::ReqData<AuthenticatedUser>,
-    payload: web::Json<RegisterPushTokenPayload>,
-    device_repo: web::Data<Arc<DeviceRepository>>,
-) -> Result<HttpResponse, AppError> {
-    let user_id = user.user_id;
-
-    info!(
-        user_id = %user_id,
-        device_id = %payload.device_id,
-        platform = %payload.platform,
-        "Registering push token"
-    );
-
-    match device_repo
-        .upsert_push_token(
-            &user_id,
-            &payload.device_id,
-            &payload.platform,
-            &payload.token,
-        )
-        .await
-    {
-        Ok(_) => {
-            info!(
-                user_id = %user_id,
-                device_id = %payload.device_id,
-                platform = %payload.platform,
-                "Push token registered successfully"
-            );
-
-            Ok(HttpResponse::Ok().json(json!({
-                "success": true,
-                "message": "Push token registered successfully"
-            })))
-        }
-        Err(e) => {
-            error!(
-                user_id = %user_id,
-                device_id = %payload.device_id,
-                platform = %payload.platform,
-                error = %e,
-                "Failed to register push token"
-            );
-
-            Err(e)
-        }
-    }
-}
-
-pub async fn register_push_token_handler(
-    user: web::ReqData<AuthenticatedUser>,
-    req: web::Json<PushTokenRegistrationRequest>,
-    device_repo: web::Data<DeviceRepository>,
-    http_req: HttpRequest,
-) -> actix_web::Result<HttpResponse> {
-    let device_id_str = http_req
-        .headers()
-        .get("X-Device-ID")
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| actix_web::error::ErrorBadRequest("Missing X-Device-ID header"))?;
-
-    let device_id = uuid::Uuid::parse_str(device_id_str)
-        .map_err(|_| actix_web::error::ErrorBadRequest("Invalid device ID format"))?;
-
-    match device_repo
-        .upsert_push_token(&user.user_id, &device_id, &req.platform, &req.deviceToken)
-        .await
-    {
-        Ok(_) => Ok(HttpResponse::Ok().json(PushTokenRegistrationResponse { success: true })),
-        Err(AppError::NotFound(_)) => {
-            // Device doesn't exist - auto-register it
-            info!(
-                user_id = %user.user_id,
-                device_id = %device_id,
-                "Device not found during push token registration, auto-creating device"
-            );
-
-            // Create minimal device registration
-            let register_request = RegisterDeviceRequest {
-                device_id,
-                user_id: user.user_id,
-                device_name: "iOS Device".to_string(),
-                device_type: "mobile".to_string(),
-                platform: req.platform.clone(),
-                platform_version: None,
-                app_version: String::new(),
-                local_ips: None,
-                public_ip: None,
-                relay_eligible: false,
-                available_ports: None,
-                capabilities: serde_json::json!({}),
-            };
-
-            // Register the device
-            device_repo
-                .register_device(register_request)
-                .await
-                .map_err(|e| {
-                    error!(
-                        user_id = %user.user_id,
-                        device_id = %device_id,
-                        error = %e,
-                        "Failed to auto-register device"
-                    );
-                    actix_web::error::ErrorInternalServerError(e)
-                })?;
-
-            // Retry push token upsert
-            device_repo
-                .upsert_push_token(&user.user_id, &device_id, &req.platform, &req.deviceToken)
-                .await
-                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-
-            Ok(HttpResponse::Ok().json(PushTokenRegistrationResponse { success: true }))
-        }
-        Err(e) => Err(actix_web::error::ErrorInternalServerError(e)),
-    }
-}

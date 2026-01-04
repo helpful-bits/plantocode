@@ -26,8 +26,8 @@ pub(crate) async fn handle_google_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
+    request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
-    // Extract the original model ID from the payload before it gets transformed
     let original_model_id = payload["model"].as_str().unwrap_or_default().to_string();
     let payload_clone = payload.clone();
     let client = GoogleClient::new(app_settings)?;
@@ -48,7 +48,6 @@ pub(crate) async fn handle_google_request(
                     "[FALLBACK] Google request failed, retrying with OpenRouter: {}",
                     error
                 );
-                // Get the model with OpenRouter mapping
                 let openrouter_mapping = model_repository
                     .find_by_id_with_mapping(&original_model_id, "openrouter")
                     .await?
@@ -59,7 +58,6 @@ pub(crate) async fn handle_google_request(
                         ))
                     })?;
 
-                // Create a ModelWithProvider from the mapping for OpenRouter
                 let openrouter_model = ModelWithProvider {
                     id: openrouter_mapping.id,
                     name: openrouter_mapping.name,
@@ -89,28 +87,31 @@ pub(crate) async fn handle_google_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
+                    request_tracker,
                 )
                 .await;
             }
+            let _ = billing_service
+                .fail_api_charge(&request_id, user_id, &error.to_string())
+                .await;
+            request_tracker.remove_request(&request_id).await;
             return Err(error);
         }
     };
 
-    // Serialize response to get HTTP body for usage extraction
     let response_body = serde_json::to_string(&response)?;
 
-    // Get usage from provider using unified extraction
     let usage = client
         .extract_from_response_body(response_body.as_bytes(), &model_with_provider.id)
         .await?;
 
-    // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
         .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
-    // Transform Google response to OpenRouter format for consistent client parsing
+    request_tracker.remove_request(&request_id).await;
+
     let response_value = serde_json::to_value(&response)?;
     let content = response_value["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
@@ -237,7 +238,6 @@ pub(crate) async fn handle_google_streaming_request(
     // Instantiate Google stream transformer
     let transformer = Box::new(GoogleStreamTransformer::new(&model_with_provider.id));
 
-    // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
@@ -246,6 +246,7 @@ pub(crate) async fn handle_google_streaming_request(
         billing_service,
         request_id,
         cancellation_token,
+        request_tracker.clone(),
     );
 
     // Convert to SSE stream and return as HttpResponse

@@ -424,8 +424,8 @@ public class ServerFeatureService: ObservableObject {
             default:
                 return .networkError(urlError)
             }
-        } else if let apiError = error as? APIError {
-            switch apiError {
+        } else if let networkError = error as? NetworkError {
+            switch networkError {
             case .invalidURL:
                 return .invalidRequest("Invalid URL")
             case .requestFailed(let underlying):
@@ -434,6 +434,8 @@ public class ServerFeatureService: ObservableObject {
                 return .serverError("HTTP \(statusCode)")
             case .decodingFailed(let underlying):
                 return .invalidResponse("Decoding failed: \(underlying.localizedDescription)")
+            case .serverError(let apiError):
+                return .serverError(apiError.message)
             }
         } else if let serviceError = error as? DataServiceError {
             return serviceError

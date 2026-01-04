@@ -600,11 +600,13 @@ public struct PlanDetailView: View {
 
         Task {
             do {
-                for try await _ in jobsService.updateJobContent(jobId: currentJobId, newContent: xmlContent) {
-                }
+                let result = try await container.jobsService.updateJobContent(jobId: currentJobId, newContent: xmlContent)
                 await MainActor.run {
                     self.isSaving = false
                     self.hasUnsavedChanges = false
+                    if let response = result.job.response {
+                        self.xmlContent = response
+                    }
                 }
             } catch {
                 await MainActor.run {

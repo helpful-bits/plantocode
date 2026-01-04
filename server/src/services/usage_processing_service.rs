@@ -120,6 +120,11 @@ impl UsageProcessingService {
         user_pool: Arc<Pool<Postgres>>,
         system_pool: Arc<Pool<Postgres>>,
     ) -> Result<Self, AppError> {
+        if Arc::ptr_eq(&user_pool, &system_pool) {
+            return Err(AppError::Internal(
+                "UsageProcessingService requires distinct user_pool and system_pool".to_string(),
+            ));
+        }
         let model_cache = Arc::new(ModelProviderCache::new(&system_pool).await?);
         Ok(Self {
             user_pool,

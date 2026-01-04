@@ -27,11 +27,9 @@ pub(crate) async fn handle_openai_request(
 ) -> Result<HttpResponse, AppError> {
     let client = OpenAIClient::new(app_settings)?;
 
-    // Clone payload for fallback use
     let payload_value_clone = payload.clone();
     let mut request = client.convert_to_chat_request(payload)?;
 
-    // Use the resolved model ID from mapping service
     request.model = model.resolved_model_id.clone();
 
     let (response, _headers, response_id) = match client.chat_completion(request, web_mode).await {
@@ -42,7 +40,6 @@ pub(crate) async fn handle_openai_request(
                     "[FALLBACK] OpenAI request failed, retrying with OpenRouter: {}",
                     error
                 );
-                // Note: OpenRouter doesn't support cancellation, so we don't pass request_tracker
                 return super::openrouter::handle_openrouter_request(
                     payload_value_clone,
                     model,
@@ -51,14 +48,18 @@ pub(crate) async fn handle_openai_request(
                     billing_service,
                     Arc::new(model_repository.get_ref().clone()),
                     request_id,
+                    request_tracker,
                 )
                 .await;
             }
+            let _ = billing_service
+                .fail_api_charge(&request_id, user_id, &error.to_string())
+                .await;
+            request_tracker.remove_request(&request_id).await;
             return Err(error);
         }
     };
 
-    // Update request tracker with OpenAI response_id if available
     if let Some(openai_response_id) = response_id {
         if let Err(e) = request_tracker
             .update_openai_response_id(&request_id, openai_response_id)
@@ -68,20 +69,18 @@ pub(crate) async fn handle_openai_request(
         }
     }
 
-    // Serialize response to get HTTP body for usage extraction
     let response_body = serde_json::to_string(&response)?;
 
-    // Get usage from provider using unified extraction
     let usage = client
         .extract_from_response_body(response_body.as_bytes(), &model.id)
         .await?;
 
-    // Finalize API charge with actual usage
     let (api_usage_record, _user_credit) = billing_service
         .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
 
-    // Convert to OpenRouter format for consistent client parsing with standardized usage
+    request_tracker.remove_request(&request_id).await;
+
     let mut response_value = serde_json::to_value(response)?;
     if let Some(obj) = response_value.as_object_mut() {
         let usage_response = create_standardized_usage_response(&usage, &api_usage_record.cost)?;
@@ -163,7 +162,6 @@ pub(crate) async fn handle_openai_streaming_request(
     // Instantiate OpenAI stream transformer
     let transformer = Box::new(OpenAIStreamTransformer::new(&model.id));
 
-    // Create the modern stream handler
     let modern_handler = ModernStreamHandler::new(
         provider_stream,
         transformer,
@@ -172,6 +170,7 @@ pub(crate) async fn handle_openai_streaming_request(
         billing_service.clone(),
         request_id,
         cancellation_token,
+        request_tracker.clone(),
     );
 
     // Convert to SSE stream and return as HttpResponse

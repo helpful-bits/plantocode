@@ -103,10 +103,18 @@ pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle
         .inner()
         .clone();
 
-    // Cancel the job
+    let job_opt = repo.get_job_by_id(&job_id)
+        .await
+        .ok()
+        .flatten();
+
+    let preserved_session_id = job_opt.as_ref().map(|j| j.session_id.clone()).unwrap_or_default();
+
     repo.cancel_job(&job_id, "Canceled by user")
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel job: {}", e)))?;
+
+    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(&app_handle, &preserved_session_id);
 
     Ok(())
 }

@@ -17,8 +17,9 @@ use crate::clients::usage_extractor::ProviderUsage;
 use crate::db::repositories::model_repository::ModelWithProvider;
 use crate::error::AppError;
 use crate::models::model_pricing::ModelPricing;
-use crate::models::stream_event::{StreamEvent, UsageUpdate};
+use crate::models::stream_event::StreamEvent;
 use crate::services::billing_service::BillingService;
+use crate::services::request_tracker::RequestTracker;
 use crate::utils::stream_debug_logger::StreamDebugLogger;
 
 use super::sse_adapter::SseAdapter;
@@ -37,6 +38,7 @@ where
     model: ModelWithProvider,
     user_id: Uuid,
     billing_service: Arc<BillingService>,
+    request_tracker: web::Data<RequestTracker>,
     request_id: String,
     stream_completed: bool,
     start_event_sent: bool,
@@ -61,6 +63,7 @@ where
         billing_service: Arc<BillingService>,
         request_id: String,
         cancellation_token: CancellationToken,
+        request_tracker: web::Data<RequestTracker>,
     ) -> Self {
         let debug_logger = StreamDebugLogger::new(&model.provider_code, &request_id);
         debug_logger.log_stream_start();
@@ -68,7 +71,6 @@ where
         let mut keep_alive_interval = interval(Duration::from_secs(15));
         keep_alive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
-        // Convert the byte stream to SSE events
         let sse_stream = SseAdapter::new(stream);
 
         Self {
@@ -77,6 +79,7 @@ where
             model,
             user_id,
             billing_service,
+            request_tracker,
             request_id,
             stream_completed: false,
             start_event_sent: false,
@@ -173,12 +176,10 @@ where
         .with_keep_alive(Duration::from_secs(15))
     }
 
-    /// Handle stream termination for billable cases (successful completion or user cancellation)
     fn handle_stream_termination(
         &mut self,
         was_cancelled: bool,
     ) -> Poll<Option<Result<StreamEvent, AppError>>> {
-        // PREVENT DUPLICATE FINALIZATION
         if self.billing_finalized {
             warn!(
                 "Stream termination called multiple times for request {}, ignoring duplicate call",
@@ -187,9 +188,8 @@ where
             return Poll::Ready(None);
         }
 
-        // Note: stream_completed might already be true if set by [DONE] marker
         self.stream_completed = true;
-        self.billing_finalized = true; // SET FLAG TO PREVENT RACE CONDITIONS
+        self.billing_finalized = true;
         self.debug_logger.log_stream_end();
 
         let usage = self.final_usage.take().unwrap_or_else(|| {
@@ -200,7 +200,6 @@ where
             ProviderUsage::new(0, 0, 0, 0, self.model.id.clone())
         });
 
-        // CHECK FOR ZERO USAGE - MARK AS FAILED INSTEAD OF COMPLETED
         if usage.prompt_tokens == 0 && usage.completion_tokens == 0 {
             warn!(
                 "Stream {} terminated without processing any tokens, marking as failed",
@@ -208,6 +207,7 @@ where
             );
 
             let billing_service = self.billing_service.clone();
+            let request_tracker = self.request_tracker.clone();
             let request_id = self.request_id.clone();
             let user_id = self.user_id;
             let usage_clone = usage.clone();
@@ -217,7 +217,6 @@ where
                 "Stream completed without processing any tokens"
             };
 
-            // Create metadata to indicate failure with proper status
             let metadata = Some(serde_json::json!({
                 "status": "failed",
                 "error": reason,
@@ -244,6 +243,7 @@ where
                         );
                     }
                 }
+                request_tracker.remove_request(&request_id).await;
             });
 
             return Poll::Ready(Some(Ok(StreamEvent::StreamCancelled {
@@ -252,7 +252,6 @@ where
             })));
         }
 
-        // NORMAL FINALIZATION FOR NON-ZERO USAGE
         let final_cost = self.model.calculate_total_cost(&usage).unwrap_or_else(|e| {
             error!(
                 "Failed to calculate cost for request {}: {}",
@@ -262,6 +261,7 @@ where
         });
 
         let billing_service = self.billing_service.clone();
+        let request_tracker = self.request_tracker.clone();
         let request_id = self.request_id.clone();
         let user_id = self.user_id;
         let usage_clone = usage.clone();
@@ -286,6 +286,7 @@ where
                     );
                 }
             }
+            request_tracker.remove_request(&request_id).await;
         });
 
         if was_cancelled {
@@ -417,8 +418,8 @@ where
                     let stream_error = self.transformer.handle_error_chunk(error_obj);
                     let app_error: AppError = stream_error.into();
 
-                    // Spawn task to mark job as FAILED
                     let billing_service = self.billing_service.clone();
+                    let request_tracker = self.request_tracker.clone();
                     let request_id = self.request_id.clone();
                     let user_id = self.user_id;
                     let error_message = app_error.to_string();
@@ -432,6 +433,7 @@ where
                                 request_id, fail_err
                             );
                         }
+                        request_tracker.remove_request(&request_id).await;
                     });
 
                     return Poll::Ready(Some(Err(app_error)));
@@ -471,12 +473,12 @@ where
                     }
                 }
             }
-            // 2. Handle provider stream error
             Poll::Ready(Some(Err(e))) => {
                 error!("Provider SSE stream error: {}", e);
                 self.debug_logger.log_error(&format!("Stream error: {}", e));
 
                 let billing_service = self.billing_service.clone();
+                let request_tracker = self.request_tracker.clone();
                 let request_id = self.request_id.clone();
                 let user_id = self.user_id;
                 let error_message = e.to_string();
@@ -491,6 +493,7 @@ where
                             request_id, fail_err
                         );
                     }
+                    request_tracker.remove_request(&request_id).await;
                 });
 
                 return Poll::Ready(Some(Err(e)));

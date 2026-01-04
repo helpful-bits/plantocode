@@ -13,6 +13,31 @@ public struct Region: Equatable {
   }
 }
 
+public enum AuthSessionState: Equatable {
+    case unauthenticated
+    case authenticating
+    case authenticated
+    case loggingOut
+    case deletingAccount
+}
+
+public enum DeviceRegistrationState: Equatable {
+    case unregistered
+    case registering
+    case registered
+    case failed(Error?)
+
+    public static func == (lhs: DeviceRegistrationState, rhs: DeviceRegistrationState) -> Bool {
+        switch (lhs, rhs) {
+        case (.unregistered, .unregistered): return true
+        case (.registering, .registering): return true
+        case (.registered, .registered): return true
+        case (.failed, .failed): return true
+        default: return false
+        }
+    }
+}
+
 @MainActor
 public final class AppState: ObservableObject {
   public static let shared = AppState()
@@ -29,6 +54,8 @@ public final class AppState: ObservableObject {
     }
   }
   @Published public private(set) var authBootstrapCompleted: Bool = false
+  @Published public private(set) var authSessionState: AuthSessionState = .unauthenticated
+  @Published public private(set) var deviceRegistrationState: DeviceRegistrationState = .unregistered
   @Published public var selectedProjectDirectory: String? {
     didSet {
       UserDefaults.standard.set(selectedProjectDirectory, forKey: "ActiveProjectDirectory")
@@ -265,6 +292,13 @@ public final class AppState: ObservableObject {
     self.bootstrapState = .failed(message)
   }
 
-  // URL handling is no longer needed with Auth0.swift 2.13+
-  // The SDK handles callbacks automatically
+  @MainActor
+  public func setAuthSessionState(_ state: AuthSessionState) {
+    self.authSessionState = state
+  }
+
+  @MainActor
+  public func setDeviceRegistrationState(_ state: DeviceRegistrationState) {
+    self.deviceRegistrationState = state
+  }
 }

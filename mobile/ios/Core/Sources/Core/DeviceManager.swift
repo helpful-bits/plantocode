@@ -9,6 +9,10 @@ public final class DeviceManager {
 
     private init() {}
 
+    public var deviceId: UUID {
+        UUID(uuidString: KeychainManager.shared.getOrCreateDeviceId())!
+    }
+
     /// Get or create a persistent device ID for device-binding headers (X-Device-ID, X-Token-Binding)
     public func getOrCreateDeviceID() -> String {
         if let existingDeviceID = try? KeychainManager.shared.retrieveString(for: .deviceIdentifier),

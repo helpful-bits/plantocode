@@ -455,15 +455,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
             // 4. Determine if this is a mutating method and generate idempotency key
             let isMutating: Bool = {
                 let lower = req.method.lowercased()
-                return lower.hasPrefix("create")
-                    || lower.hasPrefix("update")
-                    || lower.hasPrefix("delete")
-                    || lower.hasPrefix("set")
-                    || lower.hasPrefix("sync")
-                    || lower.hasPrefix("kill")
-                    || lower.hasPrefix("start")
+                let verbs = [".create", ".update", ".delete", ".cancel", ".sync", ".set", ".start", ".kill", ".merge"]
+                if verbs.contains(where: { lower.contains($0) }) { return true }
+                let bareVerbs = ["create", "update", "delete", "cancel", "sync", "set", "start", "kill", "merge"]
+                return bareVerbs.contains { lower.hasPrefix($0) }
             }()
-            let idempotencyKey = isMutating ? UUID().uuidString : nil
+            let idempotencyKey = isMutating ? req.id : nil
 
             // Create response subject for this call
             let responseSubject = PassthroughSubject<RpcResponse, ServerRelayError>()
@@ -684,47 +681,45 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     // Send registration message on open
     private func sendRegistration() {
-        // Check if resume credentials exist in Keychain
-        let payload: [String: Any]
+        // Build registration payload matching device_link_ws RegisterPayload schema
+        // Uses compactMapValues to omit nil values for a clean JSON structure
+        let storedResumeToken: String?
+        let storedSessionId: String?
 
         if let resumeMeta = try? KeychainManager.shared.retrieve(
             type: RelaySessionMeta.self,
             for: KeychainManager.KeychainItem.relayResumeToken(deviceId: self.deviceId),
             prompt: nil
         ) {
-            // Send register message with resume credentials
-            payload = [
-                "deviceId": self.deviceId,
-                "deviceName": UIDevice.current.name,
-                "sessionId": resumeMeta.sessionId,
-                "resumeToken": resumeMeta.resumeToken
-            ]
+            storedSessionId = resumeMeta.sessionId
+            storedResumeToken = resumeMeta.resumeToken
             logger.info("Attempting to register with resume credentials, deviceId=\(self.deviceId)")
         } else {
-            // Send register message
-            payload = [
-                "deviceId": self.deviceId,
-                "deviceName": UIDevice.current.name
-            ]
+            storedSessionId = nil
+            storedResumeToken = nil
             logger.info("Registering new session, deviceId=\(self.deviceId)")
         }
 
+        let payload: [String: String?] = [
+            "deviceId": self.deviceId,
+            "deviceName": UIDevice.current.name,
+            "sessionId": storedSessionId,
+            "resumeToken": storedResumeToken
+        ]
+        let cleanPayload = payload.compactMapValues { $0 }
+
         do {
-            // Build envelope manually to avoid Encodable conformance issues
             let envelope: [String: Any] = [
                 "type": "register",
-                "payload": payload
+                "payload": cleanPayload
             ]
             let jsonString = try encodeForWebSocket(envelope)
 
-            // Use webSocketTask.send(.string(json)) exclusively (no .data frames)
             webSocketTask?.send(.string(jsonString)) { [weak self] error in
                 if let error = error {
                     self?.registrationPromise?(.failure(.networkError(error)))
                     self?.registrationPromise = nil
                 } else {
-                    // Registration sent successfully, but don't complete promise yet
-                    // Wait for "registered" or "resumed" response in message handler
                     self?.logger.info("Registration/resume message sent")
                 }
             }
@@ -1519,6 +1514,11 @@ public struct RpcResponse: Codable {
 }
 
 public struct RpcError: Codable, CustomStringConvertible {
+    public static let UNAUTHORIZED_CODE = 401
+    public static let FORBIDDEN_CODE = 403
+    public static let NOT_FOUND_CODE = 404
+    public static let VALIDATION_ERROR_CODE = 422
+
     public let code: Int
     public let message: String
     public let data: AnyCodable?
@@ -1534,6 +1534,21 @@ public struct RpcError: Codable, CustomStringConvertible {
             return "RpcError(code: \(code), message: \(message), data: \(data))"
         } else {
             return "RpcError(code: \(code), message: \(message))"
+        }
+    }
+
+    public func toDataServiceError() -> DataServiceError {
+        switch code {
+        case RpcError.UNAUTHORIZED_CODE:
+            return .authenticationError(message)
+        case RpcError.FORBIDDEN_CODE:
+            return .permissionDenied(message)
+        case RpcError.NOT_FOUND_CODE:
+            return .invalidRequest(message)
+        case RpcError.VALIDATION_ERROR_CODE:
+            return .validation(message)
+        default:
+            return .serverError("rpc_error: \(message)")
         }
     }
 }

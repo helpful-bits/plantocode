@@ -5,7 +5,7 @@ use crate::jobs::types::{
     WebSearchWorkflowPayload,
 };
 use crate::jobs::workflow_orchestrator::get_workflow_orchestrator;
-use crate::models::{JobCommandResponse, TaskType};
+use crate::models::{JobCommandResponse, JobStatus, TaskType};
 use crate::utils::{config_resolver, job_creation_utils};
 use log::info;
 use serde_json::json;
@@ -177,7 +177,7 @@ pub async fn continue_workflow_from_job_command(
         ));
     }
 
-    if job.status != "completed" {
+    if job.status != JobStatus::Completed.to_string() {
         return Err(format!(
             "Job is not completed, current status: {}",
             job.status

@@ -5,6 +5,7 @@ use crate::error::AppError;
 use crate::handlers::proxy::utils::{is_fallback_error, create_standardized_usage_response};
 use crate::services::billing_service::BillingService;
 use crate::services::model_mapping_service::ModelWithMapping;
+use crate::services::request_tracker::RequestTracker;
 use actix_web::{HttpResponse, web};
 use chrono;
 use serde_json::{Value, json};
@@ -22,6 +23,7 @@ pub(crate) async fn handle_anthropic_request(
     billing_service: Arc<BillingService>,
     model_repository: web::Data<ModelRepository>,
     request_id: String,
+    request_tracker: web::Data<RequestTracker>,
 ) -> Result<HttpResponse, AppError> {
     let payload_clone = payload.clone();
     let client = AnthropicClient::new(app_settings)?;
@@ -47,29 +49,32 @@ pub(crate) async fn handle_anthropic_request(
                     billing_service,
                     Arc::clone(&model_repository),
                     request_id,
+                    request_tracker,
                 )
                 .await;
             } else {
+                let _ = billing_service
+                    .fail_api_charge(&request_id, user_id, &error.to_string())
+                    .await;
+                request_tracker.remove_request(&request_id).await;
                 return Err(error);
             }
         }
     };
 
-    // Serialize response to get HTTP body for usage extraction
     let response_body = serde_json::to_string(&response)?;
 
-    // Get usage from provider using unified extraction
     let usage = client
         .extract_from_response_body(response_body.as_bytes(), &model_with_provider.id)
         .await?;
 
-    // Two-phase billing: Finalize the request with actual usage
     let (api_usage_record, _user_credit) = billing_service
         .finalize_api_charge_with_metadata(&request_id, user_id, usage.clone(), None)
         .await?;
     let cost = api_usage_record.cost;
 
-    // Transform Anthropic response to OpenRouter format for consistent client parsing
+    request_tracker.remove_request(&request_id).await;
+
     let usage_response = create_standardized_usage_response(&usage, &cost)?;
 
     let openrouter_response = json!({

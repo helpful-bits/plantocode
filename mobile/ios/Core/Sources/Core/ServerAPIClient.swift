@@ -1,12 +1,12 @@
 import Foundation
 import OSLog
-// Import CommonTypes for shared type definitions
 
-public enum APIError: Error, LocalizedError {
+public enum NetworkError: Error, LocalizedError {
     case invalidURL
     case requestFailed(Error)
     case invalidResponse(statusCode: Int, data: Data?)
     case decodingFailed(Error)
+    case serverError(APIError)
 
     public var errorDescription: String? {
         switch self {
@@ -14,18 +14,57 @@ public enum APIError: Error, LocalizedError {
         case .requestFailed(let err): return "Request failed: \(err.localizedDescription)"
         case .invalidResponse(let code, _): return "Invalid response status: \(code)"
         case .decodingFailed(let err): return "Decoding failed: \(err.localizedDescription)"
+        case .serverError(let apiError): return apiError.message
         }
     }
 }
 
 public final class ServerAPIClient {
     public static let shared = ServerAPIClient(baseURLProvider: { Config.serverURL })
-    public static let auth = ServerAPIClient(baseURLProvider: { Config.authServerURL })  // Dedicated client for auth
+    public static let auth = ServerAPIClient(baseURLProvider: { Config.authServerURL })
+
+    public static let jsonEncoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        return encoder
+    }()
+
+    public static let jsonDecoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        return decoder
+    }()
 
     private let baseURLProvider: () -> String
     private var baseURL: String { baseURLProvider() }
     private let urlSession: URLSession
     private let logger = Logger(subsystem: "PlanToCode", category: "NetworkRequest")
+    private let deviceManager = DeviceManager.shared
+
+    private let taskRegistryLock = NSLock()
+    private var inFlightTasks: [String: Task<Void, Never>] = [:]
+
+    public func registerTask(_ task: Task<Void, Never>, identifier: String) {
+        taskRegistryLock.lock()
+        defer { taskRegistryLock.unlock() }
+        inFlightTasks[identifier] = task
+    }
+
+    public func unregisterTask(identifier: String) {
+        taskRegistryLock.lock()
+        defer { taskRegistryLock.unlock() }
+        inFlightTasks.removeValue(forKey: identifier)
+    }
+
+    public func cancelAllTasks() {
+        taskRegistryLock.lock()
+        let tasks = inFlightTasks
+        inFlightTasks.removeAll()
+        taskRegistryLock.unlock()
+
+        for (_, task) in tasks {
+            task.cancel()
+        }
+        logger.info("Cancelled \(tasks.count) in-flight tasks")
+    }
 
     public init(baseURL: String) {
         self.baseURLProvider = { baseURL }
@@ -37,6 +76,34 @@ public final class ServerAPIClient {
         self.baseURLProvider = baseURLProvider
         let pinningDelegate = CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
         self.urlSession = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
+    }
+
+    // MARK: - Common Headers
+
+    public func applyCommonHeaders(_ request: inout URLRequest, token: String? = nil) {
+        request.setValue(deviceManager.deviceId.uuidString, forHTTPHeaderField: "X-Device-ID")
+        request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
+        if let token = token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+    }
+
+    // MARK: - JSON Helpers
+
+    public func decodeSuccess<T: Decodable>(_ data: Data) throws -> T {
+        return try Self.jsonDecoder.decode(T.self, from: data)
+    }
+
+    public func decodeError(_ data: Data, statusCode: Int) -> APIError {
+        if let apiError = try? Self.jsonDecoder.decode(APIError.self, from: data) {
+            return apiError
+        }
+        return APIError(
+            code: statusCode,
+            message: "Unknown error",
+            errorType: "unknown",
+            errorDetails: nil
+        )
     }
 
     private func formatBytes(_ bytes: Int) -> String {
@@ -60,18 +127,20 @@ public final class ServerAPIClient {
         path: String,
         method: HTTPMethod = .GET,
         body: (any Encodable)? = nil,
-        token: String? = nil
+        token: String? = nil,
+        idempotencyKey: UUID? = nil
     ) async throws -> T {
-        let (data, response) = try await requestRaw(path: path, method: method, body: body, token: token)
+        let (data, response) = try await requestRaw(path: path, method: method, body: body, token: token, idempotencyKey: idempotencyKey)
 
         guard (200...299).contains(response.statusCode) else {
-            throw APIError.invalidResponse(statusCode: response.statusCode, data: data)
+            let apiError = decodeError(data, statusCode: response.statusCode)
+            throw NetworkError.serverError(apiError)
         }
 
         do {
-            return try JSONDecoder().decode(T.self, from: data)
+            return try decodeSuccess(data)
         } catch {
-            throw APIError.decodingFailed(error)
+            throw NetworkError.decodingFailed(error)
         }
     }
 
@@ -79,38 +148,36 @@ public final class ServerAPIClient {
         path: String,
         method: HTTPMethod = .GET,
         body: (any Encodable)? = nil,
-        token: String? = nil
+        token: String? = nil,
+        idempotencyKey: UUID? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let cleanedBaseURL = baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         var finalPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
 
-        // Apply API versioning if enabled
         let enableV1 = Config.Flags.apiVersioning
         if enableV1 && finalPath.hasPrefix("api/") {
             finalPath.insert(contentsOf: "v1/", at: finalPath.index(finalPath.startIndex, offsetBy: 4))
         }
 
         guard let url = URL(string: "\(cleanedBaseURL)/\(finalPath)") else {
-            throw APIError.invalidURL
+            throw NetworkError.invalidURL
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyCommonHeaders(&request, token: token)
 
-        if let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-            request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
-            request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
-            request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
+        if let idempotencyKey = idempotencyKey,
+           method == .POST || method == .PUT || method == .PATCH || method == .DELETE {
+            request.setValue(idempotencyKey.uuidString, forHTTPHeaderField: "Idempotency-Key")
         }
 
         if let body = body {
             do {
-                request.httpBody = try JSONEncoder().encode(AnyEncodable(body))
+                request.httpBody = try Self.jsonEncoder.encode(AnyEncodable(body))
             } catch {
-                throw APIError.decodingFailed(error)
+                throw NetworkError.decodingFailed(error)
             }
         }
 
@@ -122,10 +189,9 @@ public final class ServerAPIClient {
             let (data, response) = try await urlSession.data(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                throw APIError.invalidResponse(statusCode: -1, data: nil)
+                throw NetworkError.invalidResponse(statusCode: -1, data: nil)
             }
 
-            // Calculate timing and log metrics
             let duration = Date().timeIntervalSince(startTime)
             let responseSize = data.count
 
@@ -133,12 +199,11 @@ public final class ServerAPIClient {
 
             return (data, httpResponse)
         } catch {
-            // Log failed requests
             let duration = Date().timeIntervalSince(startTime)
             logger.error("[\(method.rawValue)] \(finalPath) | Failed after \(String(format: "%.3f", duration))s | Request: \(self.formatBytes(requestBodySize)) | Error: \(error.localizedDescription)")
 
-            if let err = error as? APIError { throw err }
-            throw APIError.requestFailed(error)
+            if let err = error as? NetworkError { throw err }
+            throw NetworkError.requestFailed(error)
         }
     }
 }

@@ -76,7 +76,7 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
           self.backgroundDisconnectTimer?.invalidate()
           self.backgroundDisconnectTimer = nil
           Task { @MainActor in
-              await MultiConnectionManager.shared.hardReset(reason: .manual)
+              await MultiConnectionManager.shared.suspendConnectionsForBackground()
           }
           if self.backgroundTaskId != .invalid {
               application.endBackgroundTask(self.backgroundTaskId)
@@ -88,7 +88,7 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
       backgroundDisconnectTimer = Timer.scheduledTimer(withTimeInterval: 25, repeats: false) { [weak self] _ in
           guard let self = self else { return }
           Task { @MainActor in
-              await MultiConnectionManager.shared.hardReset(reason: .manual)
+              await MultiConnectionManager.shared.suspendConnectionsForBackground()
           }
           if self.backgroundTaskId != .invalid {
               application.endBackgroundTask(self.backgroundTaskId)

@@ -34,7 +34,7 @@ pub async fn get_detailed_usage_with_summary_handler(
     db_pools: web::Data<DatabasePools>,
 ) -> Result<HttpResponse, AppError> {
     let usage_summary = api_usage_repo
-        .get_detailed_usage_with_summary_with_system_pool(
+        .get_detailed_usage_with_summary(
             &user.user_id,
             query.start_date,
             query.end_date,

@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::models::{
     AcceptConsentRequest, AuthenticatedUser, ConsentDocumentType, ConsentRegion, ConsentSource,
+    WithdrawConsentRequest,
 };
 use crate::services::consent_service::ConsentService;
 use actix_web::{HttpRequest, HttpResponse, web};
@@ -116,6 +117,52 @@ pub async fn accept_consent(
             &doc_type,
             &region,
             ConsentSource::Api, // Since this is coming through the API
+            ip_address,
+            user_agent,
+            request.metadata,
+        )
+        .await?;
+
+    Ok(HttpResponse::NoContent().finish())
+}
+
+/// Withdraw consent
+pub async fn withdraw_consent(
+    auth: web::ReqData<AuthenticatedUser>,
+    req: HttpRequest,
+    json: web::Json<WithdrawConsentRequest>,
+    consent_service: web::Data<Arc<ConsentService>>,
+) -> Result<HttpResponse, AppError> {
+    let request = json.into_inner();
+
+    let ip_address = req
+        .connection_info()
+        .realip_remote_addr()
+        .and_then(|ip_str| ip_str.parse().ok());
+
+    let user_agent = req
+        .headers()
+        .get("user-agent")
+        .and_then(|h| h.to_str().ok())
+        .map(|s| s.to_string());
+
+    let doc_type = request
+        .doc_type
+        .parse::<ConsentDocumentType>()
+        .map_err(|_| {
+            AppError::BadRequest(format!("Invalid document type: {}", request.doc_type))
+        })?;
+
+    let region = request
+        .region
+        .parse::<ConsentRegion>()
+        .map_err(|_| AppError::BadRequest(format!("Invalid region: {}", request.region)))?;
+
+    consent_service
+        .withdraw_current(
+            &auth.user_id,
+            &doc_type,
+            &region,
             ip_address,
             user_agent,
             request.metadata,

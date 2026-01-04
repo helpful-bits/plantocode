@@ -400,4 +400,144 @@ impl BackgroundJobRepository {
 
         Ok(jobs)
     }
+
+    /// Get jobs with filtering and pagination
+    pub async fn get_jobs_filtered(
+        &self,
+        project_hash: Option<String>,
+        session_id: Option<String>,
+        status_filter: Option<Vec<String>>,
+        task_type_filter: Option<Vec<String>>,
+        page: u32,
+        page_size: u32,
+    ) -> AppResult<(Vec<BackgroundJob>, u32, bool)> {
+        let mut param_index = 1;
+        let mut where_clauses: Vec<String> = Vec::new();
+        let mut bindings: Vec<String> = Vec::new();
+
+        let use_session_join = project_hash.is_some() && session_id.is_none();
+        let table_prefix = if use_session_join { "bj." } else { "" };
+
+        if let Some(ref sid) = session_id {
+            where_clauses.push(format!("{}session_id = ${}", table_prefix, param_index));
+            bindings.push(sid.clone());
+            param_index += 1;
+        }
+
+        if let Some(ref ph) = project_hash {
+            if session_id.is_none() {
+                where_clauses.push(format!("s.project_hash = ${}", param_index));
+                bindings.push(ph.clone());
+                param_index += 1;
+            }
+        }
+
+        if let Some(ref statuses) = status_filter {
+            if !statuses.is_empty() {
+                let placeholders: Vec<String> = statuses
+                    .iter()
+                    .map(|_| {
+                        let p = format!("${}", param_index);
+                        param_index += 1;
+                        p
+                    })
+                    .collect();
+                where_clauses.push(format!("{}status IN ({})", table_prefix, placeholders.join(", ")));
+                bindings.extend(statuses.clone());
+            }
+        }
+
+        if let Some(ref task_types) = task_type_filter {
+            if !task_types.is_empty() {
+                let placeholders: Vec<String> = task_types
+                    .iter()
+                    .map(|_| {
+                        let p = format!("${}", param_index);
+                        param_index += 1;
+                        p
+                    })
+                    .collect();
+                where_clauses.push(format!("{}task_type IN ({})", table_prefix, placeholders.join(", ")));
+                bindings.extend(task_types.clone());
+            }
+        }
+
+        let where_clause = if where_clauses.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", where_clauses.join(" AND "))
+        };
+
+        let offset = page * page_size;
+        let limit = page_size + 1;
+
+        let (data_query, count_query) = if use_session_join {
+            (
+                format!(
+                    r#"SELECT bj.* FROM background_jobs bj
+                    INNER JOIN sessions s ON bj.session_id = s.id
+                    {}
+                    ORDER BY COALESCE(bj.updated_at, bj.created_at) DESC
+                    LIMIT {} OFFSET {}"#,
+                    where_clause, limit, offset
+                ),
+                format!(
+                    r#"SELECT COUNT(*) as cnt FROM background_jobs bj
+                    INNER JOIN sessions s ON bj.session_id = s.id
+                    {}"#,
+                    where_clause
+                ),
+            )
+        } else {
+            (
+                format!(
+                    r#"SELECT * FROM background_jobs
+                    {}
+                    ORDER BY COALESCE(updated_at, created_at) DESC
+                    LIMIT {} OFFSET {}"#,
+                    where_clause, limit, offset
+                ),
+                format!(
+                    r#"SELECT COUNT(*) as cnt FROM background_jobs
+                    {}"#,
+                    where_clause
+                ),
+            )
+        };
+
+        let mut data_query_builder = sqlx::query(&data_query);
+        for binding in &bindings {
+            data_query_builder = data_query_builder.bind(binding);
+        }
+
+        let rows = data_query_builder
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch filtered jobs: {}", e)))?;
+
+        let mut jobs = Vec::new();
+        for row in rows {
+            let job = row_to_job(&row)?;
+            jobs.push(job);
+        }
+
+        let has_more = jobs.len() > page_size as usize;
+        if has_more {
+            jobs.pop();
+        }
+
+        let mut count_query_builder = sqlx::query(&count_query);
+        for binding in &bindings {
+            count_query_builder = count_query_builder.bind(binding);
+        }
+
+        let count_row = count_query_builder
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to count filtered jobs: {}", e)))?;
+
+        let total_count: i64 = count_row.try_get("cnt").unwrap_or(0);
+
+        Ok((jobs, total_count as u32, has_more))
+    }
 }

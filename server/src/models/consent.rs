@@ -161,6 +161,13 @@ pub struct AcceptConsentRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WithdrawConsentRequest {
+    pub doc_type: String,
+    pub region: String,
+    pub metadata: Option<serde_json::Value>,
+}
+
 // FromStr implementations for parsing strings
 impl FromStr for ConsentDocumentType {
     type Err = String;

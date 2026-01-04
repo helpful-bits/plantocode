@@ -1,11 +1,5 @@
 // Re-export public types
-pub use crate::handlers::proxy::types::{
-    LlmCompletionRequest,
-    TranscriptionResponse,
-    TextEnhancementRequest,
-    TextEnhancementResponse,
-    TextEnhancementUsage,
-};
+pub use crate::handlers::proxy::types::{LlmCompletionRequest, TranscriptionResponse};
 pub use crate::handlers::proxy::utils::extract_error_details;
 
 use crate::config::settings::AppSettings;
@@ -74,24 +68,6 @@ pub async fn video_analysis_handler(
         billing_service,
         model_repository,
         user,
-    )
-    .await
-}
-
-/// Handle text enhancement requests
-pub async fn text_enhancement_handler(
-    payload: web::Json<TextEnhancementRequest>,
-    user: web::ReqData<AuthenticatedUser>,
-    app_settings: web::Data<AppSettings>,
-    billing_service: web::Data<Arc<BillingService>>,
-    model_repository: web::Data<ModelRepository>,
-) -> Result<HttpResponse, AppError> {
-    specialized::text_enhancement::text_enhancement_handler(
-        payload,
-        user,
-        app_settings,
-        billing_service,
-        model_repository,
     )
     .await
 }

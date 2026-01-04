@@ -78,7 +78,7 @@ pub struct CreateSessionRequest {
 
 // Job status enum that matches the SQL schema CHECK constraint
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "snake_case")]
 pub enum JobStatus {
     Idle,
     Created,
@@ -101,13 +101,13 @@ impl ToString for JobStatus {
             JobStatus::Idle => "idle".to_string(),
             JobStatus::Created => "created".to_string(),
             JobStatus::Queued => "queued".to_string(),
-            JobStatus::AcknowledgedByWorker => "acknowledgedByWorker".to_string(),
+            JobStatus::AcknowledgedByWorker => "acknowledged_by_worker".to_string(),
             JobStatus::Preparing => "preparing".to_string(),
-            JobStatus::PreparingInput => "preparingInput".to_string(),
-            JobStatus::GeneratingStream => "generatingStream".to_string(),
-            JobStatus::ProcessingStream => "processingStream".to_string(),
+            JobStatus::PreparingInput => "preparing_input".to_string(),
+            JobStatus::GeneratingStream => "generating_stream".to_string(),
+            JobStatus::ProcessingStream => "processing_stream".to_string(),
             JobStatus::Running => "running".to_string(),
-            JobStatus::CompletedByTag => "completedByTag".to_string(),
+            JobStatus::CompletedByTag => "completed_by_tag".to_string(),
             JobStatus::Completed => "completed".to_string(),
             JobStatus::Failed => "failed".to_string(),
             JobStatus::Canceled => "canceled".to_string(),
@@ -150,18 +150,16 @@ impl FromStr for JobStatus {
             "idle" => Ok(JobStatus::Idle),
             "created" => Ok(JobStatus::Created),
             "queued" => Ok(JobStatus::Queued),
-            "acknowledgedByWorker" | "acknowledged_by_worker" => {
-                Ok(JobStatus::AcknowledgedByWorker)
-            }
+            "acknowledged_by_worker" => Ok(JobStatus::AcknowledgedByWorker),
             "preparing" => Ok(JobStatus::Preparing),
-            "preparingInput" | "preparing_input" => Ok(JobStatus::PreparingInput),
-            "generatingStream" | "generating_stream" => Ok(JobStatus::GeneratingStream),
-            "processingStream" | "processing_stream" => Ok(JobStatus::ProcessingStream),
+            "preparing_input" => Ok(JobStatus::PreparingInput),
+            "generating_stream" => Ok(JobStatus::GeneratingStream),
+            "processing_stream" => Ok(JobStatus::ProcessingStream),
             "running" => Ok(JobStatus::Running),
-            "completedByTag" | "completed_by_tag" => Ok(JobStatus::CompletedByTag),
+            "completed_by_tag" => Ok(JobStatus::CompletedByTag),
             "completed" => Ok(JobStatus::Completed),
             "failed" => Ok(JobStatus::Failed),
-            "canceled" | "cancelled" => Ok(JobStatus::Canceled),
+            "canceled" => Ok(JobStatus::Canceled),
             _ => Err(format!("Invalid job status: {}", s)),
         }
     }

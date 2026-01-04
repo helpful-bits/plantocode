@@ -134,8 +134,26 @@ public class KeychainManager {
 
     public static let shared = KeychainManager()
     private let defaultService = "com.plantocode.mobile"
+    private let deviceIdKey = "core.deviceId"
 
     private init() {}
+
+    // MARK: - Device ID
+
+    public func getOrCreateDeviceId() -> String {
+        let item = KeychainItem(
+            service: defaultService,
+            account: deviceIdKey,
+            accessibility: .afterFirstUnlockThisDeviceOnly,
+            synchronizable: false
+        )
+        if let existing = try? retrieveString(for: item) {
+            return existing
+        }
+        let id = UUID().uuidString
+        try? store(string: id, for: item)
+        return id
+    }
 
     // MARK: - Public Methods
 

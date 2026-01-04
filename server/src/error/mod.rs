@@ -145,7 +145,7 @@ impl ResponseError for AppError {
                 (StatusCode::PAYMENT_REQUIRED, "payment_method_required")
             }
             AppError::BillingAddressRequired(_) => {
-                (StatusCode::BAD_REQUEST, "billing_address_required")
+                (StatusCode::PAYMENT_REQUIRED, "billing_address_required")
             }
             AppError::BillingConflict(_) => (StatusCode::CONFLICT, "billing_conflict"),
             AppError::InvoiceError(_) => (StatusCode::BAD_REQUEST, "invoice_error"),
@@ -203,7 +203,7 @@ impl ResponseError for AppError {
             AppError::TaskInitiationFailed(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::TaskFinalizationFailed(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::PaymentMethodRequired(_) => StatusCode::PAYMENT_REQUIRED,
-            AppError::BillingAddressRequired(_) => StatusCode::BAD_REQUEST,
+            AppError::BillingAddressRequired(_) => StatusCode::PAYMENT_REQUIRED,
             AppError::BillingConflict(_) => StatusCode::CONFLICT,
             AppError::InvoiceError(_) => StatusCode::BAD_REQUEST,
             AppError::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,

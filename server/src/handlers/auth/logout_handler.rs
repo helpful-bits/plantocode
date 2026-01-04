@@ -6,7 +6,21 @@ use crate::services::auth::jwt;
 use crate::services::relay_session_store::RelaySessionStore;
 use actix_web::{HttpRequest, HttpResponse, Result, web};
 use chrono::{DateTime, Utc};
-use log::{error, info};
+use log::info;
+
+fn is_api_key_auth(req: &HttpRequest) -> bool {
+    if req.headers().get("x-api-key").is_some() {
+        return true;
+    }
+    if let Some(auth_header) = req.headers().get("Authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.starts_with("ApiKey ") {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 pub async fn logout(
     user: web::ReqData<AuthenticatedUser>,
@@ -16,7 +30,15 @@ pub async fn logout(
 ) -> Result<HttpResponse, AppError> {
     let user_id = user.user_id;
 
-    // Extract JWT token from Authorization header
+    if is_api_key_auth(&req) {
+        let removed = relay_store.invalidate_user_sessions(&user_id);
+        info!(
+            "logout_api_key_invalidated_relay_sessions: user_id={}, removed={}",
+            user_id, removed
+        );
+        return Ok(HttpResponse::Ok().finish());
+    }
+
     let auth_header = req
         .headers()
         .get("Authorization")
@@ -32,24 +54,19 @@ pub async fn logout(
         ));
     }
 
-    let token = &auth_header_str[7..]; // Remove "Bearer " prefix
+    let token = &auth_header_str[7..];
 
-    // Verify token and extract claims
     let claims = jwt::verify_token(token)?;
 
-    // Calculate expiration time from claims
     let expires_at = DateTime::from_timestamp(claims.exp as i64, 0)
         .ok_or_else(|| AppError::Internal("Invalid token expiration time".to_string()))?;
 
-    // Create revoked token repository
     let revoked_token_repo = RevokedTokenRepository::new(db_pools.system_pool.clone());
 
-    // Revoke the token
     revoked_token_repo
         .revoke(&claims.jti, &user_id, expires_at)
         .await?;
 
-    // Invalidate all relay sessions for this user
     let removed = relay_store.invalidate_user_sessions(&user_id);
 
     info!(

@@ -166,8 +166,8 @@ pub fn validate_vision_media_for_provider(
     if let Some(max_images) = constraints.max_images {
         if image_count > max_images {
             return Err(AppError::Validation(format!(
-                "Provider '{}' allows a maximum of {} images, but {} were provided",
-                provider_code, max_images, image_count
+                "{}: image count {} exceeds maximum of {} images",
+                provider_lower, image_count, max_images
             )));
         }
     }
@@ -185,15 +185,15 @@ pub fn validate_vision_media_for_provider(
         // Special case for Google: explicitly reject GIF with clear message
         if provider_lower == "google" && canonical_mime == "image/gif" {
             return Err(AppError::Validation(
-                "Google does not support GIF images. Please use JPEG, PNG, WebP, HEIC, or HEIF format instead.".to_string()
+                "google: GIF format is not supported; use JPEG, PNG, WebP, HEIC, or HEIF".to_string()
             ));
         }
 
         // Check MIME type is allowed
         if !constraints.is_mime_allowed(&item.mime_type) {
             return Err(AppError::Validation(format!(
-                "Provider '{}' does not support MIME type '{}'. Supported types: {}",
-                provider_code,
+                "{}: MIME type '{}' is not supported; allowed types: {}",
+                provider_lower,
                 item.mime_type,
                 constraints.allowed_image_mime_types.join(", ")
             )));
@@ -206,9 +206,11 @@ pub fn validate_vision_media_for_provider(
             // Check single image size limit
             if let Some(max_single) = constraints.max_single_image_bytes {
                 if item_bytes > max_single {
+                    let max_mb = max_single / (1024 * 1024);
+                    let item_mb = item_bytes / (1024 * 1024);
                     return Err(AppError::Validation(format!(
-                        "Image exceeds provider '{}' single image size limit of {} bytes (image is approximately {} bytes)",
-                        provider_code, max_single, item_bytes
+                        "{}: image size ~{}MB exceeds {}MB limit",
+                        provider_lower, item_mb, max_mb
                     )));
                 }
             }
@@ -220,9 +222,11 @@ pub fn validate_vision_media_for_provider(
     // Check total size limit
     if let Some(max_total) = constraints.max_total_bytes {
         if total_bytes > max_total {
+            let max_mb = max_total / (1024 * 1024);
+            let total_mb = total_bytes / (1024 * 1024);
             return Err(AppError::Validation(format!(
-                "Total image size exceeds provider '{}' limit of {} bytes (total is approximately {} bytes)",
-                provider_code, max_total, total_bytes
+                "{}: total image size ~{}MB exceeds {}MB limit",
+                provider_lower, total_mb, max_mb
             )));
         }
     }
@@ -345,7 +349,7 @@ mod tests {
         let result = validate_vision_media_for_provider("google", &items);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("Google does not support GIF"));
+        assert!(err.to_string().contains("google: GIF format is not supported"));
     }
 
     #[test]
@@ -362,7 +366,7 @@ mod tests {
         let result = validate_vision_media_for_provider("anthropic", &items);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("maximum of 100 images"));
+        assert!(err.to_string().contains("anthropic: image count 101 exceeds maximum of 100 images"));
     }
 
     #[test]
@@ -378,7 +382,8 @@ mod tests {
         let result = validate_vision_media_for_provider("google", &items);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("exceeds provider"));
+        assert!(err.to_string().contains("google: total image size"));
+        assert!(err.to_string().contains("exceeds 20MB limit"));
     }
 
     #[test]
@@ -394,7 +399,8 @@ mod tests {
         let result = validate_vision_media_for_provider("xai", &items);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("single image size limit"));
+        assert!(err.to_string().contains("xai: image size"));
+        assert!(err.to_string().contains("exceeds 20MB limit"));
     }
 
     #[test]
@@ -409,7 +415,7 @@ mod tests {
         let result = validate_vision_media_for_provider("xai", &items);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("does not support MIME type"));
+        assert!(err.to_string().contains("xai: MIME type 'image/webp' is not supported"));
     }
 
     #[test]

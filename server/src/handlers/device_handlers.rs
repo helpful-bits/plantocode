@@ -5,10 +5,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use sqlx::types::{BigDecimal, ipnetwork::IpNetwork};
 use std::str::FromStr;
-use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
+use crate::api_contract::common::extract_device_id;
+use crate::api_contract::devices::{DeviceResponse, RegisterMobileDeviceRequest, UpsertPushTokenRequest};
 use crate::db::repositories::device_repository::{
     DeviceRepository, HeartbeatRequest, RegisterDeviceRequest,
 };
@@ -16,10 +17,11 @@ use crate::error::AppError;
 use crate::models::AuthenticatedUser;
 use crate::services::apns_service::ApnsService;
 use crate::services::device_connection_manager::{DeviceConnectionManager, DeviceMessage};
-use crate::services::device_link_ws::{DeviceLinkWs, create_device_link_ws};
+use crate::services::device_link_ws::create_device_link_ws;
 use crate::services::relay_session_store::RelaySessionStore;
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RegisterDeviceRequestBody {
     pub device_name: String,
     pub device_type: Option<String>,
@@ -65,6 +67,7 @@ pub struct DeviceInfo {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HeartbeatRequestBody {
     pub cpu_usage: Option<f64>,
     pub memory_usage: Option<f64>,
@@ -74,6 +77,7 @@ pub struct HeartbeatRequestBody {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PushTokenRequest {
     pub push_token: String,
 }
@@ -87,6 +91,7 @@ pub struct ConnectionDescriptor {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceQuery {
     pub device_type: Option<String>,
     pub connected_only: Option<bool>,
@@ -96,46 +101,13 @@ fn is_valid_desktop_platform(s: &str) -> bool {
     matches!(s, "macos" | "windows" | "linux")
 }
 
-/// Register a new device
 pub async fn register_device_handler(
     device_repo: web::Data<DeviceRepository>,
     user: AuthenticatedUser,
     req_body: web::Json<RegisterDeviceRequestBody>,
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
-    // Extract X-Device-ID header if present, otherwise generate new UUID
-    let device_id = if let Some(header_device_id) = req.headers().get("X-Device-ID") {
-        if let Ok(id_str) = header_device_id.to_str() {
-            if let Ok(uuid) = Uuid::parse_str(id_str) {
-                info!(
-                    user_id = %user.user_id,
-                    device_id = %uuid,
-                    "Using client-provided device ID from X-Device-ID header"
-                );
-                uuid
-            } else {
-                warn!(
-                    user_id = %user.user_id,
-                    header_value = ?id_str,
-                    "Invalid X-Device-ID header format, generating new UUID"
-                );
-                Uuid::new_v4()
-            }
-        } else {
-            warn!(
-                user_id = %user.user_id,
-                "Could not parse X-Device-ID header, generating new UUID"
-            );
-            Uuid::new_v4()
-        }
-    } else {
-        warn!(
-            user_id = %user.user_id,
-            headers_present = ?req.headers().keys().collect::<Vec<_>>(),
-            "X-Device-ID header missing, generating new UUID - this will create duplicate devices!"
-        );
-        Uuid::new_v4()
-    };
+    let device_id = extract_device_id(&req)?;
 
     let client_type_header = req.headers()
         .get("X-Client-Type")
@@ -152,37 +124,27 @@ pub async fn register_device_handler(
         .and_then(|v| v.to_str().ok());
 
     if client_type_header.as_str() != "desktop" {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "invalid_client_type"
-        })));
+        return Err(AppError::BadRequest("invalid_client_type".into()));
     }
 
     let platform = req_body.platform.to_lowercase();
     if !is_valid_desktop_platform(&platform) {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "invalid_platform"
-        })));
+        return Err(AppError::BadRequest("invalid_platform".into()));
     }
 
     if let Some(dt) = &req_body.device_type {
         if dt.to_lowercase().as_str() != "desktop" {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "invalid_device_type_for_endpoint"
-            })));
+            return Err(AppError::BadRequest("invalid_device_type_for_endpoint".into()));
         }
     }
 
     let device_name_trimmed = req_body.device_name.trim();
     if device_name_trimmed.is_empty() || device_name_trimmed.eq_ignore_ascii_case("unknown") {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "invalid_device_name"
-        })));
+        return Err(AppError::BadRequest("invalid_device_name".into()));
     }
 
     if req_body.app_version.trim().is_empty() {
-        return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-            "error": "invalid_app_version"
-        })));
+        return Err(AppError::BadRequest("invalid_app_version".into()));
     }
 
     if let (Some(dev_str), Some(tb_str)) = (device_id_header, token_binding_header) {
@@ -191,9 +153,7 @@ pub async fn register_device_handler(
         let tb = Uuid::parse_str(tb_str)
             .map_err(|_| AppError::BadRequest("invalid_token_binding_header".into()))?;
         if dev != tb {
-            return Ok(HttpResponse::BadRequest().json(serde_json::json!({
-                "error": "token_binding_mismatch"
-            })));
+            return Err(AppError::BadRequest("token_binding_mismatch".into()));
         }
     }
 
@@ -510,7 +470,82 @@ pub async fn save_push_token_handler(
     })))
 }
 
-/// WebSocket endpoint for device communication relay
+pub async fn register_mobile_device_handler(
+    device_repo: web::Data<DeviceRepository>,
+    user: AuthenticatedUser,
+    req_body: web::Json<RegisterMobileDeviceRequest>,
+    req: HttpRequest,
+) -> Result<HttpResponse, AppError> {
+    let device_id = extract_device_id(&req)?;
+
+    let mut capabilities: serde_json::Value = req_body.capabilities.clone().unwrap_or_else(|| serde_json::json!({}));
+    if let Some(token) = &req_body.push_token {
+        if let Some(obj) = capabilities.as_object_mut() {
+            obj.insert("device_push_token".to_string(), serde_json::Value::String(token.clone()));
+        }
+    }
+
+    let register_request = RegisterDeviceRequest {
+        device_id,
+        user_id: user.user_id,
+        device_name: req_body.device_name.clone(),
+        device_type: "mobile".to_string(),
+        platform: req_body.platform.clone(),
+        platform_version: None,
+        app_version: req_body.app_version.clone(),
+        local_ips: None,
+        public_ip: None,
+        relay_eligible: false,
+        available_ports: None,
+        capabilities,
+    };
+
+    let device = device_repo.register_device(register_request).await?;
+
+    info!(
+        user_id = %user.user_id,
+        device_id = %device.device_id,
+        device_name = %device.device_name,
+        platform = %device.platform,
+        "Mobile device registered successfully"
+    );
+
+    let response = DeviceResponse {
+        device_id: device.device_id,
+        device_name: device.device_name,
+        device_type: device.device_type,
+        platform: device.platform,
+        app_version: device.app_version,
+        is_connected: false,
+    };
+
+    Ok(HttpResponse::Created().json(response))
+}
+
+pub async fn upsert_device_push_token_handler(
+    device_repo: web::Data<DeviceRepository>,
+    user: AuthenticatedUser,
+    req_body: web::Json<UpsertPushTokenRequest>,
+    req: HttpRequest,
+) -> Result<HttpResponse, AppError> {
+    let device_id = extract_device_id(&req)?;
+
+    device_repo
+        .upsert_mobile_push_token(&user.user_id, &device_id, &req_body.platform, &req_body.token)
+        .await?;
+
+    info!(
+        user_id = %user.user_id,
+        device_id = %device_id,
+        platform = %req_body.platform,
+        "Push token upserted for device"
+    );
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "success": true
+    })))
+}
+
 pub async fn device_link_ws_handler(
     req: HttpRequest,
     stream: web::Payload,
@@ -575,9 +610,7 @@ pub async fn device_link_ws_handler(
                 error = %e,
                 "WebSocket handshake failed"
             );
-            Ok(HttpResponse::InternalServerError().json(serde_json::json!({
-                "error": "websocket_handshake_failed"
-            })))
+            Err(AppError::Internal("websocket_handshake_failed".into()).into())
         }
     }
 }

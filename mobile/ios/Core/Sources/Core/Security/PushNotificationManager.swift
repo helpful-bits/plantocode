@@ -23,12 +23,39 @@ public class PushNotificationManager: NSObject, ObservableObject {
     static let IMPLEMENTATION_PLAN_COMPLETE = "implementation_plan_complete"
     static let TERMINAL_INACTIVITY_DETECTED = "terminal_inactivity_detected"
 
+    // MARK: - Token Sync State
+    public enum PushTokenSyncState: String {
+        case pending
+        case synced
+        case failed
+    }
+
     // MARK: - Private Properties
     private let notificationCenter = UNUserNotificationCenter.current()
     private let serverAPIClient = ServerAPIClient.shared
     private var isTokenRegistered = false
     private var lastRegisteredDeviceToken: Data?
     private var tokenRegistrationInFlight: String?
+
+    private static let pendingPushTokenKey = "pendingPushToken"
+    private static let pushTokenSyncStateKey = "pushTokenSyncState"
+
+    public var pushTokenSyncState: PushTokenSyncState {
+        get {
+            guard let rawValue = UserDefaults.standard.string(forKey: Self.pushTokenSyncStateKey) else {
+                return .pending
+            }
+            return PushTokenSyncState(rawValue: rawValue) ?? .pending
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: Self.pushTokenSyncStateKey)
+        }
+    }
+
+    private var pendingPushToken: String? {
+        get { UserDefaults.standard.string(forKey: Self.pendingPushTokenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pendingPushTokenKey) }
+    }
 
     // MARK: - Initialization
     private override init() {
@@ -290,26 +317,28 @@ public class PushNotificationManager: NSObject, ObservableObject {
     // MARK: - Private Methods
 
     private func submitTokenIfNeeded(tokenData: Data, tokenString: String) {
-        // De-dup: in-flight same token
         if tokenRegistrationInFlight == tokenString { return }
-        // De-dup: already registered same token
-        if isTokenRegistered, self.deviceToken == tokenString { return }
+        if isTokenRegistered, self.deviceToken == tokenString, pushTokenSyncState == .synced { return }
 
-        // Eagerly set guards BEFORE network call
         tokenRegistrationInFlight = tokenString
         lastRegisteredDeviceToken = tokenData
         self.deviceToken = tokenString
+        pendingPushToken = tokenString
+        pushTokenSyncState = .pending
 
         Task {
-            logger.info("Registering APNs device token: \(tokenString.prefix(20))...")
+            logger.info("Upserting APNs push token: \(tokenString.prefix(20))...")
             do {
-                try await registerTokenWithServer(tokenString)
+                try await serverAPIClient.upsertPushToken(platform: "ios", token: tokenString)
                 isTokenRegistered = true
-                logger.info("Successfully registered push token with server")
+                pushTokenSyncState = .synced
+                pendingPushToken = nil
+                logger.info("Successfully synced push token with server")
             } catch {
-                logger.error("Failed to register push token: \(error)")
+                pushTokenSyncState = .failed
+                lastError = .serverRegistrationFailed(error)
+                logger.error("Failed to upsert push token: \(error)")
             }
-            // Clear in-flight guard regardless of outcome
             tokenRegistrationInFlight = nil
         }
     }
@@ -344,19 +373,28 @@ public class PushNotificationManager: NSObject, ObservableObject {
         )
     }
 
-    /// Register push token after successful authentication
     public func registerPushTokenIfAvailable() async {
-        guard let token = deviceToken else {
+        let tokenToSync = deviceToken ?? pendingPushToken
+        guard let token = tokenToSync else {
             logger.info("No device token available to register")
             return
         }
 
+        if pushTokenSyncState == .synced && deviceToken == token {
+            return
+        }
+
+        pushTokenSyncState = .pending
         do {
-            try await registerTokenWithServer(token)
+            try await serverAPIClient.upsertPushToken(platform: "ios", token: token)
             isTokenRegistered = true
-            logger.info("Successfully registered push token with server")
+            pushTokenSyncState = .synced
+            pendingPushToken = nil
+            logger.info("Successfully synced push token with server")
         } catch {
-            logger.error("Failed to register push token: \(error)")
+            pushTokenSyncState = .failed
+            lastError = .serverRegistrationFailed(error)
+            logger.error("Failed to upsert push token: \(error)")
         }
     }
 

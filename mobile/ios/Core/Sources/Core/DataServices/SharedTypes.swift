@@ -6,13 +6,13 @@ public enum JobStatus: String, Codable, CaseIterable {
     case idle
     case created
     case queued
-    case acknowledgedByWorker
+    case acknowledgedByWorker = "acknowledged_by_worker"
     case preparing
-    case preparingInput
-    case generatingStream
-    case processingStream
+    case preparingInput = "preparing_input"
+    case generatingStream = "generating_stream"
+    case processingStream = "processing_stream"
     case running
-    case completedByTag
+    case completedByTag = "completed_by_tag"
     case completed
     case failed
     case canceled
@@ -220,13 +220,6 @@ public struct Session: Codable, Identifiable {
 // MARK: - API Endpoints
 
 public enum APIEndpoint {
-    // Jobs API
-    case listJobs
-    case getJobDetails
-    case cancelJob
-    case subscribeJobUpdates
-    case getJobStatusUpdates
-
     // Plans API
     case listPlans
     case getPlanContent
@@ -259,13 +252,6 @@ public enum APIEndpoint {
 
     public var path: String {
         switch self {
-        // Jobs
-        case .listJobs: return "/api/jobs/list"
-        case .getJobDetails: return "/api/jobs/details"
-        case .cancelJob: return "/api/jobs/cancel"
-        case .subscribeJobUpdates: return "/api/jobs/subscribe"
-        case .getJobStatusUpdates: return "/api/jobs/status-updates"
-
         // Plans
         case .listPlans: return "/api/plans/list"
         case .getPlanContent: return "/api/plans/content"

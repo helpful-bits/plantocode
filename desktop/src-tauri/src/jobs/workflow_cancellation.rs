@@ -358,7 +358,7 @@ impl WorkflowCancellationHandler {
         // Emit job cancellation event for frontend
         let event_payload = serde_json::json!({
             "jobId": job_id,
-            "status": "canceled",
+            "status": JobStatus::Canceled.to_string(),
             "reason": reason,
             "timestamp": self.current_timestamp()
         });

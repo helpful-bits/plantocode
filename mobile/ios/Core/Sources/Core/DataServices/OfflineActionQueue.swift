@@ -10,14 +10,22 @@ public enum QueuedActionType: Codable {
     case syncHistoryState(sessionId: String, kind: String, state: Data, expectedVersion: Int64)
 }
 
+public enum OfflineActionState: String, Codable {
+    case queued, sending, completed, failed
+}
+
 public struct QueuedAction: Codable, Identifiable {
     public let id: UUID
+    public let idempotencyKey: UUID
+    public var state: OfflineActionState
     public let type: QueuedActionType
     public let createdAt: Date
     public var retryCount: Int
 
     public init(type: QueuedActionType) {
         self.id = UUID()
+        self.idempotencyKey = UUID()
+        self.state = .queued
         self.type = type
         self.createdAt = Date()
         self.retryCount = 0
@@ -40,7 +48,7 @@ public class OfflineActionQueue {
     }
 
     public var hasPendingActions: Bool {
-        return !queue.isEmpty
+        return queue.contains { $0.state == .queued || $0.state == .sending || $0.state == .failed }
     }
 
     private func load() {
@@ -61,22 +69,33 @@ public class OfflineActionQueue {
     }
 
     public func processPending(with sessionService: SessionDataService) async {
-        let actionsToProcess = queue
+        let actionsToProcess = queue.filter { $0.state == .queued || $0.state == .failed }
 
         for action in actionsToProcess {
             if action.retryCount >= maxRetries {
-                removeAction(action.id)
+                updateState(for: action.id, to: .failed)
                 continue
             }
 
+            updateState(for: action.id, to: .sending)
+
             do {
                 try await processAction(action, with: sessionService)
+                updateState(for: action.id, to: .completed)
                 removeAction(action.id)
             } catch {
+                updateState(for: action.id, to: .failed)
                 updateRetryCount(for: action.id)
                 let delay = min(pow(2.0, Double(action.retryCount)), 30.0)
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
+        }
+    }
+
+    private func updateState(for id: UUID, to state: OfflineActionState) {
+        if let index = queue.firstIndex(where: { $0.id == id }) {
+            queue[index].state = state
+            save()
         }
     }
 

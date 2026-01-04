@@ -1,15 +1,10 @@
 use crate::db::repositories::UserCredit;
-use crate::db::repositories::credit_transaction_repository::CreditTransactionRepository;
 use crate::db::repositories::user_credit_repository::UserCreditRepository;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
-use crate::models::auth_jwt_claims::Claims;
-use crate::models::billing::{
-    CreditHistoryResponse, CreditTransactionEntry, FeeTierConfig, UnifiedCreditHistoryResponse,
-};
 use crate::services::billing_service::BillingService;
 use crate::services::credit_service::CreditService;
-use actix_web::{HttpMessage, HttpRequest, HttpResponse, get, post, web};
+use actix_web::{HttpResponse, get, web};
 use bigdecimal::BigDecimal;
 use log::info;
 use serde::{Deserialize, Serialize};

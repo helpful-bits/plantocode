@@ -101,8 +101,8 @@ public class OnboardingContentService: ObservableObject {
     // MARK: - Private Methods
 
     private func mapToDataServiceError(_ error: Error) -> DataServiceError {
-        if let apiError = error as? APIError {
-            switch apiError {
+        if let networkError = error as? NetworkError {
+            switch networkError {
             case .invalidURL:
                 return .invalidRequest("Invalid URL")
             case .requestFailed(let underlying):
@@ -111,6 +111,8 @@ public class OnboardingContentService: ObservableObject {
                 return .serverError("HTTP \(statusCode)")
             case .decodingFailed(let underlying):
                 return .invalidResponse("Decoding failed: \(underlying.localizedDescription)")
+            case .serverError(let apiError):
+                return .serverError(apiError.message)
             }
         } else if let serviceError = error as? DataServiceError {
             return serviceError

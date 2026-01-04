@@ -52,12 +52,14 @@ public final class AuthService: NSObject, ObservableObject {
             self.authError = nil
             self.isAuthenticated = true
             self.currentUser = user
+            AppState.shared.setAuthSessionState(.authenticated)
           }
         } else {
           await MainActor.run {
             self.authError = nil
             self.isAuthenticated = false
             self.currentUser = nil
+            AppState.shared.setAuthSessionState(.unauthenticated)
           }
         }
       }
@@ -76,10 +78,10 @@ public final class AuthService: NSObject, ObservableObject {
     }
   }
 
-  // Start authentication flow using custom backend with PKCE
   public func login(providerHint: String? = nil) async throws {
     await MainActor.run {
       self.authError = nil
+      AppState.shared.setAuthSessionState(.authenticating)
     }
 
     // Generate PKCE challenge
@@ -109,7 +111,7 @@ public final class AuthService: NSObject, ObservableObject {
     components.queryItems = queryItems
 
     guard let authURL = components.url else {
-      throw APIError.invalidURL
+      throw NetworkError.invalidURL
     }
 
     // Store auth attempt locally
@@ -142,7 +144,7 @@ public final class AuthService: NSObject, ObservableObject {
     // Start the browser
     guard authSession?.start() == true else {
       authSession = nil
-      throw APIError.requestFailed(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to start authentication session"]))
+      throw NetworkError.requestFailed(NSError(domain: "AuthService", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to start authentication session"]))
     }
 
     // Start polling immediately after browser opens (like desktop does)
@@ -211,7 +213,7 @@ public final class AuthService: NSObject, ObservableObject {
           }
         } else {
           // Other status codes - throw error
-          throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
+          throw NetworkError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
         }
 
       } catch {
@@ -268,7 +270,7 @@ public final class AuthService: NSObject, ObservableObject {
 
       guard let httpTokenResponse = tokenResponse as? HTTPURLResponse,
             httpTokenResponse.statusCode == 200 else {
-        throw APIError.invalidResponse(
+        throw NetworkError.invalidResponse(
           statusCode: (tokenResponse as? HTTPURLResponse)?.statusCode ?? 0,
           data: tokenData
         )
@@ -298,7 +300,6 @@ public final class AuthService: NSObject, ObservableObject {
       let computedExpiry = Date().addingTimeInterval(24 * 3600)
       try? KeychainManager.shared.store(string: ISO8601DateFormatter().string(from: computedExpiry), for: .appJWTExpiry)
 
-      // Convert FrontendUser to User and update state
       let user = User(from: authDataResponse.user)
       await MainActor.run {
         self.authError = nil
@@ -306,6 +307,7 @@ public final class AuthService: NSObject, ObservableObject {
         self.currentUser = user
         self.tokenExpiresAt = computedExpiry
         self.scheduleRefreshTimer()
+        AppState.shared.setAuthSessionState(.authenticated)
         NotificationCenter.default.post(name: NSNotification.Name("auth-token-refreshed"), object: nil)
       }
 
@@ -319,11 +321,8 @@ public final class AuthService: NSObject, ObservableObject {
       // Register push token after successful login
       Task { await PushNotificationManager.shared.registerPushTokenIfAvailable() }
 
-      // Fire-and-forget device registration
-      Task { [weak self] in
-        guard let self = self else { return }
-        let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-        try? await ServerAPIClient.shared.registerDevice(deviceId: deviceId)
+      Task {
+        try? await ServerAPIClient.shared.registerDevice()
       }
 
     } catch {
@@ -333,6 +332,7 @@ public final class AuthService: NSObject, ObservableObject {
         self.currentUser = nil
         self.authSession?.cancel()
         self.authSession = nil
+        AppState.shared.setAuthSessionState(.unauthenticated)
       }
     }
   }
@@ -352,23 +352,23 @@ public final class AuthService: NSObject, ObservableObject {
       let (data, response) = try await URLSession.shared.data(for: request)
 
       guard let httpResponse = response as? HTTPURLResponse else {
-        throw APIError.invalidResponse(statusCode: 0, data: data)
+        throw NetworkError.invalidResponse(statusCode: 0, data: data)
       }
 
       if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
         try? KeychainManager.shared.delete(for: .appJWT)
-        throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
+        throw NetworkError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
       }
 
       guard httpResponse.statusCode == 200 else {
-        throw APIError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
+        throw NetworkError.invalidResponse(statusCode: httpResponse.statusCode, data: data)
       }
 
       let user = try JSONDecoder().decode(User.self, from: data)
       return user
 
     } catch {
-      if case APIError.invalidResponse(let code, _) = error, code == 401 || code == 403 {
+      if case NetworkError.invalidResponse(let code, _) = error, code == 401 || code == 403 {
         try? KeychainManager.shared.delete(for: .appJWT)
       }
       return nil
@@ -377,7 +377,7 @@ public final class AuthService: NSObject, ObservableObject {
 
   public func refreshAppJWTAuth0() async throws {
     guard let token = try? KeychainManager.shared.retrieveString(for: .appJWT) else {
-      throw APIError.invalidResponse(statusCode: 401, data: Data())
+      throw NetworkError.invalidResponse(statusCode: 401, data: Data())
     }
     do {
       let authDataResponse: AuthDataResponse = try await ServerAPIClient.shared.request(
@@ -399,8 +399,8 @@ public final class AuthService: NSObject, ObservableObject {
         self.scheduleRefreshTimer()
         NotificationCenter.default.post(name: NSNotification.Name("auth-token-refreshed"), object: nil)
       }
-    } catch let apiError as APIError {
-      switch apiError {
+    } catch let networkError as NetworkError {
+      switch networkError {
       case .invalidResponse(let statusCode, _) where statusCode == 401 || statusCode == 403:
         try? KeychainManager.shared.delete(for: .appJWT)
         await MainActor.run {
@@ -413,50 +413,75 @@ public final class AuthService: NSObject, ObservableObject {
         }
       default:
         await MainActor.run {
-          self.authError = Self.userFacingMessage(for: apiError)
+          self.authError = Self.userFacingMessage(for: networkError)
         }
       }
-      throw apiError
+      throw networkError
     }
   }
 
   public func logout() async {
     await MainActor.run {
+      AppState.shared.setAuthSessionState(.loggingOut)
       NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
       self.refreshTimer?.invalidate()
       self.refreshTimer = nil
     }
 
-    if let token = try? KeychainManager.shared.retrieveString(for: .appJWT) {
-      do {
-        _ = try await ServerAPIClient.shared.requestRaw(
-          path: "api/auth/logout",
-          method: .POST,
-          body: Optional<String>.none,
-          token: token
-        )
-      } catch {
-      }
+    do {
+      try await PlanToCodeCore.shared.dataServices?.accountService.logout()
+    } catch {
     }
 
-    try? KeychainManager.shared.delete(for: .appJWT)
+    ServerAPIClient.shared.cancelAllTasks()
+    ServerAPIClient.auth.cancelAllTasks()
 
-    // Clear device ID so next login gets a fresh device registration
-    // This is important for multi-user scenarios on the same device
+    try? KeychainManager.shared.delete(for: .appJWT)
+    try? KeychainManager.shared.delete(for: .appJWTExpiry)
     try? DeviceManager.shared.clearDeviceID()
 
-    // Hard reset all relay connections and clear resume tokens
-    // This ensures the next login gets fresh connections without old session data
     await MultiConnectionManager.shared.hardReset(reason: .authInvalidated, deletePersistedDevices: true)
 
     await MainActor.run {
       self.authError = nil
       self.isAuthenticated = false
       self.currentUser = nil
+      AppState.shared.setAuthSessionState(.unauthenticated)
     }
 
     let logoutURL = buildAuth0LogoutURL()
     await startAuth0LogoutSession(url: logoutURL)
+  }
+
+  public func deleteAccount() async throws {
+    await MainActor.run {
+      AppState.shared.setAuthSessionState(.deletingAccount)
+    }
+
+    do {
+      try await PlanToCodeCore.shared.dataServices?.accountService.deleteAccount()
+
+      ServerAPIClient.shared.cancelAllTasks()
+      ServerAPIClient.auth.cancelAllTasks()
+
+      try? KeychainManager.shared.delete(for: .appJWT)
+      try? KeychainManager.shared.delete(for: .appJWTExpiry)
+      try? DeviceManager.shared.clearDeviceID()
+
+      await MultiConnectionManager.shared.hardReset(reason: .authInvalidated, deletePersistedDevices: true)
+
+      await MainActor.run {
+        self.authError = nil
+        self.isAuthenticated = false
+        self.currentUser = nil
+        AppState.shared.setAuthSessionState(.unauthenticated)
+      }
+    } catch {
+      await MainActor.run {
+        AppState.shared.setAuthSessionState(.authenticated)
+      }
+      throw error
+    }
   }
 
   public func getValidAccessToken() async -> String? {

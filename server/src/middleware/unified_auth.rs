@@ -17,6 +17,7 @@ use crate::db::repositories::user_repository::UserRepository;
 use crate::db::repositories::RevokedTokenRepository;
 use crate::error::AppError;
 use crate::models::AuthenticatedUser;
+use crate::models::auth_jwt_claims::Claims;
 use crate::security::rls_session_manager::RLSSessionManager;
 use crate::services::auth::jwt;
 
@@ -229,7 +230,10 @@ async fn authenticate_via_jwt(
         api_key_label: None,
     };
 
-    // Insert into request extensions
+    // Insert Claims into request extensions for handlers that need them for auditing
+    req.extensions_mut().insert(claims);
+
+    // Insert AuthenticatedUser into request extensions
     req.extensions_mut().insert(authenticated_user);
 
     Ok(())
@@ -328,12 +332,34 @@ async fn authenticate_via_api_key(
     let authenticated_user = AuthenticatedUser {
         user_id: user.id,
         email: user.email.clone(),
-        role: effective_role,
+        role: effective_role.clone(),
         device_id: None,
         authenticated_via_api_key: true,
         api_key_id: Some(api_key_record.id),
         api_key_label: api_key_record.label.clone(),
     };
+
+    // Construct synthetic Claims for handlers that need them for auditing
+    let now = chrono::Utc::now().timestamp() as usize;
+    let synthetic_claims = Claims {
+        sub: user.id.to_string(),
+        exp: now + 3600,
+        iat: now,
+        iss: Some("api_key".to_string()),
+        email: user.email.clone(),
+        role: effective_role,
+        auth0_sub: None,
+        tbh: None,
+        jti: format!("api_key_{}", api_key_record.id),
+        aud: None,
+        device_id: None,
+        scope: Some("read write".to_string()),
+        session_id: None,
+        ip_binding: None,
+    };
+
+    // Insert Claims into request extensions
+    req.extensions_mut().insert(synthetic_claims);
 
     // Insert AuthenticatedUser into request extensions
     req.extensions_mut().insert(authenticated_user);

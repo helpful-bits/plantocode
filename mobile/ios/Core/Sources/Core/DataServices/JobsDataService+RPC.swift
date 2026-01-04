@@ -99,56 +99,32 @@ extension JobsDataService {
 
                     var jobsData: [String: Any]?
 
-                    for try await response in CommandRouter.jobList(
-                        projectDirectory: activeProjectDirectory,
+                    for try await rpcResponse in CommandRouter.jobList(
                         sessionId: activeSessionId,
+                        projectDirectory: activeProjectDirectory,
                         statusFilter: request.statusFilter?.map { $0.rawValue },
-                        taskTypeFilter: request.taskTypeFilter?.joined(separator: ","),
+                        taskTypeFilter: request.taskTypeFilter?.map { $0 },
                         page: request.page.map { Int($0) },
                         pageSize: request.pageSize.map { Int($0) },
-                        filter: nil,
                         bypassCache: shouldReplace
                     ) {
-                        if let error = response.error {
-                            throw DataServiceError.serverError("RPC Error: \(error.message)")
+                        if let error = rpcResponse.error {
+                            throw DataServiceError.serverError(error.message)
                         }
 
-                        if let result = response.result?.value as? [String: Any] {
+                        if let result = rpcResponse.result?.value as? [String: Any] {
                             jobsData = result
-                            if response.isFinal {
+                            if rpcResponse.isFinal {
                                 break
                             }
                         }
                     }
 
-                    // Tolerant response parsing - handle missing/partial data gracefully
-                    guard let data = jobsData as? [String: Any] else {
-                        // No valid data dictionary - return empty response
-                        return JobListResponse(
-                            jobs: [],
-                            totalCount: 0,
-                            page: request.page ?? 0,
-                            pageSize: request.pageSize ?? 50,
-                            hasMore: false
-                        )
+                    guard let data = jobsData else {
+                        throw DataServiceError.invalidResponse("No job list data received")
                     }
 
-                    // Safely extract jobs array, defaulting to empty if missing or wrong type
-                    let jobsArray = data["jobs"] as? [[String: Any]] ?? []
-
-                    // Decode jobs array (even if empty)
-                    let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
-                    let decoder = JSONDecoder()
-                    let backgroundJobs = try decoder.decode([BackgroundJob].self, from: jsonData)
-
-                    // Extract pagination fields with sensible defaults
-                    let response = JobListResponse(
-                        jobs: backgroundJobs,
-                        totalCount: UInt32(data["totalCount"] as? Int ?? backgroundJobs.count),
-                        page: request.page ?? 0,
-                        pageSize: request.pageSize ?? (backgroundJobs.isEmpty ? 50 : UInt32(backgroundJobs.count)),
-                        hasMore: data["hasMore"] as? Bool ?? false
-                    )
+                    let response = try JobsDecoding.decodeJobList(dict: data)
 
                     await MainActor.run {
                         if shouldReplace && token == self.currentListJobsRequestToken {
@@ -228,30 +204,26 @@ extension JobsDataService {
                 do {
                     var jobDetailsData: [String: Any]?
 
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
-                        if let error = response.error {
-                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = rpcResponse.error {
+                            promise(.failure(.serverError(error.message)))
                             return
                         }
 
-                        if let result = response.result?.value as? [String: Any] {
+                        if let result = rpcResponse.result?.value as? [String: Any] {
                             jobDetailsData = result
-                            if response.isFinal {
+                            if rpcResponse.isFinal {
                                 break
                             }
                         }
                     }
 
-                    guard let data = jobDetailsData,
-                          let jobData = data["job"] as? [String: Any] else {
+                    guard let data = jobDetailsData else {
                         promise(.failure(.invalidResponse("No job details received")))
                         return
                     }
 
-                    let jobJsonData = try JSONSerialization.data(withJSONObject: jobData)
-                    let decoder = JSONDecoder()
-                    // Backend uses camelCase serialization - use default keys
-                    let job = try decoder.decode(BackgroundJob.self, from: jobJsonData)
+                    let job = try JobsDecoding.decodeJobEnvelope(dict: data)
 
                     var metrics: JobMetrics?
                     if let metricsData = data["metrics"] as? [String: Any] {
@@ -292,27 +264,38 @@ extension JobsDataService {
         return Future<Bool, DataServiceError> { [weak self] promise in
             Task {
                 do {
+                    var deleteSucceeded = false
+
                     for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
                         if let error = response.error {
                             promise(.failure(.serverError("Failed to delete job: \(error.message)")))
                             return
                         }
 
-                        // Remove from local state and rebuild index
-                        await MainActor.run {
-                            guard let self = self, let index = self.jobsIndex[jobId] else {
-                                promise(.success(true))
-                                return
-                            }
-                            self.mutateJobs {
-                                self.jobs.remove(at: index)
-                                self.jobsIndex.removeValue(forKey: jobId)
-                                // Rebuild index after deletion
-                                self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
-                            }
+                        if response.isFinal {
+                            deleteSucceeded = true
+                            break
                         }
-                        promise(.success(true))
+                    }
+
+                    guard deleteSucceeded else {
+                        promise(.failure(.invalidResponse("No deletion response received")))
                         return
+                    }
+
+                    await MainActor.run {
+                        guard let self = self, let index = self.jobsIndex[jobId] else {
+                            promise(.success(true))
+                            return
+                        }
+                        self.mutateJobs {
+                            self.jobs.remove(at: index)
+                            self.jobsIndex.removeValue(forKey: jobId)
+                            self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
+                            self.lastAccumulatedLengths.removeValue(forKey: jobId)
+                        }
+                        self.scheduleCoalescedListJobsForActiveSession()
+                        promise(.success(true))
                     }
                 } catch {
                     promise(.failure(.serverError("Failed to delete job: \(error.localizedDescription)")))
@@ -328,12 +311,14 @@ extension JobsDataService {
                 .eraseToAnyPublisher()
         }
 
+        var params: [String: Any] = ["jobId": request.jobId]
+        if let reason = request.reason, !reason.isEmpty {
+            params["reason"] = reason
+        }
+
         let rpcRequest = RpcRequest(
             method: "job.cancel",
-            params: [
-                "jobId": request.jobId,
-                "reason": request.reason as Any
-            ]
+            params: params
         )
 
         return Future<JobCancellationResponse, DataServiceError> { [weak self] promise in
@@ -341,15 +326,15 @@ extension JobsDataService {
                 do {
                     var cancelData: [String: Any]?
 
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
-                        if let error = response.error {
-                            promise(.failure(.serverError("RPC Error: \(error.message)")))
+                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                        if let error = rpcResponse.error {
+                            promise(.failure(.serverError(error.message)))
                             return
                         }
 
-                        if let result = response.result?.value as? [String: Any] {
+                        if let result = rpcResponse.result?.value as? [String: Any] {
                             cancelData = result
-                            if response.isFinal {
+                            if rpcResponse.isFinal {
                                 break
                             }
                         }
@@ -365,6 +350,21 @@ extension JobsDataService {
                         message: data["message"] as? String ?? "",
                         cancelledAt: data["cancelledAt"] as? Int64
                     )
+
+                    if response.success {
+                        await MainActor.run {
+                            guard let self = self, let index = self.jobsIndex[request.jobId] else { return }
+                            self.mutateJobs {
+                                var job = self.jobs[index]
+                                job.status = "canceled"
+                                job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                                self.jobs[index] = job
+                            }
+                        }
+                        await MainActor.run {
+                            self?.scheduleCoalescedListJobsForActiveSession()
+                        }
+                    }
 
                     promise(.success(response))
 

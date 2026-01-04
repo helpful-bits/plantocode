@@ -937,13 +937,12 @@ public struct CommandRouter {
     }
 
     public static func jobList(
-        projectDirectory: String? = nil,
         sessionId: String? = nil,
+        projectDirectory: String? = nil,
         statusFilter: [String]? = nil,
-        taskTypeFilter: String? = nil,
+        taskTypeFilter: [String]? = nil,
         page: Int? = nil,
         pageSize: Int? = nil,
-        filter: String? = nil,
         bypassCache: Bool = false
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
@@ -961,11 +960,11 @@ public struct CommandRouter {
 
         var params: [String: Any] = [:]
 
-        if let projectDirectory = projectDirectory {
-            params["projectDirectory"] = projectDirectory
-        }
         if let sessionId = sessionId {
             params["sessionId"] = sessionId
+        }
+        if let projectDirectory = projectDirectory {
+            params["projectDirectory"] = projectDirectory
         }
         if let statusFilter = statusFilter {
             params["statusFilter"] = statusFilter
@@ -979,14 +978,75 @@ public struct CommandRouter {
         if let pageSize = pageSize {
             params["pageSize"] = pageSize
         }
-        if let filter = filter {
-            params["filter"] = filter
-        }
         params["bypassCache"] = bypassCache
 
         let request = RpcRequest(
             method: "job.list",
             params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func jobCancel(
+        jobId: String,
+        reason: String? = nil
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        var params: [String: Any] = ["jobId": jobId]
+        if let reason = reason {
+            params["reason"] = reason
+        }
+
+        let request = RpcRequest(
+            method: "job.cancel",
+            params: params
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func jobDelete(
+        jobId: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "job.delete",
+            params: ["jobId": jobId]
+        )
+
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+    }
+
+    public static func jobUpdateContent(
+        jobId: String,
+        content: String
+    ) -> AsyncThrowingStream<RpcResponse, Error> {
+        guard let usable = getUsableRelay() else {
+            return AsyncThrowingStream { continuation in
+                continuation.finish(throwing: ServerRelayError.notConnected)
+            }
+        }
+        let (deviceId, relayClient) = usable
+
+        let request = RpcRequest(
+            method: "job.updateContent",
+            params: [
+                "jobId": jobId,
+                "content": content
+            ]
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)

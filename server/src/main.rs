@@ -8,6 +8,7 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use tokio_cron_scheduler::{Job, JobScheduler};
 
+mod api_contract;
 mod auth_stores;
 mod clients;
 mod config;

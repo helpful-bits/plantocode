@@ -313,30 +313,8 @@ impl ApiUsageRepository {
         Ok(result)
     }
 
-    /// Gets detailed usage data with pre-calculated summary totals
-    pub async fn get_detailed_usage_with_summary(
-        &self,
-        user_id: &Uuid,
-        start_date: DateTime<Utc>,
-        end_date: DateTime<Utc>,
-    ) -> Result<DetailedUsageResponse, AppError> {
-        // Use the new efficient processing service instead of complex SQL
-        use crate::services::usage_processing_service::UsageProcessingService;
-
-        // We need system pool for models table access - get it from the handler
-        // For now, we'll pass the same pool for both until we can get system pool access
-        let processing_service = UsageProcessingService::new(
-            Arc::new(self.db_pool.clone()),
-            Arc::new(self.db_pool.clone()),
-        )
-        .await?;
-        processing_service
-            .get_detailed_usage(user_id, start_date, end_date)
-            .await
-    }
-
     /// Gets detailed usage data with pre-calculated summary totals using system pool for models
-    pub async fn get_detailed_usage_with_summary_with_system_pool(
+    pub async fn get_detailed_usage_with_summary(
         &self,
         user_id: &Uuid,
         start_date: DateTime<Utc>,

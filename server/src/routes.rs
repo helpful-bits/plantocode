@@ -161,11 +161,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route(
                 "/video/analyze",
                 web::post().to(handlers::proxy_handlers::video_analysis_handler),
-            )
-            .service(web::scope("/text").route(
-                "/enhance",
-                web::post().to(handlers::proxy_handlers::text_enhancement_handler),
-            )),
+            ),
     );
 
     // Audio transcription routes (/api/audio/*) - mimics OpenAI API structure
@@ -208,6 +204,10 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
                 web::post().to(handlers::consent_handlers::accept_consent),
             )
             .route(
+                "/withdraw",
+                web::post().to(handlers::consent_handlers::withdraw_consent),
+            )
+            .route(
                 "/admin/report",
                 web::get().to(handlers::consent_handlers::get_consent_report),
             ),
@@ -219,6 +219,14 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route(
                 "/register",
                 web::post().to(handlers::device_handlers::register_device_handler),
+            )
+            .route(
+                "/mobile/register",
+                web::post().to(handlers::device_handlers::register_mobile_device_handler),
+            )
+            .route(
+                "/push-token",
+                web::put().to(handlers::device_handlers::upsert_device_push_token_handler),
             )
             .route(
                 "",
@@ -239,10 +247,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
             .route(
                 "/{device_id}/push-token",
                 web::post().to(handlers::device_handlers::save_push_token_handler),
-            )
-            .route(
-                "/push/register",
-                web::post().to(handlers::notification_handlers::register_push_token_handler),
             ),
     );
 
