@@ -248,36 +248,6 @@ public final class MultiConnectionManager: ObservableObject {
         await DeviceDiscoveryService.shared.refreshDevices()
     }
 
-    /// Suspends connections for background mode without clearing activeDeviceId.
-    /// Unlike hardReset, this preserves the active device selection so users
-    /// return directly to their workspace when the app comes back to foreground.
-    @MainActor
-    public func suspendConnectionsForBackground() async {
-        // Stop any pending reconnection attempts
-        stopAllReconnectTimers()
-
-        // Cancel health grace task but don't mark as dead yet
-        healthGraceTask?.cancel()
-        healthGraceTask = nil
-
-        // Disconnect all relay clients gracefully (but keep activeDeviceId)
-        for (deviceId, relay) in storage {
-            relay.disconnect(isUserInitiated: false)
-            connectionStates[deviceId] = .disconnected
-        }
-
-        // Set health to unstable (not dead) to allow reconnection on foreground
-        connectionHealth = .unstable
-
-        // Clear verifying state since we're disconnecting
-        verifyingDevices.removeAll()
-
-        // Note: We intentionally do NOT clear:
-        // - activeDeviceId (so user returns to workspace)
-        // - storage (so we can reconnect to same clients)
-        // - persisted device IDs (for quick restoration)
-    }
-
     /// Performs system ping to verify desktop connection (handshaking step)
     /// Reduced timeout from 5s to 3s for faster connection verification
     private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 3) async throws {
