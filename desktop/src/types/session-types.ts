@@ -69,4 +69,6 @@ export type Session = {
   filterMode?: 'all' | 'selected'; // Filter mode for the file browser
   videoAnalysisPrompt?: string; // Persisted video analysis prompt for the session
   mergeInstructions?: string; // Instructions for merging implementation plans
+  // Prefetched token estimation (calculated by desktop when session data changes)
+  estimatedTokens?: number; // Estimated prompt tokens for implementation plan
 };

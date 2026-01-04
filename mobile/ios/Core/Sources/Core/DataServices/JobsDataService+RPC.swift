@@ -11,48 +11,47 @@ extension JobsDataService {
         let cacheKey = makeJobListDedupKey(for: request)
 
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
-            Task {
+            Task { @MainActor in
                 guard let self = self else {
                     promise(.failure(.invalidState("JobsDataService deallocated")))
                     return
                 }
 
-                await MainActor.run {
-                    self.currentListJobsRequestToken = token
-                }
-
-                // Check for in-flight request and coalesce
-                if let existingTask = await MainActor.run(body: { self.jobsFetchInFlight[cacheKey] }) {
-                    do {
-                        let result = try await existingTask.value
-                        promise(.success(result))
-                    } catch let error as DataServiceError {
-                        promise(.failure(error))
-                    } catch {
-                        promise(.failure(.networkError(error)))
+                // ATOMIC check-and-store: Check for in-flight request and coalesce
+                // IMPORTANT: Don't set token until AFTER these checks - coalesced requests
+                // should NOT invalidate the original request's token
+                if let existingTask = self.jobsFetchInFlight[cacheKey] {
+                    // Coalesce with existing request - do NOT set token
+                    Task {
+                        do {
+                            let result = try await existingTask.value
+                            promise(.success(result))
+                        } catch let error as DataServiceError {
+                            promise(.failure(error))
+                        } catch {
+                            promise(.failure(.networkError(error)))
+                        }
                     }
                     return
                 }
 
-                // Short-window dedup (1 second)
+                // Short-window dedup (1 second) - do NOT set token
                 let now = Date()
-                if let lastAt = await MainActor.run(body: { self.lastJobsFetchAt[cacheKey] }),
+                if let lastAt = self.lastJobsFetchAt[cacheKey],
                    now.timeIntervalSince(lastAt) < 1.0 {
                     // Return cached response
-                    let response = await MainActor.run {
-                        JobListResponse(
-                            jobs: self.jobs,
-                            totalCount: UInt32(self.jobs.count),
-                            page: request.page ?? 0,
-                            pageSize: request.pageSize ?? UInt32(self.jobs.count),
-                            hasMore: false
-                        )
-                    }
+                    let response = JobListResponse(
+                        jobs: self.jobs,
+                        totalCount: UInt32(self.jobs.count),
+                        page: request.page ?? 0,
+                        pageSize: request.pageSize ?? UInt32(self.jobs.count),
+                        hasMore: false
+                    )
                     promise(.success(response))
                     return
                 }
 
-                // Avoid issuing job.list RPCs when relay is clearly offline; fail fast to prevent request buildup.
+                // Connection check - do NOT set token on early return
                 if let activeId = MultiConnectionManager.shared.activeDeviceId {
                     if !(MultiConnectionManager.shared.connectionStates[activeId]?.isConnected ?? false) {
                         if shouldReplace {
@@ -73,16 +72,22 @@ extension JobsDataService {
                     return
                 }
 
-                // Create new task for this fetch
-                let fetchTask = Task<JobListResponse, Error> {
+                // NOW set the token - only for requests that will actually execute
+                self.currentListJobsRequestToken = token
+
+                // Mark fetch timestamp BEFORE creating task to prevent duplicates
+                self.lastJobsFetchAt[cacheKey] = Date()
+
+                // Create new task for this fetch and store it IMMEDIATELY (atomic with check above)
+                let fetchTask = Task<JobListResponse, Error> { [weak self] in
+                    guard let self = self else {
+                        throw DataServiceError.invalidState("JobsDataService deallocated")
+                    }
+
                     defer {
                         Task { @MainActor in
                             self.jobsFetchInFlight.removeValue(forKey: cacheKey)
                         }
-                    }
-
-                    await MainActor.run {
-                        self.lastJobsFetchAt[cacheKey] = Date()
                     }
 
                     let activeSessionId = request.sessionId
@@ -157,18 +162,18 @@ extension JobsDataService {
                     return response
                 }
 
-                // Store the task in the in-flight dictionary
-                await MainActor.run {
-                    self.jobsFetchInFlight[cacheKey] = fetchTask
-                }
+                // Store the task IMMEDIATELY after creation (still on MainActor, atomic with check above)
+                self.jobsFetchInFlight[cacheKey] = fetchTask
 
                 // Execute the task and handle result
-                do {
-                    let response = try await fetchTask.value
-                    promise(.success(response))
-                } catch {
-                    let dataServiceError = error as? DataServiceError ?? .networkError(error)
-                    promise(.failure(dataServiceError))
+                Task {
+                    do {
+                        let response = try await fetchTask.value
+                        promise(.success(response))
+                    } catch {
+                        let dataServiceError = error as? DataServiceError ?? .networkError(error)
+                        promise(.failure(dataServiceError))
+                    }
                 }
             }
         }

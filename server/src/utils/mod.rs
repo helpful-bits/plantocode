@@ -8,3 +8,4 @@ pub mod token_estimator;
 pub mod transcription_validation;
 pub mod vision_capabilities;
 pub mod vision_normalizer;
+pub mod vision_validation;

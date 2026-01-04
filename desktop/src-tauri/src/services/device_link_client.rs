@@ -26,6 +26,26 @@ const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
 
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
 
+/// PTC1 binary framing sentinel: "PTC1" in ASCII
+/// Format: [0x50, 0x54, 0x43, 0x31][session_id_length: u16 big-endian][session_id bytes][payload]
+/// This allows the mobile client to demux binary data for multiple terminal sessions
+const PTC1_SENTINEL: [u8; 4] = [0x50, 0x54, 0x43, 0x31];
+
+/// Wrap binary data with PTC1 framing that includes the session_id
+/// This enables multi-session support where mobile can route data to correct terminal view
+/// Format matches iOS parseFramedTerminalEvent: sentinel (4) + length (2 BE) + sessionId + payload
+fn wrap_with_ptc1_frame(session_id: &str, data: &[u8]) -> Vec<u8> {
+    let session_bytes = session_id.as_bytes();
+    let session_len = session_bytes.len().min(65535) as u16; // Cap at 65535 bytes (u16 max)
+
+    let mut frame = Vec::with_capacity(4 + 2 + session_len as usize + data.len());
+    frame.extend_from_slice(&PTC1_SENTINEL);
+    frame.extend_from_slice(&session_len.to_be_bytes()); // 2-byte big-endian length
+    frame.extend_from_slice(&session_bytes[..session_len as usize]);
+    frame.extend_from_slice(data);
+    frame
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RelayEnvelope {
@@ -240,13 +260,14 @@ fn delete_session(app_handle: &tauri::AppHandle) {
 
 // ==================================================
 
-/// Global bound session ID - shared across all DeviceLinkClient instances
+/// Global bound session IDs - shared across all DeviceLinkClient instances
+/// Supports multiple concurrent terminal sessions streaming to mobile
 /// This is necessary because restart_device_link_client creates a new client instance
 /// but terminal_manager may still reference the old one from app state
-static BOUND_SESSION_ID: std::sync::OnceLock<Mutex<Option<String>>> = std::sync::OnceLock::new();
+static BOUND_SESSION_IDS: std::sync::OnceLock<Mutex<std::collections::HashSet<String>>> = std::sync::OnceLock::new();
 
-fn get_bound_session_id() -> &'static Mutex<Option<String>> {
-    BOUND_SESSION_ID.get_or_init(|| Mutex::new(None))
+fn get_bound_session_ids() -> &'static Mutex<std::collections::HashSet<String>> {
+    BOUND_SESSION_IDS.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
 }
 
 pub struct DeviceLinkClient {
@@ -531,20 +552,26 @@ impl DeviceLinkClient {
                                 if let Some(session_id_str) = session_id_opt {
                                     let session_id = session_id_str.to_string();
 
-                                    if let Ok(mut bound) = get_bound_session_id().lock() {
-                                        info!("Setting bound_session_id from {:?} to {}", *bound, session_id);
-                                        *bound = Some(session_id.clone());
-                                        info!("Bound terminal output to session: {}", session_id);
+                                    // Add session to bound set (supports multiple concurrent sessions)
+                                    if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
+                                        let was_new = bound_sessions.insert(session_id.clone());
+                                        if was_new {
+                                            info!("Added session {} to bound set (total: {})", session_id, bound_sessions.len());
+                                        } else {
+                                            info!("Session {} already in bound set (rebind)", session_id);
+                                        }
                                     } else {
-                                        error!("Failed to lock bound_session_id mutex");
+                                        error!("Failed to lock bound_session_ids mutex");
                                     }
 
                                     if include_snapshot {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
                                             if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(MAX_TERMINAL_SNAPSHOT_BYTES)) {
                                                 if !snapshot.is_empty() {
-                                                    info!("Binary uplink: sending snapshot for session {}, {} bytes", session_id, snapshot.len());
-                                                    let _ = bin_tx_for_receiver.send(snapshot);
+                                                    // Wrap snapshot with PTC1 framing for multi-session support
+                                                    let framed_snapshot = wrap_with_ptc1_frame(&session_id, &snapshot);
+                                                    info!("Binary uplink: sending snapshot for session {}, {} bytes (framed: {})", session_id, snapshot.len(), framed_snapshot.len());
+                                                    let _ = bin_tx_for_receiver.send(framed_snapshot);
                                                 }
                                             }
                                         }
@@ -566,9 +593,20 @@ impl DeviceLinkClient {
                                 let session_id = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 info!("Bound terminal: unbind requested for sessionId={:?}", session_id);
 
-                                if let Ok(mut bound) = get_bound_session_id().lock() {
-                                    *bound = None;
-                                    info!("Bound terminal: cleared bound session");
+                                if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
+                                    if let Some(sid) = session_id {
+                                        // Remove specific session from bound set
+                                        if bound_sessions.remove(sid) {
+                                            info!("Removed session {} from bound set (remaining: {})", sid, bound_sessions.len());
+                                        } else {
+                                            info!("Session {} was not in bound set", sid);
+                                        }
+                                    } else {
+                                        // No sessionId provided - clear all (backward compatibility)
+                                        let count = bound_sessions.len();
+                                        bound_sessions.clear();
+                                        info!("Cleared all {} bound sessions", count);
+                                    }
                                 }
                             } else if env.kind == "device-status" {
                                 // Forward device status changes to local event bus
@@ -1033,15 +1071,16 @@ impl DeviceLinkClient {
     }
 
     /// Check if a session is bound for binary streaming
+    /// Supports multiple concurrent bound sessions for multi-terminal streaming
     pub fn is_session_bound(&self, session_id: &str) -> bool {
-        let bound = get_bound_session_id().lock().unwrap();
-        let result = bound.as_deref() == Some(session_id);
-        if !result && bound.is_some() {
-            // Log mismatch for debugging
+        let bound_sessions = get_bound_session_ids().lock().unwrap();
+        let result = bound_sessions.contains(session_id);
+        if !result && !bound_sessions.is_empty() {
+            // Log for debugging - not an error, just a different session
             debug!(
-                "is_session_bound mismatch: bound={:?} requested={}",
-                bound.as_deref(),
-                session_id
+                "is_session_bound: session {} not in bound set {:?}",
+                session_id,
+                bound_sessions
             );
         }
         result
@@ -1078,16 +1117,17 @@ impl DeviceLinkClient {
             return Ok(());
         }
 
-        // Session is bound and connected - send immediately
+        // Session is bound and connected - wrap with PTC1 framing and send
+        let framed_data = wrap_with_ptc1_frame(session_id, data);
         let sender = self.binary_sender.lock().unwrap();
         match sender.as_ref() {
             Some(tx) => {
-                tx.send(data.to_vec())
+                tx.send(framed_data)
                     .map_err(|_| {
                         warn!("Binary uplink: channel closed for session {}", session_id);
                         AppError::NetworkError("Binary uplink channel closed".into())
                     })?;
-                debug!("Binary uplink: enqueued {} bytes for session {}", data.len(), session_id);
+                debug!("Binary uplink: enqueued {} bytes (framed: {}) for session {}", data.len(), data.len() + 6 + session_id.len(), session_id);
                 Ok(())
             }
             None => {
@@ -1167,8 +1207,8 @@ impl DeviceLinkClient {
             }
         }
 
-        if let Ok(mut bound) = get_bound_session_id().lock() {
-            *bound = None;
+        if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
+            bound_sessions.clear();
         }
 
         if let Ok(mut pending) = self.pending_binary_by_session.lock() {

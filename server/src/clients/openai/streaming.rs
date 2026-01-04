@@ -95,6 +95,8 @@ pub fn create_chat_completion_chunk(
 }
 
 /// Extracts content from OpenAI Responses API output structure
+/// Iterates ALL output items and ALL content parts to aggregate text
+/// This fixes the "Empty content" issue for o4-mini, gpt-5-mini, gpt-5-nano models
 pub fn extract_content_from_responses(response: &OpenAIResponsesResponse) -> String {
     // Log built-in tool calls for debugging
     if let Some(tool_calls) = &response.built_in_tool_calls {
@@ -121,34 +123,48 @@ pub fn extract_content_from_responses(response: &OpenAIResponsesResponse) -> Str
         }
     }
 
-    response
-        .output
-        .as_ref()
-        .and_then(|outputs| {
-            // Find message output type with content
-            outputs.iter().find_map(|output| {
-                if output.get("type").and_then(|t| t.as_str()) == Some("message") {
-                    output
-                        .get("content")
-                        .and_then(|content_array| content_array.as_array())
-                        .and_then(|array| {
-                            array.iter().find_map(|content_item| {
-                                if content_item.get("type").and_then(|t| t.as_str())
-                                    == Some("output_text")
-                                {
-                                    content_item.get("text").and_then(|text| text.as_str())
-                                } else {
-                                    None
+    let mut accumulated_text = String::new();
+
+    // Iterate through ALL output items and ALL content parts
+    if let Some(outputs) = &response.output {
+        for output in outputs {
+            if output.get("type").and_then(|t| t.as_str()) == Some("message") {
+                if let Some(content_array) = output.get("content").and_then(|c| c.as_array()) {
+                    for content_item in content_array {
+                        let content_type = content_item.get("type").and_then(|t| t.as_str());
+                        match content_type {
+                            Some("output_text") => {
+                                if let Some(text) = content_item.get("text").and_then(|t| t.as_str()) {
+                                    if !accumulated_text.is_empty() {
+                                        accumulated_text.push('\n');
+                                    }
+                                    accumulated_text.push_str(text);
                                 }
-                            })
-                        })
-                } else {
-                    None
+                            }
+                            Some("refusal") => {
+                                if let Some(text) = content_item.get("refusal").and_then(|t| t.as_str()) {
+                                    if !accumulated_text.is_empty() {
+                                        accumulated_text.push('\n');
+                                    }
+                                    accumulated_text.push_str(text);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                 }
-            })
-        })
-        .unwrap_or("")
-        .to_string()
+            }
+        }
+    }
+
+    // Fallback: check response.extra["output_text"] if accumulator is empty
+    if accumulated_text.is_empty() {
+        if let Some(output_text) = response.extra.get("output_text").and_then(|v| v.as_str()) {
+            accumulated_text.push_str(output_text);
+        }
+    }
+
+    accumulated_text
 }
 
 pub fn create_deep_research_stream(

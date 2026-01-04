@@ -165,13 +165,15 @@ pub struct OpenAIResponsesInputItem {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAIResponsesContentPart {
     #[serde(rename = "type")]
-    pub part_type: String,  // "input_text" | "input_image"
+    pub part_type: String,  // "input_text" | "input_image" | "output_text"
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub image_url: Option<String>,  // URL string or data URL for input_image
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_id: Option<String>,  // File ID for input_image
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,  // Image detail level: "auto" | "low" | "high"
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

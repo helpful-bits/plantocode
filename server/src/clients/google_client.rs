@@ -3,6 +3,7 @@ use crate::config::settings::AppSettings;
 use crate::error::AppError;
 use crate::models::UsageMetadata;
 use crate::services::model_mapping_service::ModelWithMapping;
+use crate::utils::vision_normalizer::parse_data_url;
 use actix_web::web;
 use base64::{Engine as _, engine::general_purpose};
 use futures_util::{Stream, StreamExt, TryStreamExt};
@@ -775,32 +776,33 @@ impl GoogleClient {
 
                                 if let Some(image_url) = url {
                                     if image_url.starts_with("data:") {
-                                        // Parse data URL
-                                        if let Some(comma_pos) = image_url.find(',') {
-                                            let header = &image_url[..comma_pos];
-                                            let data = &image_url[comma_pos + 1..];
+                                        // Parse data URL using the proper parser
+                                        let (mime_type, data) = parse_data_url(&image_url)?;
 
-                                            // Extract MIME type from header
-                                            let mime_type = if header.contains("image/jpeg") {
-                                                "image/jpeg"
-                                            } else if header.contains("image/png") {
-                                                "image/png"
-                                            } else if header.contains("image/webp") {
-                                                "image/webp"
-                                            } else if header.contains("image/gif") {
-                                                "image/gif"
-                                            } else {
-                                                "image/jpeg" // Default fallback
-                                            };
-
-                                            google_parts.push(GooglePart {
-                                                inline_data: Some(GoogleBlob {
-                                                    mime_type: mime_type.to_string(),
-                                                    data: data.to_string(),
-                                                }),
-                                                ..Default::default()
-                                            });
+                                        // Reject GIF images - Google Gemini doesn't support them
+                                        if mime_type == "image/gif" {
+                                            return Err(AppError::BadRequest(
+                                                "Google Gemini does not support GIF images. Supported formats: JPEG, PNG, WebP, HEIC, HEIF".to_string()
+                                            ));
                                         }
+
+                                        // Validate supported MIME types for Google
+                                        let validated_mime_type = match mime_type.as_str() {
+                                            "image/jpeg" | "image/jpg" => "image/jpeg",
+                                            "image/png" => "image/png",
+                                            "image/webp" => "image/webp",
+                                            "image/heic" => "image/heic",
+                                            "image/heif" => "image/heif",
+                                            _ => "image/jpeg", // Default fallback for unknown types
+                                        };
+
+                                        google_parts.push(GooglePart {
+                                            inline_data: Some(GoogleBlob {
+                                                mime_type: validated_mime_type.to_string(),
+                                                data,
+                                            }),
+                                            ..Default::default()
+                                        });
                                     } else if image_url.starts_with("gs://") || image_url.contains("generativelanguage.googleapis.com") {
                                         // Google Cloud Storage or Gemini File API URI
                                         let mime_type = if image_url.ends_with(".jpg") || image_url.ends_with(".jpeg") {
@@ -835,10 +837,27 @@ impl GoogleClient {
                                             let media_type = source.get("media_type").and_then(|m| m.as_str()).unwrap_or("image/jpeg");
                                             let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
 
+                                            // Reject GIF images - Google Gemini doesn't support them
+                                            if media_type == "image/gif" {
+                                                return Err(AppError::BadRequest(
+                                                    "Google Gemini does not support GIF images. Supported formats: JPEG, PNG, WebP, HEIC, HEIF".to_string()
+                                                ));
+                                            }
+
+                                            // Validate and normalize supported MIME types for Google
+                                            let validated_mime_type = match media_type {
+                                                "image/jpeg" | "image/jpg" => "image/jpeg",
+                                                "image/png" => "image/png",
+                                                "image/webp" => "image/webp",
+                                                "image/heic" => "image/heic",
+                                                "image/heif" => "image/heif",
+                                                _ => "image/jpeg", // Default fallback for unknown types
+                                            };
+
                                             if !data.is_empty() {
                                                 google_parts.push(GooglePart {
                                                     inline_data: Some(GoogleBlob {
-                                                        mime_type: media_type.to_string(),
+                                                        mime_type: validated_mime_type.to_string(),
                                                         data: data.to_string(),
                                                     }),
                                                     ..Default::default()
@@ -858,31 +877,33 @@ impl GoogleClient {
                                 // Handle OpenAI Responses API style input_image
                                 if let Some(image_url) = part.get("image_url").and_then(|u| u.as_str()) {
                                     if image_url.starts_with("data:") {
-                                        // Parse data URL same as above
-                                        if let Some(comma_pos) = image_url.find(',') {
-                                            let header = &image_url[..comma_pos];
-                                            let data = &image_url[comma_pos + 1..];
+                                        // Parse data URL using the proper parser
+                                        let (mime_type, data) = parse_data_url(image_url)?;
 
-                                            let mime_type = if header.contains("image/jpeg") {
-                                                "image/jpeg"
-                                            } else if header.contains("image/png") {
-                                                "image/png"
-                                            } else if header.contains("image/webp") {
-                                                "image/webp"
-                                            } else if header.contains("image/gif") {
-                                                "image/gif"
-                                            } else {
-                                                "image/jpeg"
-                                            };
-
-                                            google_parts.push(GooglePart {
-                                                inline_data: Some(GoogleBlob {
-                                                    mime_type: mime_type.to_string(),
-                                                    data: data.to_string(),
-                                                }),
-                                                ..Default::default()
-                                            });
+                                        // Reject GIF images - Google Gemini doesn't support them
+                                        if mime_type == "image/gif" {
+                                            return Err(AppError::BadRequest(
+                                                "Google Gemini does not support GIF images. Supported formats: JPEG, PNG, WebP, HEIC, HEIF".to_string()
+                                            ));
                                         }
+
+                                        // Validate supported MIME types for Google
+                                        let validated_mime_type = match mime_type.as_str() {
+                                            "image/jpeg" | "image/jpg" => "image/jpeg",
+                                            "image/png" => "image/png",
+                                            "image/webp" => "image/webp",
+                                            "image/heic" => "image/heic",
+                                            "image/heif" => "image/heif",
+                                            _ => "image/jpeg", // Default fallback for unknown types
+                                        };
+
+                                        google_parts.push(GooglePart {
+                                            inline_data: Some(GoogleBlob {
+                                                mime_type: validated_mime_type.to_string(),
+                                                data,
+                                            }),
+                                            ..Default::default()
+                                        });
                                     }
                                 }
                                 // Note: file_id references are OpenAI-specific and not supported here

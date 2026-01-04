@@ -22,13 +22,20 @@ pub fn convert_messages_to_responses_input(
     messages
         .iter()
         .map(|message| {
+            // Determine the text part type based on role:
+            // - assistant role uses "output_text" (for conversation history)
+            // - user/system/developer roles use "input_text"
+            let is_assistant = message.role == "assistant";
+            let text_part_type = if is_assistant { "output_text" } else { "input_text" };
+
             let content = match &message.content {
                 OpenAIContent::Text(text) => {
                     vec![OpenAIResponsesContentPart {
-                        part_type: "input_text".to_string(),
+                        part_type: text_part_type.to_string(),
                         text: Some(text.clone()),
                         image_url: None,
                         file_id: None,
+                        detail: None,
                     }]
                 }
                 OpenAIContent::Parts(parts) => {
@@ -38,66 +45,81 @@ pub fn convert_messages_to_responses_input(
                             match part.part_type.as_str() {
                                 "text" => {
                                     OpenAIResponsesContentPart {
-                                        part_type: "input_text".to_string(),
+                                        part_type: text_part_type.to_string(),
                                         text: part.text.clone(),
                                         image_url: None,
                                         file_id: None,
+                                        detail: None,
                                     }
                                 }
                                 "image_url" => {
                                     // Convert OpenAIImageUrl object to string URL
-                                    let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                    // Preserve the detail field from the image_url
+                                    let (url_string, detail) = part.image_url.as_ref()
+                                        .map(|img| (Some(img.url.clone()), img.detail.clone()))
+                                        .unwrap_or((None, None));
                                     OpenAIResponsesContentPart {
                                         part_type: "input_image".to_string(),
                                         text: None,
                                         image_url: url_string,
                                         file_id: part.file_id.clone(),
+                                        detail,
                                     }
                                 }
-                                "input_text" => {
+                                "input_text" | "output_text" => {
                                     // Already in Responses API format, pass through
+                                    // Use appropriate type based on role
                                     OpenAIResponsesContentPart {
-                                        part_type: "input_text".to_string(),
+                                        part_type: text_part_type.to_string(),
                                         text: part.text.clone(),
                                         image_url: None,
                                         file_id: None,
+                                        detail: None,
                                     }
                                 }
                                 "input_image" => {
                                     // Already in Responses API format
                                     // Extract URL from image_url object if present
-                                    let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                    let (url_string, detail) = part.image_url.as_ref()
+                                        .map(|img| (Some(img.url.clone()), img.detail.clone()))
+                                        .unwrap_or((None, None));
                                     OpenAIResponsesContentPart {
                                         part_type: "input_image".to_string(),
                                         text: None,
                                         image_url: url_string,
                                         file_id: part.file_id.clone(),
+                                        detail,
                                     }
                                 }
                                 _ => {
                                     // Fallback: treat as text if text is available
                                     if part.text.is_some() {
                                         OpenAIResponsesContentPart {
-                                            part_type: "input_text".to_string(),
+                                            part_type: text_part_type.to_string(),
                                             text: part.text.clone(),
                                             image_url: None,
                                             file_id: None,
+                                            detail: None,
                                         }
                                     } else if part.image_url.is_some() {
-                                        let url_string = part.image_url.as_ref().map(|img| img.url.clone());
+                                        let (url_string, detail) = part.image_url.as_ref()
+                                            .map(|img| (Some(img.url.clone()), img.detail.clone()))
+                                            .unwrap_or((None, None));
                                         OpenAIResponsesContentPart {
                                             part_type: "input_image".to_string(),
                                             text: None,
                                             image_url: url_string,
                                             file_id: part.file_id.clone(),
+                                            detail,
                                         }
                                     } else {
                                         // Empty fallback
                                         OpenAIResponsesContentPart {
-                                            part_type: "input_text".to_string(),
+                                            part_type: text_part_type.to_string(),
                                             text: Some(String::new()),
                                             image_url: None,
                                             file_id: None,
+                                            detail: None,
                                         }
                                     }
                                 }
@@ -261,6 +283,7 @@ pub fn prepare_request_body(
                     text: Some(format!("[Additional System Context]\n{}", overflow)),
                     image_url: None,
                     file_id: None,
+                    detail: None,
                 }]),
             };
             input_items.insert(0, overflow_message);

@@ -105,25 +105,31 @@ fn parse_content_part(part_value: &Value) -> Result<VisionPart, AppError> {
         }
         "image_url" => {
             // OpenAI Chat-style: { "type": "image_url", "image_url": { "url": "...", "detail"?: "..." } }
-            let image_url_obj = part_obj
-                .get("image_url")
-                .and_then(|v| v.as_object())
-                .ok_or_else(|| {
-                    AppError::BadRequest("image_url part missing 'image_url' object".to_string())
-                })?;
+            // Also support string form: { "type": "image_url", "image_url": "https://..." }
+            let (url, detail) = if let Some(url_str) = part_obj.get("image_url").and_then(|v| v.as_str()) {
+                // String form: { "type": "image_url", "image_url": "https://..." }
+                (url_str.to_string(), None)
+            } else if let Some(image_url_obj) = part_obj.get("image_url").and_then(|v| v.as_object()) {
+                // Object form: { "type": "image_url", "image_url": { "url": "...", "detail": "..." } }
+                let url = image_url_obj
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| {
+                        AppError::BadRequest("image_url object missing 'url' field".to_string())
+                    })?
+                    .to_string();
 
-            let url = image_url_obj
-                .get("url")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    AppError::BadRequest("image_url object missing 'url' field".to_string())
-                })?
-                .to_string();
+                let detail = image_url_obj
+                    .get("detail")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-            let detail = image_url_obj
-                .get("detail")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                (url, detail)
+            } else {
+                return Err(AppError::BadRequest(
+                    "image_url part missing 'image_url' field (string or object)".to_string(),
+                ));
+            };
 
             let (source, media_type) = parse_url_source(&url)?;
 
@@ -136,7 +142,10 @@ fn parse_content_part(part_value: &Value) -> Result<VisionPart, AppError> {
             })
         }
         "input_image" => {
-            // OpenAI Responses-style: { "type": "input_image", "image_url": "..." } or { "type": "input_image", "file_id": "..." }
+            // OpenAI Responses-style: { "type": "input_image", "image_url": "...", "detail"?: "..." } or { "type": "input_image", "file_id": "...", "detail"?: "..." }
+            // Preserve the detail field if present
+            let detail = part_obj.get("detail").and_then(|v| v.as_str()).map(|s| s.to_string());
+
             if let Some(url_value) = part_obj.get("image_url") {
                 let url = url_value.as_str().ok_or_else(|| {
                     AppError::BadRequest("input_image 'image_url' must be a string".to_string())
@@ -147,7 +156,7 @@ fn parse_content_part(part_value: &Value) -> Result<VisionPart, AppError> {
                 Ok(VisionPart::Image {
                     image: VisionImage {
                         source,
-                        detail: None,
+                        detail,
                         media_type,
                     },
                 })
@@ -162,7 +171,7 @@ fn parse_content_part(part_value: &Value) -> Result<VisionPart, AppError> {
                             file_id: file_id.to_string(),
                             provider: Some("openai".to_string()),
                         },
-                        detail: None,
+                        detail,
                         media_type: None,
                     },
                 })
@@ -319,6 +328,17 @@ pub fn contains_images(messages: &[VisionMessage]) -> bool {
         .any(|msg| msg.parts.iter().any(|part| matches!(part, VisionPart::Image { .. })))
 }
 
+/// Canonicalize MIME type to standard form
+fn canonicalize_mime(mime: &str) -> String {
+    let lowercased = mime.to_lowercase();
+    // Canonicalize image/jpg to image/jpeg
+    if lowercased == "image/jpg" {
+        "image/jpeg".to_string()
+    } else {
+        lowercased
+    }
+}
+
 /// Extract MIME type and base64 data from data URL
 /// Expected format: data:<mime_type>;base64,<data>
 pub fn parse_data_url(data_url: &str) -> Result<(String, String), AppError> {
@@ -338,7 +358,8 @@ pub fn parse_data_url(data_url: &str) -> Result<(String, String), AppError> {
     }
 
     let header = parts[0];
-    let data = parts[1];
+    // Strip whitespace from base64 data (some sources include newlines/spaces)
+    let data: String = parts[1].chars().filter(|c| !c.is_whitespace()).collect();
 
     // Parse header: <mime_type>;base64 or just <mime_type>
     let header_parts: Vec<&str> = header.split(';').collect();
@@ -348,7 +369,8 @@ pub fn parse_data_url(data_url: &str) -> Result<(String, String), AppError> {
         ));
     }
 
-    let mime_type = header_parts[0].to_string();
+    // Canonicalize the MIME type (lowercase, image/jpg -> image/jpeg)
+    let mime_type = canonicalize_mime(header_parts[0]);
 
     // Check if base64 is specified
     let is_base64 = header_parts.iter().any(|&part| part == "base64");
@@ -358,15 +380,17 @@ pub fn parse_data_url(data_url: &str) -> Result<(String, String), AppError> {
         ));
     }
 
-    Ok((mime_type, data.to_string()))
+    Ok((mime_type, data))
 }
 
 /// Validate image MIME type against whitelist
 pub fn validate_image_mime(mime: &str) -> Result<(), AppError> {
-    match mime {
-        "image/jpeg" | "image/jpg" | "image/png" | "image/webp" | "image/gif" => Ok(()),
+    // Canonicalize the mime type for comparison
+    let canonical = canonicalize_mime(mime);
+    match canonical.as_str() {
+        "image/jpeg" | "image/png" | "image/webp" | "image/gif" | "image/heic" | "image/heif" => Ok(()),
         _ => Err(AppError::BadRequest(format!(
-            "unsupported image MIME type: {}. Supported types: image/jpeg, image/png, image/webp, image/gif",
+            "unsupported image MIME type: {}. Supported types: image/jpeg, image/png, image/webp, image/gif, image/heic, image/heif",
             mime
         ))),
     }
@@ -454,6 +478,15 @@ mod tests {
         assert!(validate_image_mime("image/png").is_ok());
         assert!(validate_image_mime("image/webp").is_ok());
         assert!(validate_image_mime("image/gif").is_ok());
+        // HEIC/HEIF support for Google Gemini
+        assert!(validate_image_mime("image/heic").is_ok());
+        assert!(validate_image_mime("image/heif").is_ok());
+        // image/jpg should be canonicalized to image/jpeg
+        assert!(validate_image_mime("image/jpg").is_ok());
+        // Case insensitive
+        assert!(validate_image_mime("IMAGE/JPEG").is_ok());
+        assert!(validate_image_mime("Image/Png").is_ok());
+        // Unsupported types
         assert!(validate_image_mime("image/bmp").is_err());
         assert!(validate_image_mime("text/plain").is_err());
     }
@@ -555,5 +588,97 @@ mod tests {
             },
             _ => panic!("Expected image part"),
         }
+    }
+
+    #[test]
+    fn test_image_url_string_form() {
+        // Test that image_url accepts a string directly (not just an object)
+        let messages = json!([
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": "https://example.com/image.jpg"
+                    }
+                ]
+            }
+        ]);
+
+        let result = parse_messages(&messages).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].parts.len(), 1);
+
+        match &result[0].parts[0] {
+            VisionPart::Image { image } => {
+                match &image.source {
+                    ImageSource::Url { url } => {
+                        assert_eq!(url, "https://example.com/image.jpg")
+                    }
+                    _ => panic!("Expected URL source"),
+                }
+                // String form should have no detail
+                assert_eq!(image.detail, None);
+            }
+            _ => panic!("Expected image part"),
+        }
+    }
+
+    #[test]
+    fn test_input_image_preserves_detail() {
+        // Test that input_image preserves the detail field
+        let messages = json!([
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_image",
+                        "image_url": "https://example.com/image.jpg",
+                        "detail": "high"
+                    }
+                ]
+            }
+        ]);
+
+        let result = parse_messages(&messages).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].parts.len(), 1);
+
+        match &result[0].parts[0] {
+            VisionPart::Image { image } => {
+                assert_eq!(image.detail.as_deref(), Some("high"));
+            }
+            _ => panic!("Expected image part"),
+        }
+    }
+
+    #[test]
+    fn test_parse_data_url_canonicalizes_mime() {
+        // Test that image/jpg is canonicalized to image/jpeg
+        let data_url = "data:image/jpg;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA";
+        let (mime_type, _) = parse_data_url(data_url).unwrap();
+        assert_eq!(mime_type, "image/jpeg");
+
+        // Test case insensitivity
+        let data_url_uppercase = "data:IMAGE/PNG;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA";
+        let (mime_type_upper, _) = parse_data_url(data_url_uppercase).unwrap();
+        assert_eq!(mime_type_upper, "image/png");
+    }
+
+    #[test]
+    fn test_parse_data_url_strips_whitespace() {
+        // Test that whitespace in base64 data is stripped
+        let data_url = "data:image/png;base64,iVBORw0KGgo\n AAAA\t\rNSUhEUg";
+        let (_, data) = parse_data_url(data_url).unwrap();
+        assert_eq!(data, "iVBORw0KGgoAAAANSUhEUg");
+    }
+
+    #[test]
+    fn test_canonicalize_mime() {
+        assert_eq!(canonicalize_mime("image/jpg"), "image/jpeg");
+        assert_eq!(canonicalize_mime("IMAGE/JPG"), "image/jpeg");
+        assert_eq!(canonicalize_mime("image/jpeg"), "image/jpeg");
+        assert_eq!(canonicalize_mime("IMAGE/PNG"), "image/png");
+        assert_eq!(canonicalize_mime("image/heic"), "image/heic");
     }
 }

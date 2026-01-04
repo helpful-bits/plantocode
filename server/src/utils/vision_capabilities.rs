@@ -5,6 +5,7 @@ use serde_json::Value;
 /// Checks multiple capability formats:
 /// - `{"vision": true}`
 /// - `{"multimodal": {"vision": true}}`
+/// - `{"multimodal": true}` (Google Gemini format - boolean directly)
 /// - `{"modalities": ["image", ...]}` or `{"modalities": ["vision", ...]}`
 pub fn model_supports_vision(capabilities: &Value) -> bool {
     // Check direct vision flag
@@ -12,11 +13,16 @@ pub fn model_supports_vision(capabilities: &Value) -> bool {
         return b;
     }
 
-    // Check nested multimodal.vision
-    if let Some(b) = capabilities.get("multimodal")
-        .and_then(|m| m.get("vision"))
-        .and_then(|v| v.as_bool()) {
-        return b;
+    // Check multimodal field - can be either nested object or boolean (Google format)
+    if let Some(multimodal) = capabilities.get("multimodal") {
+        // Check nested multimodal.vision
+        if let Some(b) = multimodal.get("vision").and_then(|v| v.as_bool()) {
+            return b;
+        }
+        // Check boolean multimodal (Google Gemini format)
+        if let Some(b) = multimodal.as_bool() {
+            return b;
+        }
     }
 
     // Check modalities array for "image" or "vision"
@@ -57,5 +63,11 @@ mod tests {
     fn test_empty_capabilities() {
         assert!(!model_supports_vision(&json!({})));
         assert!(!model_supports_vision(&json!(null)));
+    }
+
+    #[test]
+    fn test_boolean_multimodal() {
+        assert!(model_supports_vision(&json!({"multimodal": true})));
+        assert!(!model_supports_vision(&json!({"multimodal": false})));
     }
 }

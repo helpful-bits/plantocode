@@ -195,14 +195,41 @@ extension JobsDataService {
         }
     }
 
-    // MARK: - Event ID Extraction
+    // MARK: - Payload Extraction Helpers
+
+    /// Extract jobId from payload, handling AnyCodable wrapping
+    func extractJobIdFromPayload(_ payload: [String: Any]) -> String? {
+        // Direct string
+        if let id = payload["jobId"] as? String { return id }
+        if let id = payload["id"] as? String { return id }
+        // AnyCodable wrapped
+        if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String { return id }
+        if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String { return id }
+        // Nested in job object
+        if let jobDict = payload["job"] as? [String: Any], let id = jobDict["id"] as? String { return id }
+        return nil
+    }
+
+    /// Extract job data dictionary from payload, handling various formats
+    func extractJobDataFromPayload(_ payload: [String: Any]) -> [String: Any]? {
+        if let dict = payload["job"] as? [String: Any] { return dict }
+        if let dict = (payload["job"] as? NSDictionary) as? [String: Any] { return dict }
+        if let anyCodable = payload["job"] as? AnyCodable, let dict = anyCodable.value as? [String: Any] { return dict }
+        if let payloadDict = payload["payload"] as? [String: Any], let dict = payloadDict["job"] as? [String: Any] { return dict }
+        return nil
+    }
+
+    /// Extract status string from payload, handling AnyCodable wrapping
+    func extractStatusFromPayload(_ payload: [String: Any]) -> String? {
+        if let s = payload["status"] as? String { return s }
+        if let anyCodable = payload["status"] as? AnyCodable, let s = anyCodable.value as? String { return s }
+        return nil
+    }
 
     // Extract jobId from relay event for early guard
     func extractJobId(from event: RelayEvent) -> String? {
         let payload = event.data.mapValues { $0.value }
-        return payload["jobId"] as? String
-            ?? payload["id"] as? String
-            ?? (payload["job"] as? [String: Any])?["id"] as? String
+        return extractJobIdFromPayload(payload)
     }
 
     // MARK: - Workflow Job Count Updates from Events
@@ -212,20 +239,7 @@ extension JobsDataService {
 
         switch event.eventType {
         case "job:created":
-            var jobData: [String: Any]?
-            if let dict = payload["job"] as? [String: Any] {
-                jobData = dict
-            } else if let dict = (payload["job"] as? NSDictionary) as? [String: Any] {
-                jobData = dict
-            } else if let anyCodable = payload["job"] as? AnyCodable,
-                      let dict = anyCodable.value as? [String: Any] {
-                jobData = dict
-            } else if let payloadDict = payload["payload"] as? [String: Any],
-                      let dict = payloadDict["job"] as? [String: Any] {
-                jobData = dict
-            }
-
-            if let jobData = jobData, let job = decodeJob(from: jobData) {
+            if let jobData = extractJobDataFromPayload(payload), let job = decodeJob(from: jobData) {
                 let isUmbrella = isWorkflowUmbrella(job)
                 let isActive = isActiveStatus(job.jobStatus)
 
@@ -240,22 +254,9 @@ extension JobsDataService {
             } else {
                 scheduleCoalescedListJobsForActiveSession()
             }
-        case "job:status-changed", "job:finalized":
-            // Handle both status-changed and finalized events - both can contain status updates
-            // that transition jobs from active to inactive state
 
-            // Extract jobId (may be wrapped in AnyCodable)
-            var jobId: String?
-            if let id = payload["jobId"] as? String {
-                jobId = id
-            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
-                jobId = id
-            } else if let id = payload["id"] as? String {
-                jobId = id
-            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
-                jobId = id
-            }
-            guard let jobId = jobId else { return }
+        case "job:status-changed", "job:finalized":
+            guard let jobId = extractJobIdFromPayload(payload) else { return }
 
             guard let job = workflowJobsCache[jobId] else {
                 hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
@@ -268,15 +269,7 @@ extension JobsDataService {
                 return
             }
 
-            // Extract status (may be wrapped in AnyCodable)
-            var statusString: String?
-            if let s = payload["status"] as? String {
-                statusString = s
-            } else if let anyCodable = payload["status"] as? AnyCodable, let s = anyCodable.value as? String {
-                statusString = s
-            }
-
-            if let statusString = statusString,
+            if let statusString = extractStatusFromPayload(payload),
                let newStatus = JobStatus(rawValue: statusString) {
                 let newActive = isActiveStatus(newStatus)
                 let oldActive = isActiveStatus(job.jobStatus)
@@ -295,19 +288,9 @@ extension JobsDataService {
                 updatedJob.status = statusString
                 workflowJobsCache[jobId] = updatedJob
             }
+
         case "job:deleted":
-            // Extract jobId (may be wrapped in AnyCodable)
-            var deletedJobId: String?
-            if let id = payload["jobId"] as? String {
-                deletedJobId = id
-            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
-                deletedJobId = id
-            } else if let id = payload["id"] as? String {
-                deletedJobId = id
-            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
-                deletedJobId = id
-            }
-            guard let jobId = deletedJobId else { return }
+            guard let jobId = extractJobIdFromPayload(payload) else { return }
 
             guard let job = workflowJobsCache[jobId] else {
                 logger.debug("Workflow job \(jobId) not in cache during deletion - already removed or never tracked")
@@ -318,6 +301,7 @@ extension JobsDataService {
                 bumpWorkflowCount(sessionId: job.sessionId, delta: -1)
             }
             workflowJobsCache.removeValue(forKey: jobId)
+
         default:
             break
         }
@@ -330,20 +314,7 @@ extension JobsDataService {
 
         switch event.eventType {
         case "job:created":
-            var jobData: [String: Any]?
-            if let dict = payload["job"] as? [String: Any] {
-                jobData = dict
-            } else if let dict = (payload["job"] as? NSDictionary) as? [String: Any] {
-                jobData = dict
-            } else if let anyCodable = payload["job"] as? AnyCodable,
-                      let dict = anyCodable.value as? [String: Any] {
-                jobData = dict
-            } else if let payloadDict = payload["payload"] as? [String: Any],
-                      let dict = payloadDict["job"] as? [String: Any] {
-                jobData = dict
-            }
-
-            if let jobData = jobData, let job = decodeJob(from: jobData) {
+            if let jobData = extractJobDataFromPayload(payload), let job = decodeJob(from: jobData) {
                 let isPlan = isImplementationPlan(job)
                 let isActive = isActiveStatus(job.jobStatus)
 
@@ -356,22 +327,9 @@ extension JobsDataService {
                     }
                 }
             }
-        case "job:status-changed", "job:finalized":
-            // Handle both status-changed and finalized events - both can contain status updates
-            // that transition jobs from active to inactive state
 
-            // Extract jobId (may be wrapped in AnyCodable)
-            var jobId: String?
-            if let id = payload["jobId"] as? String {
-                jobId = id
-            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
-                jobId = id
-            } else if let id = payload["id"] as? String {
-                jobId = id
-            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
-                jobId = id
-            }
-            guard let jobId = jobId else { return }
+        case "job:status-changed", "job:finalized":
+            guard let jobId = extractJobIdFromPayload(payload) else { return }
 
             guard let job = implementationPlanCache[jobId] else {
                 // Try to hydrate and re-check if it's an implementation plan
@@ -385,15 +343,7 @@ extension JobsDataService {
                 return
             }
 
-            // Extract status (may be wrapped in AnyCodable)
-            var statusString: String?
-            if let s = payload["status"] as? String {
-                statusString = s
-            } else if let anyCodable = payload["status"] as? AnyCodable, let s = anyCodable.value as? String {
-                statusString = s
-            }
-
-            if let statusString = statusString,
+            if let statusString = extractStatusFromPayload(payload),
                let newStatus = JobStatus(rawValue: statusString) {
                 let newActive = isActiveStatus(newStatus)
                 let oldActive = isActiveStatus(job.jobStatus)
@@ -411,19 +361,9 @@ extension JobsDataService {
                 updatedJob.status = statusString
                 implementationPlanCache[jobId] = updatedJob
             }
+
         case "job:deleted":
-            // Extract jobId (may be wrapped in AnyCodable)
-            var deletedJobId: String?
-            if let id = payload["jobId"] as? String {
-                deletedJobId = id
-            } else if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String {
-                deletedJobId = id
-            } else if let id = payload["id"] as? String {
-                deletedJobId = id
-            } else if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String {
-                deletedJobId = id
-            }
-            guard let jobId = deletedJobId else { return }
+            guard let jobId = extractJobIdFromPayload(payload) else { return }
 
             guard let job = implementationPlanCache[jobId] else {
                 return
@@ -433,6 +373,7 @@ extension JobsDataService {
                 bumpImplementationPlanCount(sessionId: job.sessionId, delta: -1)
             }
             implementationPlanCache.removeValue(forKey: jobId)
+
         default:
             break
         }
@@ -459,39 +400,29 @@ extension JobsDataService {
         }
 
         let payload = event.data.mapValues { $0.value }
-        let jobId = payload["jobId"] as? String
-            ?? payload["id"] as? String
-            ?? (payload["job"] as? [String: Any])?["id"] as? String
+        let jobId = extractJobIdFromPayload(payload)
 
         // Process all job events regardless of session
         // View layer handles filtering for display
 
         switch event.eventType {
         case "job:created":
-            // Attempt to decode job from payload
-            if let jobData = payload["job"] as? [String: Any],
+            // Attempt to decode job from payload using shared helper
+            if let jobData = extractJobDataFromPayload(payload),
                let job = decodeJob(from: jobData) {
                 insertOrReplace(job: job)
-                // insertOrReplace already calls mutateJobs internally
-                // Schedule coalesced refresh to ensure convergence
-                scheduleCoalescedListJobsForActiveSession()
+                // Job is now in the array - no need to refetch
             } else {
                 // Payload missing or decode failed - hydrate by jobId
-                let jobIdToHydrate = payload["jobId"] as? String
-                    ?? (payload["job"] as? [String: Any])?["id"] as? String
-
-                guard let jobIdToHydrate = jobIdToHydrate else {
+                guard let jobIdToHydrate = jobId else {
                     logger.warning("job:created event missing both job payload and jobId")
+                    // Fallback: schedule refresh when we can't decode or hydrate
                     self.scheduleCoalescedListJobsForActiveSession()
                     return
                 }
 
-                // Hydrate and re-apply or insert once ready
-                hydrateJob(jobId: jobIdToHydrate, force: false, onReady: { [weak self] in
-                    guard let self = self else { return }
-                    // Job is now present and valid
-                    self.scheduleCoalescedListJobsForActiveSession()
-                })
+                // Hydrate the job - it will be added to the array via insertOrReplace
+                hydrateJob(jobId: jobIdToHydrate, force: false, onReady: nil)
             }
 
         case "job:deleted":

@@ -240,15 +240,22 @@ public class JobsDataService: ObservableObject {
 
     /// Start session-scoped sync for a specific session
     /// This is THE primary entry point for ensuring accurate job data for a session.
-    /// It handles: setting active session, immediate fetch, and starting validation timer.
-    /// Deduplicated: won't re-sync same session within 2 seconds
+    /// It handles: setting active session, and fetching ONLY if needed.
+    /// Relay events handle incremental updates after initial load.
     public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
-        // Deduplication: skip if same session synced recently
-        if sessionId == lastSyncSessionId,
-           let lastSync = lastSyncTime,
-           Date().timeIntervalSince(lastSync) < 2.0 {
-            logger.debug("Skipping duplicate sync for session \(sessionId) - synced \(Date().timeIntervalSince(lastSync))s ago")
-            return
+        let isSameSession = sessionId == activeSessionId
+
+        // Skip fetch entirely if same session AND we have data
+        // The 2-second dedup only applies when jobs is not empty (prevents skipping failed fetches)
+        if isSameSession && !jobs.isEmpty {
+            if hasLoadedOnce {
+                logger.debug("Skipping sync for session \(sessionId) - already loaded, relay events handle updates")
+                return
+            }
+            if let lastSync = lastSyncTime, Date().timeIntervalSince(lastSync) < 2.0 {
+                logger.debug("Skipping duplicate sync for session \(sessionId) - synced \(Date().timeIntervalSince(lastSync))s ago")
+                return
+            }
         }
 
         lastSyncSessionId = sessionId
@@ -261,16 +268,14 @@ public class JobsDataService: ObservableObject {
         recomputeSessionWorkflowCount(for: sessionId)
         recomputeSessionImplementationPlanCount(for: sessionId)
 
-        // Start periodic cache validation timer
-        startCacheValidationTimer()
+        // For mobile sessions, use nil sessionId to fetch ALL jobs (not filtered by session)
+        // This matches the view's loadJobs() behavior to prevent token conflicts
+        let effectiveSessionId: String? = sessionId.hasPrefix("mobile-session-") ? nil : sessionId
 
-        // Immediate fetch to ensure accurate badge counts
-        // This is critical for showing correct counts when workspace first loads
-        guard let projectDir = projectDirectory else { return }
-
+        // Fetch jobs
         listJobs(request: JobListRequest(
-            projectDirectory: projectDir,
-            sessionId: sessionId,
+            projectDirectory: projectDirectory,
+            sessionId: effectiveSessionId,
             pageSize: 100,
             sortBy: .createdAt,
             sortOrder: .desc
@@ -289,10 +294,9 @@ public class JobsDataService: ObservableObject {
         .store(in: &cancellables)
     }
 
-    /// Stop session-scoped sync timer (but keep processing events)
+    /// Stop session-scoped sync (keeps processing relay events)
     public func stopSessionScopedSync() {
-        cacheValidationTimer?.invalidate()
-        cacheValidationTimer = nil
+        // No-op: Timer was removed, relay events continue processing automatically
     }
 
     /// Clear jobs from memory

@@ -9,6 +9,10 @@ use crate::models::AuthenticatedUser;
 use crate::services::billing_service::BillingService;
 use crate::services::request_tracker::RequestTracker;
 use crate::utils::vision_capabilities::model_supports_vision;
+use crate::utils::vision_normalizer::{contains_images, parse_messages, VisionPart, ImageSource};
+use crate::utils::vision_validation::{
+    validate_vision_media_for_provider, VisionMediaItem, VisionMediaKind, canonicalize_mime,
+};
 use actix_web::{HttpResponse, web};
 use std::sync::Arc;
 use tracing::{error, info, instrument};
@@ -51,24 +55,66 @@ pub async fn llm_chat_completion_handler(
         .await?
         .ok_or_else(|| AppError::NotFound(format!("Model '{}' not found or inactive", model_id)))?;
 
-    // Check if request contains images and validate model supports vision
-    let has_images = payload.messages.iter().any(|msg| {
-        if let Some(content) = msg.get("content") {
-            if let Some(arr) = content.as_array() {
-                return arr.iter().any(|part| {
-                    let part_type = part.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                    matches!(part_type, "image_url" | "input_image" | "image")
-                });
+    // Parse messages using vision_normalizer for robust image detection
+    let messages_value = serde_json::to_value(&payload.messages)?;
+    let parsed_messages = parse_messages(&messages_value).unwrap_or_default();
+    let has_images = contains_images(&parsed_messages);
+
+    if has_images {
+        // Check if model supports vision
+        if !model_supports_vision(&model_with_provider.capabilities) {
+            return Err(AppError::BadRequest(format!(
+                "Model '{}' does not support vision/image inputs. Please use a vision-capable model.",
+                model_id
+            )));
+        }
+
+        // Build validation items from parsed messages for provider-specific validation
+        let mut validation_items: Vec<VisionMediaItem> = Vec::new();
+        for msg in &parsed_messages {
+            for part in &msg.parts {
+                if let VisionPart::Image { image } = part {
+                    let (mime_type, base64_len) = match &image.source {
+                        ImageSource::DataUrl { data_url } => {
+                            // Extract MIME type and base64 length from data URL
+                            if let Some(comma_pos) = data_url.find(',') {
+                                let header = &data_url[..comma_pos];
+                                let data = &data_url[comma_pos + 1..];
+                                let mime = header
+                                    .strip_prefix("data:")
+                                    .and_then(|s| s.split(';').next())
+                                    .unwrap_or("image/jpeg");
+                                (canonicalize_mime(mime), Some(data.len()))
+                            } else {
+                                ("image/jpeg".to_string(), None)
+                            }
+                        }
+                        ImageSource::Base64 { mime_type, data_base64 } => {
+                            (canonicalize_mime(mime_type), Some(data_base64.len()))
+                        }
+                        ImageSource::Url { .. } => {
+                            // For URLs, we can't easily determine size without fetching
+                            (image.media_type.clone().unwrap_or_else(|| "image/jpeg".to_string()), None)
+                        }
+                        ImageSource::ProviderFileId { .. } => {
+                            // File IDs don't need size validation
+                            (image.media_type.clone().unwrap_or_else(|| "image/jpeg".to_string()), None)
+                        }
+                    };
+
+                    validation_items.push(VisionMediaItem {
+                        kind: VisionMediaKind::Image,
+                        mime_type,
+                        base64_len,
+                    });
+                }
             }
         }
-        false
-    });
 
-    if has_images && !model_supports_vision(&model_with_provider.capabilities) {
-        return Err(AppError::BadRequest(format!(
-            "Model '{}' does not support vision/image inputs. Please use a vision-capable model.",
-            model_id
-        )));
+        // Validate images against provider-specific constraints
+        if !validation_items.is_empty() {
+            validate_vision_media_for_provider(&model_with_provider.provider_code, &validation_items)?;
+        }
     }
 
     // Validate prompt size against model's context window

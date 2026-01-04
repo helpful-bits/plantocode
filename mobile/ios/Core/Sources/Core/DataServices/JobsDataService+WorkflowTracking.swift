@@ -217,18 +217,12 @@ extension JobsDataService {
 
     // MARK: - Cache Validation
 
-    func startCacheValidationTimer() {
-        // Invalidate existing timer
-        cacheValidationTimer?.invalidate()
-
-        // Validate cache every 15 seconds to catch desync issues
-        cacheValidationTimer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
-            self?.validateWorkflowCache()
-        }
-    }
-
     func validateWorkflowCache() {
-        guard let sessionId = activeSessionId, let projectDirectory = activeProjectDirectory else { return }
+        // Need at least sessionId OR projectDirectory to fetch jobs
+        guard self.activeSessionId != nil || self.activeProjectDirectory != nil else {
+            logger.debug("Skipping cache validation - no session or project directory")
+            return
+        }
 
         // Debounce: don't validate more than once every 3 seconds to avoid race conditions
         // with rapid job creation. Relay events are authoritative for real-time updates.
@@ -239,12 +233,13 @@ extension JobsDataService {
         }
         lastCacheValidationAt = Date()
 
-        logger.debug("Validating workflow cache for session \(sessionId)")
+        logger.debug("Validating workflow cache for session \(self.activeSessionId ?? "nil"), project \(self.activeProjectDirectory ?? "nil")")
 
         // Fetch latest jobs and recompute from authoritative source
+        // For mobile sessions, projectDirectory alone is sufficient
         listJobs(request: JobListRequest(
-            projectDirectory: projectDirectory,
-            sessionId: sessionId,
+            projectDirectory: self.activeProjectDirectory,
+            sessionId: self.activeSessionId,
             pageSize: 100,
             sortBy: .createdAt,
             sortOrder: .desc

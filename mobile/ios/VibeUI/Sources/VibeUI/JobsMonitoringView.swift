@@ -200,22 +200,9 @@ public struct JobsMonitoringView: View {
     }
 
     private func loadPlansForFiltering() {
-        guard let session = container.sessionService.currentSession else { return }
-        let req = JobListRequest(
-            projectDirectory: session.projectDirectory,
-            sessionId: session.id,
-            statusFilter: nil,
-            taskTypeFilter: ["implementation_plan"],
-            dateFrom: nil,
-            dateTo: nil,
-            page: 0,
-            pageSize: 100,
-            sortBy: .createdAt,
-            sortOrder: .desc
-        )
-        container.jobsService.listJobs(request: req)
-            .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-            .store(in: &cancellables)
+        // NOTE: This function previously used listJobs which replaces all jobs.
+        // Plan job IDs are now computed from the existing jobs array via planJobIdsForCurrentSession,
+        // so no separate fetch is needed. The main job list already includes implementation_plan jobs.
     }
 
     private var planJobIdsForCurrentSession: Set<String> {
