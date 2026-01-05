@@ -375,6 +375,16 @@ public final class AuthService: NSObject, ObservableObject {
     }
   }
 
+  @MainActor
+  private func handleAuthInvalidation(message: String = "Session expired. Please sign in again.") {
+    self.authError = message
+    self.isAuthenticated = false
+    self.currentUser = nil
+    self.refreshTimer?.invalidate()
+    self.refreshTimer = nil
+    NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
+  }
+
   public func refreshAppJWTAuth0() async throws {
     guard let token = try? KeychainManager.shared.retrieveString(for: .appJWT) else {
       throw NetworkError.invalidResponse(statusCode: 401, data: Data())
@@ -404,12 +414,12 @@ public final class AuthService: NSObject, ObservableObject {
       case .invalidResponse(let statusCode, _) where statusCode == 401 || statusCode == 403:
         try? KeychainManager.shared.delete(for: .appJWT)
         await MainActor.run {
-          self.authError = "Session expired. Please sign in again."
-          self.isAuthenticated = false
-          self.currentUser = nil
-          self.refreshTimer?.invalidate()
-          self.refreshTimer = nil
-          NotificationCenter.default.post(name: NSNotification.Name("auth-logged-out"), object: nil)
+          self.handleAuthInvalidation()
+        }
+      case .serverError(let apiError) where apiError.code == 401 || apiError.code == 403:
+        try? KeychainManager.shared.delete(for: .appJWT)
+        await MainActor.run {
+          self.handleAuthInvalidation()
         }
       default:
         await MainActor.run {

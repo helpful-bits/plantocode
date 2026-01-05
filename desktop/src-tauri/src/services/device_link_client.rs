@@ -272,7 +272,7 @@ fn get_bound_session_ids() -> &'static Mutex<std::collections::HashSet<String>> 
 
 pub struct DeviceLinkClient {
     app_handle: AppHandle,
-    server_url: String,
+    server_url: Mutex<String>,
     sender: Mutex<Option<mpsc::UnboundedSender<DeviceLinkMessage>>>,
     binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     event_listener_id: Mutex<Option<tauri::EventId>>,
@@ -283,7 +283,7 @@ impl DeviceLinkClient {
     pub fn new(app_handle: AppHandle, server_url: String) -> Self {
         Self {
             app_handle,
-            server_url,
+            server_url: Mutex::new(server_url),
             sender: Mutex::new(None),
             binary_sender: Mutex::new(None),
             event_listener_id: Mutex::new(None),
@@ -291,11 +291,34 @@ impl DeviceLinkClient {
         }
     }
 
+    fn lock_server_url(&self) -> std::sync::MutexGuard<'_, String> {
+        match self.server_url.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("DeviceLinkClient server_url lock poisoned, recovering");
+                poisoned.into_inner()
+            }
+        }
+    }
+
+    pub fn get_server_url(&self) -> String {
+        self.lock_server_url().clone()
+    }
+
+    pub fn set_server_url(&self, server_url: String) {
+        let mut guard = self.lock_server_url();
+        if *guard != server_url {
+            info!("Updating DeviceLinkClient server URL to {}", server_url);
+            *guard = server_url;
+        }
+    }
+
     /// Start the device link client and connect to the server
     pub async fn start(self: Arc<Self>) -> Result<(), AppError> {
+        let server_url = self.get_server_url();
         info!(
             "Starting DeviceLinkClient connection to {}",
-            self.server_url
+            server_url
         );
 
         // Check if device is discoverable
@@ -332,7 +355,7 @@ impl DeviceLinkClient {
         }
 
         // Build WebSocket URL
-        let ws_url = format!("{}/ws/device-link", self.server_url.replace("http", "ws"));
+        let ws_url = format!("{}/ws/device-link", server_url.replace("http", "ws"));
         let url = Url::parse(&ws_url)
             .map_err(|e| AppError::ConfigError(format!("Invalid WebSocket URL: {}", e)))?;
 
@@ -970,7 +993,12 @@ impl DeviceLinkClient {
 
     /// Register device with the server's device registry
     async fn register_device(&self, device_id: &str, token: &str) -> Result<(), AppError> {
-        info!("Registering device with server - device_id: {}, server: {}", device_id, self.server_url);
+        let server_url = self.get_server_url();
+        info!(
+            "Registering device with server - device_id: {}, server: {}",
+            device_id,
+            server_url
+        );
 
         let device_name = crate::utils::get_device_display_name();
 
@@ -1016,7 +1044,7 @@ impl DeviceLinkClient {
         });
 
         // Make HTTP POST request to register device
-        let register_url = format!("{}/api/devices/register", self.server_url);
+        let register_url = format!("{}/api/devices/register", server_url);
         let client = reqwest::Client::new();
 
         let request_builder = client
@@ -1238,10 +1266,12 @@ pub async fn start_device_link_client(
         existing.inner().clone()
     } else {
         info!("Creating new DeviceLinkClient");
-        let new_client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url));
+        let new_client = Arc::new(DeviceLinkClient::new(app_handle.clone(), server_url.clone()));
         app_handle.manage(new_client.clone());
         new_client
     };
+
+    client.set_server_url(server_url);
 
     let mut attempt: u32 = 0;
 

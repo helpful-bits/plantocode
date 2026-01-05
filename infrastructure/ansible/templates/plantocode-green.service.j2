@@ -12,7 +12,10 @@ WorkingDirectory={{ app_dir }}
 # Binary path
 ExecStart={{ app_dir }}/bin/server
 
-# Environment override for green instance
+# Environment file (contains all other env vars) - load first
+EnvironmentFile={{ app_dir }}/config/app.env
+
+# Environment override for green instance (MUST be after EnvironmentFile to override port)
 Environment="SERVER_PORT=8081"
 Environment="DEPLOYMENT_COLOR=green"
 Environment="PLANTOCODE_DEPLOYMENT_TOKEN={{ plantocode_deployment_token }}"
@@ -33,9 +36,6 @@ ReadWritePaths={{ app_dir }}/logs /var/log/{{ app_name }}
 
 # Resource limits
 LimitNOFILE=65535
-
-# Environment file (contains all other env vars)
-EnvironmentFile={{ app_dir }}/config/app.env
 
 # Graceful shutdown timeout - allow long-running streams to complete
 TimeoutStopSec=130

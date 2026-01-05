@@ -14,6 +14,8 @@ public struct DeviceSelectionView: View {
     @State private var diagnosticsDeviceId: UUID?
     @State private var consecutiveFailures = 0
     @State private var showingPaywall = false
+    @State private var isClearingDevices = false
+    @State private var removingDeviceIds: Set<UUID> = []
 
     private var filteredDevices: [RegisteredDevice] {
         let allowedPlatforms = Set(["macos", "windows", "linux"])
@@ -45,6 +47,10 @@ public struct DeviceSelectionView: View {
             if !email.isEmpty { return email }
         }
         return ""
+    }
+
+    private var offlineDevices: [RegisteredDevice] {
+        filteredDevices.filter { !$0.status.isAvailable }
     }
 
     public init() {}
@@ -222,19 +228,36 @@ public struct DeviceSelectionView: View {
                                     ) {
                                         connectToDevice(device)
                                     }
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            removeDevice(device)
+                                        } label: {
+                                            Label("Remove Device", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
                         .frame(maxHeight: 400)
 
-                        HStack {
+                        HStack(spacing: 12) {
                             Button("Refresh") {
                                 refreshDevices()
                             }
                             .buttonStyle(SecondaryButtonStyle())
-                            .disabled(deviceDiscovery.isLoading || isConnecting)
+                            .disabled(deviceDiscovery.isLoading || isConnecting || isClearingDevices)
                             .accessibilityLabel("Refresh")
                             .accessibilityHint("Searches for available devices")
+
+                            if !offlineDevices.isEmpty {
+                                Button(isClearingDevices ? "Clearing..." : "Clear Offline") {
+                                    clearOfflineDevices()
+                                }
+                                .buttonStyle(SecondaryButtonStyle())
+                                .disabled(deviceDiscovery.isLoading || isConnecting || isClearingDevices)
+                                .accessibilityLabel("Clear Offline Devices")
+                                .accessibilityHint("Removes offline devices from your list")
+                            }
 
                             Spacer()
 
@@ -276,8 +299,9 @@ public struct DeviceSelectionView: View {
             }
 
             Task {
-                // Only refresh device discovery; connection restore is handled by InitializationOrchestrator
-                if PlanToCodeCore.shared.isInitialized && AuthService.shared.isAuthenticated {
+                // Refresh device discovery when authenticated; connection restore is handled elsewhere.
+                if AuthService.shared.isAuthenticated {
+                    await deviceDiscovery.registerMobileDeviceIfNeeded()
                     await deviceDiscovery.refreshDevices()
                 }
             }
@@ -437,7 +461,7 @@ public struct DeviceSelectionView: View {
 
     private func connectToDevice(_ device: RegisteredDevice) {
         // Guard against rapid re-entrant calls
-        guard !isConnecting else {
+        guard !isConnecting, !isClearingDevices, !removingDeviceIds.contains(device.deviceId) else {
             return
         }
 
@@ -447,11 +471,9 @@ public struct DeviceSelectionView: View {
             return
         }
 
-        // Validate prerequisites before attempting connection
-        if !device.status.isAvailable {
-            errorMessage = "Desktop device is offline"
-            return
-        }
+        // Note: We no longer block connection attempts to "offline" devices.
+        // The server status might be stale, and the connection attempt will
+        // fail properly if the desktop is truly unreachable.
 
         if !PlanToCodeCore.shared.isInitialized {
             errorMessage = "Initialization required. Please restart the app."
@@ -584,6 +606,68 @@ public struct DeviceSelectionView: View {
             }
         }
     }
+
+    private func removeDevice(_ device: RegisteredDevice) {
+        Task { await removeDevice(device, showError: true) }
+    }
+
+    private func removeDevice(_ device: RegisteredDevice, showError: Bool) async {
+        let alreadyRemoving = await MainActor.run {
+            removingDeviceIds.contains(device.deviceId)
+        }
+        if alreadyRemoving { return }
+
+        await MainActor.run {
+            removingDeviceIds.insert(device.deviceId)
+            if selectedDeviceId == device.deviceId {
+                selectedDeviceId = nil
+                isConnecting = false
+            }
+        }
+
+        await MainActor.run {
+            multiConnectionManager.removeConnection(deviceId: device.deviceId)
+            if appState.selectedDeviceId == device.deviceId {
+                appState.selectedDeviceId = nil
+            }
+        }
+
+        do {
+            try await deviceDiscovery.unregisterDevice(deviceId: device.deviceId)
+        } catch {
+            if showError {
+                await MainActor.run {
+                    errorMessage = "Failed to remove device: \(error.localizedDescription)"
+                }
+            }
+        }
+
+        await MainActor.run {
+            removingDeviceIds.remove(device.deviceId)
+        }
+    }
+
+    private func clearOfflineDevices() {
+        let devicesToRemove = offlineDevices
+        guard !devicesToRemove.isEmpty else { return }
+
+        Task {
+            await MainActor.run {
+                isClearingDevices = true
+                errorMessage = nil
+            }
+
+            for device in devicesToRemove {
+                await removeDevice(device, showError: false)
+            }
+
+            await deviceDiscovery.refreshDevices()
+
+            await MainActor.run {
+                isClearingDevices = false
+            }
+        }
+    }
 }
 
 private struct DeviceRow: View {
@@ -640,7 +724,7 @@ private struct DeviceRow: View {
                     let offlineText = formatOfflineStatus(device.lastHeartbeat)
                     statusMessage(
                         text: offlineText,
-                        detail: "The desktop device is not connected to the server. Make sure the desktop app is running and connected.",
+                        detail: "Tap to try connecting anyway. If it fails, make sure the desktop app is running.",
                         color: Color.mutedForeground
                     )
                 } else {
@@ -664,7 +748,7 @@ private struct DeviceRow: View {
                     )
             )
         }
-        .disabled(!device.status.isAvailable || isConnecting)
+        .disabled(isConnecting)
         .buttonStyle(PlainButtonStyle())
     }
 

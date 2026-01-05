@@ -245,18 +245,12 @@ pub fn run() {
                 loop {
                     let token_manager = app_handle_for_device_link.state::<Arc<TokenManager>>();
                     if token_manager.get().await.is_some() {
-                        let app_state = app_handle_for_device_link.state::<AppState>();
-                        if let Some(server_url) = app_state.get_server_url() {
-                            info!("Starting DeviceLinkClient for server: {}", server_url);
-                            if let Err(e) =
-                                crate::services::device_link_client::start_device_link_client(
-                                    app_handle_for_device_link.clone(),
-                                    server_url,
-                                )
-                                .await
-                            {
-                                error!("DeviceLinkClient error: {}", e);
-                            }
+                        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(
+                            &app_handle_for_device_link,
+                        )
+                        .await
+                        {
+                            error!("DeviceLinkClient error: {:?}", e);
                         }
                         break;
                     }

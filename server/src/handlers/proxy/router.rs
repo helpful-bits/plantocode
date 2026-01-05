@@ -147,6 +147,7 @@ pub async fn llm_chat_completion_handler(
             &model_with_provider.id,
             base_input_tokens as i64,
             payload.max_tokens.map(|v| v as i32),
+            Some(model_with_provider.context_window),
         )
         .await?;
 

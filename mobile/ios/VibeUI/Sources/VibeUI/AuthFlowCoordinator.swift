@@ -23,6 +23,8 @@ public struct AuthFlowCoordinator: View {
   }
   @State private var route: FlowRoute = .loading
   @State private var subscriptionStatusObserver: Task<Void, Never>?
+  @State private var showLoadingActions = false
+  @State private var loadingActionsTask: Task<Void, Never>?
 
   public init() {}
 
@@ -36,6 +38,33 @@ public struct AuthFlowCoordinator: View {
           Text(loadingMessage)
             .font(.system(size: 16, weight: .medium))
             .foregroundColor(.secondary)
+
+          if showLoadingActions {
+            VStack(spacing: 12) {
+              Button("Retry") {
+                showLoadingActions = false
+                Task { @MainActor in
+                  await InitializationOrchestrator.shared.run()
+                }
+              }
+              .buttonStyle(SecondaryButtonStyle())
+
+              if multiConnectionManager.activeDeviceId != nil {
+                Button("Project Setup") {
+                  showLoadingActions = false
+                  appState.setBootstrapNeedsConfig(.init(projectMissing: true, sessionsEmpty: true, activeSessionMissing: true))
+                }
+                .buttonStyle(SecondaryButtonStyle())
+              }
+
+              Button("Select Device") {
+                showLoadingActions = false
+                appState.setBootstrapFailed("Loading cancelled")
+              }
+              .buttonStyle(SecondaryButtonStyle())
+            }
+            .padding(.top, 8)
+          }
         }
       case .regionSelection:
         ServerSelectionView(isModal: false)
@@ -76,6 +105,22 @@ public struct AuthFlowCoordinator: View {
     }
     .onDisappear {
       subscriptionStatusObserver?.cancel()
+      loadingActionsTask?.cancel()
+      loadingActionsTask = nil
+    }
+    .onChange(of: route) { newRoute in
+      if newRoute == .loading {
+        showLoadingActions = false
+        loadingActionsTask?.cancel()
+        loadingActionsTask = Task { @MainActor in
+          try? await Task.sleep(nanoseconds: 8_000_000_000)
+          showLoadingActions = true
+        }
+      } else {
+        showLoadingActions = false
+        loadingActionsTask?.cancel()
+        loadingActionsTask = nil
+      }
     }
     .onChange(of: appState.hasSelectedRegionOnce) { _ in withAnimation { updateRoute() } }
     .onChange(of: appState.isAuthenticated) { _ in withAnimation { updateRoute() } }

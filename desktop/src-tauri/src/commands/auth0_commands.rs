@@ -295,14 +295,6 @@ pub async fn check_auth_status_and_exchange_token(
         warn!("Failed to emit auth-token-refreshed event: {}", e);
     }
 
-    // Re-register device to ensure server has up-to-date record
-    let app_handle_clone = app_handle.clone();
-    tokio::spawn(async move {
-        if let Err(e) = crate::app_setup::services::initialize_device_link_connection(&app_handle_clone).await {
-            tracing::warn!("Failed to re-register device after login: {:?}", e);
-        }
-    });
-
     // Remove the polling ID now that authentication is complete
     let _ = app_state
         .auth0_state_store

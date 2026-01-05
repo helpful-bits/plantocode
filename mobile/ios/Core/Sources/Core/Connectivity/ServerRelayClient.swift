@@ -1174,8 +1174,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
             if let resultDict = responseDict["result"] as? [String: Any],
                let queued = resultDict["queued"] as? Bool,
                queued == true {
-                // This is a success - message was queued by server for later delivery
-                self.logger.info("RPC response indicates message was queued (correlationId: \(correlationId))")
+                let error = ServerRelayError.serverError(
+                    "relay_failed",
+                    "Target device is offline (message queued by relay)"
+                )
+                self.lastError = error
+                self.logger.warning("RPC response indicates message was queued; treating as relay failure (correlationId: \(correlationId))")
+                responseSubject.send(completion: .failure(error))
+                return
             }
 
             // Parse error field
@@ -1306,7 +1312,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func handleErrorMessage(_ json: [String: Any]) {
         let errorMessage = json["message"] as? String ?? "Unknown error"
-        let errorCode = json["code"] as? String ?? "unknown"
+        let rawCode = json["code"] as? String ?? "unknown"
+        let errorCode = normalizeErrorCode(rawCode)
 
         logger.error("Received relay error: \(errorMessage)")
 
@@ -1356,6 +1363,31 @@ public class ServerRelayClient: NSObject, ObservableObject {
         publishOnMain {
             self.lastError = .serverError(errorCode, errorMessage)
         }
+    }
+
+    private func normalizeErrorCode(_ code: String) -> String {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return "unknown"
+        }
+
+        let lowered = trimmed.replacingOccurrences(of: "-", with: "_").lowercased()
+        let compact = lowered.replacingOccurrences(of: "_", with: "")
+
+        let mapping: [String: String] = [
+            "authrequired": "auth_required",
+            "invaliddeviceid": "invalid_device_id",
+            "missingdeviceid": "missing_device_id",
+            "deviceownershipfailed": "device_ownership_failed",
+            "missingtargetdeviceid": "missing_target_device_id",
+            "missingclientid": "missing_client_id",
+            "invalidpayload": "invalid_payload",
+            "invalidrpcpayload": "invalid_rpc_payload",
+            "missingmethod": "missing_method",
+            "invalidresume": "invalid_resume"
+        ]
+
+        return mapping[compact] ?? lowered
     }
 
     private func handleDeviceStatusMessage(_ json: [String: Any]) {

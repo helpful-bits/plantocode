@@ -25,3 +25,8 @@ Thumbs.db
 # Ansible Vault password file
 .vault_pass
 
+# Secrets files (even if vault-encrypted)
+**/secrets.yml
+**/vault_*.yml
+inventory/group_vars/
+

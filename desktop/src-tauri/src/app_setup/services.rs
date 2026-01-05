@@ -9,20 +9,51 @@ use crate::error::{AppError, AppResult};
 use crate::services::{BackupConfig, BackupService, initialize_cache_service};
 use log::{debug, error, info, warn};
 use sqlx::SqlitePool;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Manager};
+
+static DEVICE_LINK_TASK: OnceLock<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
+    OnceLock::new();
+static DEVICE_LINK_RESTART_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static DEVICE_LINK_RUNNING: AtomicBool = AtomicBool::new(false);
+static DEVICE_LINK_SERVER_URL: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn device_link_task() -> &'static Mutex<Option<tauri::async_runtime::JoinHandle<()>>> {
+    DEVICE_LINK_TASK.get_or_init(|| Mutex::new(None))
+}
+
+fn device_link_restart_lock() -> &'static Mutex<()> {
+    DEVICE_LINK_RESTART_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn device_link_server_url() -> &'static Mutex<Option<String>> {
+    DEVICE_LINK_SERVER_URL.get_or_init(|| Mutex::new(None))
+}
+
+fn lock_mutex<T>(mutex: &Mutex<T>, label: &str) -> std::sync::MutexGuard<'_, T> {
+    match mutex.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            warn!("{} lock poisoned, recovering", label);
+            poisoned.into_inner()
+        }
+    }
+}
 
 async fn restart_device_link_client(
     app_handle: &tauri::AppHandle,
-    server_url: String
+    server_url: String,
 ) -> crate::error::AppResult<()> {
-    if let Some(existing) = app_handle.try_state::<std::sync::Arc<crate::services::device_link_client::DeviceLinkClient>>() {
+    if let Some(existing) =
+        app_handle.try_state::<std::sync::Arc<crate::services::device_link_client::DeviceLinkClient>>()
+    {
         existing.shutdown().await;
     }
 
     crate::services::device_link_client::start_device_link_client(
         app_handle.clone(),
-        server_url
+        server_url,
     ).await?;
 
     Ok(())
@@ -226,13 +257,11 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     if token_manager.get().await.is_some() {
         let app_for_restart = app_handle.clone();
         tokio::spawn(async move {
-            if let Err(e) = restart_device_link_client(
-                &app_for_restart,
-                server_url.clone(),
-            )
-            .await
-            {
-                tracing::warn!("Failed to restart DeviceLinkClient: {:?}", e);
+            if let Err(e) = initialize_device_link_connection(&app_for_restart).await {
+                tracing::warn!(
+                    "Failed to reinitialize DeviceLinkClient after server change: {:?}",
+                    e
+                );
             }
         });
     }
@@ -384,63 +413,100 @@ pub async fn initialize_device_link_connection(
 
     // Get token manager and check if we have a valid token
     let token_manager = app_handle.state::<Arc<TokenManager>>();
-    if let Some(_token) = token_manager.get().await {
-        // Get settings repository to check device settings
-        let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
-            Some(p) => p.inner().clone(),
-            None => {
-                tracing::info!("SqlitePool not yet available; deferring DeviceLinkClient start");
-                return Ok(());
-            }
-        };
-        let settings_repo =
-            crate::db_utils::settings_repository::SettingsRepository::new(pool.clone());
-        let device_settings = settings_repo.get_device_settings().await?;
+    if token_manager.get().await.is_none() {
+        tracing::info!("No authentication token available, skipping DeviceLinkClient");
+        return Ok(());
+    }
 
-        if device_settings.allow_remote_access {
-            // Server URL precedence for DeviceLinkClient:
-            // 1. ServerProxyClient.base_url() if initialized
-            // 2. selected_server_url from app DB
-            // 3. SERVER_URL environment variable
-            // 4. Hardcoded EU default (to match mobile)
-            let server_url = if let Some(proxy_client_lock) = app_handle
-                .try_state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
-            {
-                let proxy_guard = proxy_client_lock.read().await;
-                if let Some(proxy_client) = proxy_guard.as_ref() {
-                    proxy_client.base_url().to_string()
-                } else {
-                    resolve_server_url_from_db_or_env(&pool).await
-                }
-            } else {
-                resolve_server_url_from_db_or_env(&pool).await
-            };
+    // Get settings repository to check device settings
+    let pool = match app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
+        Some(p) => p.inner().clone(),
+        None => {
+            tracing::info!("SqlitePool not yet available; deferring DeviceLinkClient start");
+            return Ok(());
+        }
+    };
+    let settings_repo =
+        crate::db_utils::settings_repository::SettingsRepository::new(pool.clone());
+    let device_settings = settings_repo.get_device_settings().await?;
 
-            tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);
+    if !device_settings.allow_remote_access {
+        tracing::info!(
+            "Device not discoverable or remote access disabled, skipping DeviceLinkClient"
+        );
+        return Ok(());
+    }
 
-            // Start in background task with reconnection loop
-            let app_handle_clone = app_handle.clone();
-            let server_url_clone = server_url.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = restart_device_link_client(
-                    &app_handle_clone,
-                    server_url_clone.clone(),
-                )
-                .await
-                {
-                    tracing::error!("DeviceLinkClient error: {:?}", e);
-                }
-            });
-
-            tracing::info!("DeviceLinkClient started successfully");
+    // Server URL precedence for DeviceLinkClient:
+    // 1. ServerProxyClient.base_url() if initialized
+    // 2. selected_server_url from app DB
+    // 3. SERVER_URL environment variable
+    // 4. Hardcoded EU default (to match mobile)
+    let server_url = if let Some(proxy_client_lock) = app_handle
+        .try_state::<Arc<tokio::sync::RwLock<Option<Arc<ServerProxyClient>>>>>()
+    {
+        let proxy_guard = proxy_client_lock.read().await;
+        if let Some(proxy_client) = proxy_guard.as_ref() {
+            proxy_client.base_url().to_string()
         } else {
-            tracing::info!(
-                "Device not discoverable or remote access disabled, skipping DeviceLinkClient"
-            );
+            resolve_server_url_from_db_or_env(&pool).await
         }
     } else {
-        tracing::info!("No authentication token available, skipping DeviceLinkClient");
+        resolve_server_url_from_db_or_env(&pool).await
+    };
+
+    tracing::info!("Using server URL for DeviceLinkClient: {}", server_url);
+
+    if let Some(existing) = app_handle.try_state::<Arc<DeviceLinkClient>>() {
+        existing.set_server_url(server_url.clone());
     }
+
+    let mut should_shutdown = false;
+    {
+        let _restart_guard = lock_mutex(device_link_restart_lock(), "device link restart");
+        let mut server_url_guard = lock_mutex(device_link_server_url(), "device link server url");
+        let url_changed = server_url_guard.as_deref() != Some(&server_url);
+        *server_url_guard = Some(server_url.clone());
+
+        let running = DEVICE_LINK_RUNNING.load(Ordering::SeqCst);
+        if running && !url_changed {
+            tracing::info!("DeviceLinkClient already running, skipping start");
+            return Ok(());
+        }
+
+        if running && url_changed {
+            tracing::info!("DeviceLinkClient server URL changed, restarting");
+            should_shutdown = true;
+        }
+
+        DEVICE_LINK_RUNNING.store(true, Ordering::SeqCst);
+    }
+
+    if should_shutdown {
+        if let Some(existing) = app_handle.try_state::<Arc<DeviceLinkClient>>() {
+            existing.shutdown().await;
+        }
+    }
+
+    let mut task_guard = lock_mutex(device_link_task(), "device link task");
+    if let Some(handle) = task_guard.take() {
+        handle.abort();
+    }
+
+    let app_handle_clone = app_handle.clone();
+    let server_url_clone = server_url.clone();
+    let task = tauri::async_runtime::spawn(async move {
+        if let Err(e) = restart_device_link_client(&app_handle_clone, server_url_clone).await {
+            tracing::error!("DeviceLinkClient error: {:?}", e);
+        }
+        DEVICE_LINK_RUNNING.store(false, Ordering::SeqCst);
+        let mut task_guard = lock_mutex(device_link_task(), "device link task");
+        *task_guard = None;
+    });
+
+    *task_guard = Some(task);
+
+    tracing::info!("DeviceLinkClient started successfully");
 
     Ok(())
 }

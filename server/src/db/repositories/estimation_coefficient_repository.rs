@@ -65,6 +65,7 @@ impl EstimationCoefficientRepository {
         model_id: &str,
         input_tokens: i64,
         max_output_tokens: Option<i32>,
+        context_window: Option<i32>,
     ) -> Result<(i64, i64), AppError> {
         // Get coefficients for the model
         let coefficients = self.get_coefficients(model_id).await?;

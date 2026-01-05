@@ -33,6 +33,7 @@ public class DeviceDiscoveryService: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
     @Published public private(set) var error: DiscoveryError? = nil
     @Published public private(set) var isMobileDeviceRegistered: Bool = false
+    @Published public private(set) var hasLoadedOnce: Bool = false
 
     private let logger = Logger(subsystem: "com.plantocode.app", category: "DeviceDiscovery")
     private var lastRefreshAt: Date? = nil
@@ -90,6 +91,7 @@ public class DeviceDiscoveryService: ObservableObject {
                 self?.devices = []
                 self?.hasMobileDeviceRegistered = false
                 self?.isMobileDeviceRegistered = false
+                self?.hasLoadedOnce = false
             }
         }
     }
@@ -103,6 +105,7 @@ public class DeviceDiscoveryService: ObservableObject {
         self.devices = []
         self.error = nil
         self.isLoading = false
+        self.hasLoadedOnce = false
     }
 
     public func refreshDevices() async {
@@ -124,9 +127,7 @@ public class DeviceDiscoveryService: ObservableObject {
             self.isLoading = false
         }
 
-        do {
-            // Fetch all desktops, not just connected ones
-            let devices = try await ServerAPIClient.shared.listDevices(deviceType: "desktop", connectedOnly: false)
+        func applyDevices(_ devices: [RegisteredDevice]) {
             let beforeCount = devices.count
             let allowedPlatforms = Set(["macos", "windows", "linux"])
             let allDesktops = devices.filter { device in
@@ -137,6 +138,7 @@ public class DeviceDiscoveryService: ObservableObject {
 
             // Keep all desktops visible; UI shows connection status per item
             self.devices = allDesktops
+            self.hasLoadedOnce = true
 
             // Get connected subset for status checks
             let connected = allDesktops.filter { $0.isConnected }
@@ -160,24 +162,75 @@ public class DeviceDiscoveryService: ObservableObject {
             self.logger.info("DeviceDiscoveryService: filtered devices before=\(beforeCount) after=\(self.devices.count)")
             self.logger.info("Fetched \(self.devices.count) desktop devices from server at \(Config.serverURL)")
             self.logger.info("Device discovery completed: \(self.devices.count) devices found")
+        }
+
+        func attemptAuthRefreshAndReload() async -> Bool {
+            guard AuthService.shared.isAuthenticated else { return false }
+            do {
+                try await AuthService.shared.refreshAppJWTAuth0()
+            } catch {
+                return false
+            }
+
+            do {
+                let refreshedDevices = try await ServerAPIClient.shared.listDevices(deviceType: "desktop", connectedOnly: false)
+                applyDevices(refreshedDevices)
+                return true
+            } catch let reloadError as NetworkError {
+                self.logger.error("getDevices failed after refresh: \(reloadError.localizedDescription)")
+                switch reloadError {
+                case .invalidURL, .requestFailed, .decodingFailed:
+                    self.error = .network(reloadError.localizedDescription)
+                case .invalidResponse(let statusCode, _):
+                    if statusCode == 401 || statusCode == 403 {
+                        self.devices = []
+                        self.error = .unauthorized
+                    } else {
+                        self.error = .serverError("HTTP \(statusCode)")
+                    }
+                case .serverError(let apiError):
+                    self.error = .serverError(apiError.message)
+                }
+                return true
+            } catch {
+                self.logger.error("getDevices failed after refresh: \(error.localizedDescription)")
+                self.error = .parsing(error.localizedDescription)
+                return true
+            }
+        }
+
+        do {
+            // Fetch all desktops, not just connected ones
+            let devices = try await ServerAPIClient.shared.listDevices(deviceType: "desktop", connectedOnly: false)
+            applyDevices(devices)
         } catch let networkError as NetworkError {
             self.logger.error("getDevices failed: \(networkError.localizedDescription)")
-            self.devices = []
             switch networkError {
             case .invalidURL, .requestFailed, .decodingFailed:
                 self.error = .network(networkError.localizedDescription)
             case .invalidResponse(let statusCode, _):
                 if statusCode == 401 || statusCode == 403 {
+                    if await attemptAuthRefreshAndReload() {
+                        return
+                    }
+                    self.devices = []
                     self.error = .unauthorized
                 } else {
                     self.error = .serverError("HTTP \(statusCode)")
                 }
             case .serverError(let apiError):
-                self.error = .serverError(apiError.message)
+                if apiError.code == 401 || apiError.code == 403 {
+                    if await attemptAuthRefreshAndReload() {
+                        return
+                    }
+                    self.devices = []
+                    self.error = .unauthorized
+                } else {
+                    self.error = .serverError(apiError.message)
+                }
             }
         } catch {
             self.logger.error("getDevices failed: \(error.localizedDescription)")
-            self.devices = []
             self.error = .parsing(error.localizedDescription)
         }
     }
@@ -242,6 +295,7 @@ public class DeviceDiscoveryService: ObservableObject {
         await registrationTask?.value
         try await ServerAPIClient.shared.unregisterDevice(deviceId: deviceId)
         logger.info("Device \(deviceId) unregistered successfully")
+        self.devices.removeAll { $0.deviceId == deviceId }
     }
 
     public func unregisterCurrentDevice() async throws {

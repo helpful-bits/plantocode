@@ -81,7 +81,9 @@ public final class ServerAPIClient {
     // MARK: - Common Headers
 
     public func applyCommonHeaders(_ request: inout URLRequest, token: String? = nil) {
-        request.setValue(deviceManager.deviceId.uuidString, forHTTPHeaderField: "X-Device-ID")
+        let deviceId = deviceManager.getOrCreateDeviceID()
+        request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+        request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
         request.setValue("mobile", forHTTPHeaderField: "X-Client-Type")
         if let token = token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

@@ -1,5 +1,5 @@
 use crate::clients::usage_extractor::ProviderUsage;
-use crate::clients::{OpenAIClient, UsageExtractor};
+use crate::clients::{GoogleClient, OpenAIClient};
 use crate::config::settings::AppSettings;
 use crate::db::repositories::api_usage_repository::ApiUsageEntryDto;
 use crate::db::repositories::model_repository::ModelRepository;
@@ -14,7 +14,7 @@ use crate::utils::transcription_validation::{
 };
 use actix_multipart::Multipart;
 use actix_web::{HttpRequest, HttpResponse, web};
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::BigDecimal;
 use std::sync::Arc;
 use tracing::{info, instrument};
 
@@ -85,7 +85,7 @@ pub async fn transcription_handler(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    let validation_context = RequestValidationContext {
+    let _validation_context = RequestValidationContext {
         user_id: user_id.to_string(),
         client_ip,
         user_agent,
@@ -98,6 +98,24 @@ pub async fn transcription_handler(
 
     let validated_prompt =
         validate_server_prompt(prompt.as_deref()).map_err(|e| AppError::from(e))?;
+
+    // Model-specific prompt length validation using capabilities.max_prompt_length
+    if let Some(ref prompt_str) = validated_prompt {
+        let max_prompt_length = model_with_provider
+            .capabilities
+            .get("max_prompt_length")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100000) as usize; // Default to 100K if not specified
+
+        if prompt_str.len() > max_prompt_length {
+            return Err(AppError::BadRequest(format!(
+                "Prompt too long: {} characters (max: {} for model {})",
+                prompt_str.len(),
+                max_prompt_length,
+                model_with_provider.id
+            )));
+        }
+    }
 
     let validated_temperature =
         validate_server_temperature(temperature).map_err(|e| AppError::from(e))?;
@@ -115,39 +133,95 @@ pub async fn transcription_handler(
         validate_server_audio_file(&final_filename, &multipart_data.mime_type, file_data.len())
             .map_err(|e| AppError::from(e))?;
 
-    // Use OpenAI client for transcription
-    let client = OpenAIClient::new(&app_settings)?;
+    // Provider-based routing for transcription
+    let (transcription_text, usage) = match model_with_provider.provider_code.as_str() {
+        "openai" => {
+            // OpenAI transcription flow
+            let client = OpenAIClient::new(&app_settings)?;
 
-    // Call the transcription API using the resolved model ID and validated parameters
-    let transcription_text = client
-        .transcribe_audio(
-            &file_data,
-            &final_filename,
-            resolved_model_id,
-            validated_language.as_deref(),
-            validated_prompt.as_deref(),
-            validated_temperature,
-            &multipart_data.mime_type,
-        )
-        .await?;
+            // Call the transcription API using the resolved model ID and validated parameters
+            let transcription_text = client
+                .transcribe_audio(
+                    &file_data,
+                    &final_filename,
+                    resolved_model_id,
+                    validated_language.as_deref(),
+                    validated_prompt.as_deref(),
+                    validated_temperature,
+                    &multipart_data.mime_type,
+                )
+                .await?;
 
-    // Calculate estimated token count based on audio duration (10 tokens per second)
-    let tokens_input = (duration_ms / 1000) * 10;
+            // Calculate estimated token count based on audio duration (10 tokens per second)
+            let tokens_input = (duration_ms / 1000) * 10;
 
-    // Calculate tokens in transcribed text using token estimator
-    let tokens_output = crate::utils::token_estimator::estimate_tokens(
-        &transcription_text,
-        &model_with_provider.id,
-    ) as i32;
+            // Calculate tokens in transcribed text using token estimator
+            let tokens_output = crate::utils::token_estimator::estimate_tokens(
+                &transcription_text,
+                &model_with_provider.id,
+            ) as i32;
 
-    // Create provider usage for billing
-    let usage = ProviderUsage::new(
-        tokens_input as i32,
-        tokens_output,
-        0,
-        0,
-        model_with_provider.id.clone(),
-    );
+            // Create provider usage for billing
+            let usage = ProviderUsage::new(
+                tokens_input as i32,
+                tokens_output,
+                0,
+                0,
+                model_with_provider.id.clone(),
+            );
+
+            (transcription_text, usage)
+        }
+        "google" => {
+            // Google/Gemini transcription flow using generateContent
+            let google_client = GoogleClient::new(&app_settings)?;
+
+            // Call transcribe_audio_via_generate_content
+            // The validated_prompt is used as vocabulary hints for the transcription
+            let (transcript_text, usage) = google_client
+                .transcribe_audio_via_generate_content(
+                    &model_with_provider,
+                    &user_id.to_string(),
+                    &file_data,
+                    &final_filename,
+                    &multipart_data.mime_type,
+                    validated_prompt.clone(), // Option<String> for vocabulary injection
+                    validated_temperature,
+                )
+                .await?;
+
+            // If usage tokens are zero (missing metadata), fall back to duration-based heuristics
+            let final_usage = if usage.prompt_tokens == 0 && usage.completion_tokens == 0 {
+                info!(
+                    "Google transcription returned no usage metadata, using duration-based estimate"
+                );
+                // Estimate input tokens based on audio duration (similar to OpenAI: 10 tokens per second)
+                let tokens_input = (duration_ms / 1000) * 10;
+                let tokens_output = crate::utils::token_estimator::estimate_tokens(
+                    &transcript_text,
+                    &model_with_provider.id,
+                ) as i32;
+
+                ProviderUsage::new(
+                    tokens_input as i32,
+                    tokens_output,
+                    0,
+                    0,
+                    model_with_provider.id.clone(),
+                )
+            } else {
+                usage
+            };
+
+            (transcript_text, final_usage)
+        }
+        _ => {
+            return Err(AppError::BadRequest(format!(
+                "Provider '{}' is not supported for transcription. Supported providers: openai, google",
+                model_with_provider.provider_code
+            )));
+        }
+    };
 
     // Calculate cost using model pricing
     let final_cost = model_with_provider
@@ -158,13 +232,14 @@ pub async fn transcription_handler(
     let api_usage_entry = ApiUsageEntryDto {
         user_id,
         service_name: model_with_provider.id.clone(),
-        tokens_input: tokens_input as i64,
-        tokens_output: tokens_output as i64,
-        cache_write_tokens: 0,
-        cache_read_tokens: 0,
+        tokens_input: usage.prompt_tokens as i64,
+        tokens_output: usage.completion_tokens as i64,
+        cache_write_tokens: usage.cache_write_tokens as i64,
+        cache_read_tokens: usage.cache_read_tokens as i64,
         request_id: None,
         metadata: Some(serde_json::json!({
             "transcription": true,
+            "provider": model_with_provider.provider_code,
             "duration_ms": duration_ms,
             "timestamp": chrono::Utc::now().to_rfc3339()
         })),

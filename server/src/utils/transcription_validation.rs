@@ -10,8 +10,11 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use tracing::{debug, error, warn};
 
-/// Maximum allowed prompt length in characters (server-side)
-pub const MAX_PROMPT_LENGTH: usize = 1000;
+/// Maximum allowed prompt length in characters for OpenAI transcription models
+pub const MAX_PROMPT_LENGTH_OPENAI: usize = 1000;
+
+/// Maximum allowed prompt length in characters for Google/Gemini (much higher - uses generateContent)
+pub const MAX_PROMPT_LENGTH_GOOGLE: usize = 100000;
 
 /// Minimum allowed prompt length (after trimming)
 pub const MIN_PROMPT_LENGTH: usize = 3;
@@ -185,6 +188,7 @@ pub struct RequestValidationContext {
 /// ## Core Server Validation Functions ##
 
 /// Validates transcription prompt with server-specific security checks
+/// Note: Length validation is model-specific and should be done in the handler
 pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<String>> {
     let Some(prompt_str) = prompt else {
         return Ok(None);
@@ -196,7 +200,7 @@ pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<S
         return Ok(None);
     }
 
-    // Length validation
+    // Minimum length validation (applies to all models)
     if trimmed.len() < MIN_PROMPT_LENGTH {
         return Err(ValidationError::PromptTooShort {
             length: trimmed.len(),
@@ -204,12 +208,8 @@ pub fn validate_server_prompt(prompt: Option<&str>) -> ValidationResult<Option<S
         });
     }
 
-    if trimmed.len() > MAX_PROMPT_LENGTH {
-        return Err(ValidationError::PromptTooLong {
-            length: trimmed.len(),
-            max: MAX_PROMPT_LENGTH,
-        });
-    }
+    // Note: Maximum length is model-specific (OpenAI: 1000, Google: 100K+)
+    // Length validation for specific models should be done in the handler
 
     // Security validation - check for unsafe patterns
     for (i, pattern) in UNSAFE_PROMPT_PATTERNS.iter().enumerate() {

@@ -1,5 +1,6 @@
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
 use crate::config::settings::AppSettings;
+use crate::db::repositories::model_repository::ModelWithProvider;
 use crate::error::AppError;
 use crate::models::UsageMetadata;
 use crate::services::model_mapping_service::ModelWithMapping;
@@ -1408,6 +1409,124 @@ impl GoogleClient {
 
         self.execute_generate_content(model, request_payload, api_key)
             .await
+    }
+
+    /// Transcribe audio using Gemini's generateContent API
+    /// This uses the audio inline data capability to send audio for transcription
+    #[instrument(skip(self, model, audio_data), fields(model = %model.resolved_model_id))]
+    pub async fn transcribe_audio_via_generate_content(
+        &self,
+        model: &ModelWithProvider,
+        user_id: &str,
+        audio_data: &[u8],
+        filename: &str,
+        mime_type: &str,
+        prompt: Option<String>,
+        temperature: Option<f32>,
+    ) -> Result<(String, ProviderUsage), AppError> {
+        let request_id = self.get_next_request_id().await;
+        info!(
+            "Google transcription request {} for model {}",
+            request_id, model.resolved_model_id
+        );
+
+        // Encode audio to base64
+        let encoded_audio = general_purpose::STANDARD.encode(audio_data);
+
+        // Create audio part with inline data
+        let audio_part = GooglePart {
+            inline_data: Some(GoogleBlob {
+                mime_type: mime_type.to_string(),
+                data: encoded_audio,
+            }),
+            ..Default::default()
+        };
+
+        // Build transcription prompt
+        let transcription_instruction = if let Some(ref vocab_prompt) = prompt {
+            format!(
+                "Transcribe the following audio accurately. Use the vocabulary hints provided below to improve accuracy for domain-specific terms.\n\n<vocabulary_hints>\n{}\n</vocabulary_hints>\n\nProvide only the transcription text, no additional commentary.",
+                vocab_prompt
+            )
+        } else {
+            "Transcribe the following audio accurately. Provide only the transcription text, no additional commentary.".to_string()
+        };
+
+        let text_part = GooglePart {
+            text: Some(transcription_instruction.clone()),
+            ..Default::default()
+        };
+
+        // Create generation config
+        let generation_config = Some(GoogleGenerationConfig {
+            temperature: temperature,
+            top_p: None,
+            top_k: None,
+            max_output_tokens: Some(8192), // Allow longer transcriptions
+            candidate_count: None,
+            stop_sequences: None,
+            thinking_config: None,
+        });
+
+        let request_payload = GoogleChatRequest {
+            contents: vec![GoogleContent {
+                role: "user".to_string(),
+                parts: vec![audio_part, text_part],
+            }],
+            system_instruction: None,
+            generation_config,
+            safety_settings: None,
+            stream: None,
+        };
+
+        // Get API key using sticky key selection
+        let sticky_index = self.get_sticky_key_index(user_id);
+        let api_key = &self.api_keys[sticky_index];
+
+        // Execute the request
+        let response = self
+            .execute_generate_content(&model.resolved_model_id, request_payload, api_key)
+            .await?;
+
+        // Extract transcript text from response
+        let transcript_text = response
+            .candidates
+            .first()
+            .and_then(|c| c.content.parts.as_ref())
+            .and_then(|parts| parts.first())
+            .map(|part| part.text.clone())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        if transcript_text.is_empty() {
+            return Err(AppError::External(
+                "Google transcription returned empty response".to_string(),
+            ));
+        }
+
+        // Extract usage from response
+        let usage = response
+            .usage_metadata
+            .map(|meta| {
+                ProviderUsage::new(
+                    meta.prompt_token_count,
+                    meta.candidates_token_count.unwrap_or(0),
+                    0,
+                    meta.cached_content_token_count.unwrap_or(0) as i32,
+                    model.id.clone(),
+                )
+            })
+            .unwrap_or_else(|| ProviderUsage::new(0, 0, 0, 0, model.id.clone()));
+
+        info!(
+            "Google transcription completed: {} chars, {} prompt tokens, {} completion tokens",
+            transcript_text.len(),
+            usage.prompt_tokens,
+            usage.completion_tokens
+        );
+
+        Ok((transcript_text, usage))
     }
 }
 

@@ -517,6 +517,7 @@ public final class MultiConnectionManager: ObservableObject {
                                     self.connectionStates[deviceId] = .failed(e)
                                     self.updateConnectionHealth(for: deviceId, state: .failed(e))
                                     self.verifyingDevices.remove(deviceId)
+                                    self.triggerAuthRefreshIfNeeded(e)
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 case .disconnected:
                                     self.connectionStates[deviceId] = .disconnected
@@ -568,6 +569,7 @@ public final class MultiConnectionManager: ObservableObject {
             } catch {
                 await MainActor.run {
                     self.connectionStates[deviceId] = .failed(error)
+                    self.triggerAuthRefreshIfNeeded(error)
                 }
                 // Do NOT persist on failure
                 return .failure(error)
@@ -985,6 +987,20 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
+    private func triggerAuthRefreshIfNeeded(_ error: Error) {
+        guard AuthService.shared.isAuthenticated else { return }
+        guard let relayError = error as? ServerRelayError,
+              case .serverError(let code, _) = relayError else {
+            return
+        }
+        let compact = code.replacingOccurrences(of: "_", with: "").lowercased()
+        guard compact == "authrequired" else { return }
+
+        Task {
+            try? await AuthService.shared.refreshAppJWTAuth0()
+        }
+    }
+
     private func canAttemptReconnect(for deviceId: UUID) -> Bool {
         guard AuthService.shared.isAuthenticated == true else {
             return false
@@ -1273,5 +1289,3 @@ actor AsyncSemaphore {
         }
     }
 }
-
-
