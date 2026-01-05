@@ -75,7 +75,7 @@ public class ConnectivityDiagnostics {
                 relayReachable: false,
                 devicePresent: false,
                 deviceStatus: .unknown,
-                lastRelayError: RelayErrorInfo(code: "auth_required", message: "Not authenticated"),
+                lastRelayError: RelayErrorInfo(code: "authRequired", message: "Not authenticated"),
                 suggestedFix: "Please sign in to continue."
             )
         }
@@ -103,7 +103,7 @@ public class ConnectivityDiagnostics {
         } catch {
             // Device list fetch failed - could be network or auth issue
             lastRelayError = RelayErrorInfo(
-                code: "device_list_failed",
+                code: "deviceListFailed",
                 message: "Failed to fetch device list: \(error.localizedDescription)"
             )
         }
@@ -136,15 +136,15 @@ public class ConnectivityDiagnostics {
         case .timeout:
             return RelayErrorInfo(code: "timeout", message: "Connection timed out")
         case .notConnected:
-            return RelayErrorInfo(code: "not_connected", message: "Not connected to relay")
+            return RelayErrorInfo(code: "notConnected", message: "Not connected to relay")
         case .networkError(let underlyingError):
-            return RelayErrorInfo(code: "network_error", message: underlyingError.localizedDescription)
+            return RelayErrorInfo(code: "networkError", message: underlyingError.localizedDescription)
         case .invalidURL:
-            return RelayErrorInfo(code: "invalid_url", message: "Invalid relay URL")
+            return RelayErrorInfo(code: "invalidUrl", message: "Invalid relay URL")
         case .invalidState(let message):
-            return RelayErrorInfo(code: "invalid_state", message: message)
+            return RelayErrorInfo(code: "invalidState", message: message)
         case .encodingError(let underlyingError):
-            return RelayErrorInfo(code: "encoding_error", message: underlyingError.localizedDescription)
+            return RelayErrorInfo(code: "encodingError", message: underlyingError.localizedDescription)
         case .disconnected:
             return RelayErrorInfo(code: "disconnected", message: "Disconnected from relay")
         }
@@ -170,19 +170,19 @@ public class ConnectivityDiagnostics {
         // Check for specific error codes first
         if let error = lastRelayError {
             switch error.code {
-            case "auth_required":
+            case "authRequired":
                 return "Please sign in to continue."
 
             case "device_ownership_failed":
                 return "This desktop belongs to a different account. Please sign in with the correct account or connect to a different desktop."
 
-            case "invalid_resume":
+            case "invalidResume":
                 return "Recovered from stale session. Reconnecting..."
 
             case "timeout":
                 return "Connection timed out. Check your network connection or ensure the desktop is online and accessible."
 
-            case "network_error", "not_connected", "disconnected":
+            case "networkError", "notConnected", "disconnected":
                 return "Network issue detected. Check your cellular or Wi-Fi connection and try again."
 
             default:
@@ -239,7 +239,7 @@ public class ConnectivityDiagnostics {
     /// Map error code to user-friendly message
     public static func userFriendlyMessage(forErrorCode code: String, message: String) -> String {
         switch code {
-        case "auth_required":
+        case "authRequired":
             return "Authentication required. Please sign in."
 
         case "device_ownership_failed":
@@ -248,13 +248,13 @@ public class ConnectivityDiagnostics {
         case "timeout":
             return "Connection timed out. Check network or desktop availability."
 
-        case "relay_failed":
+        case "relayFailed":
             return "Desktop is offline or not connected to relay."
 
-        case "invalid_resume":
+        case "invalidResume":
             return "Recovered from stale resume. Reconnecting..."
 
-        case "network_error", "not_connected", "disconnected":
+        case "networkError", "notConnected", "disconnected":
             return "Network error: \(message)"
 
         default:

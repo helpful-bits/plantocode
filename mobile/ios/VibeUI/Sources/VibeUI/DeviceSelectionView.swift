@@ -844,11 +844,11 @@ private struct DeviceRow: View {
                 switch code {
                 case "device_ownership_failed":
                     title = "Device Ownership Mismatch"
-                case "auth_required":
+                case "authRequired":
                     title = "Authentication Failed"
-                case "invalid_device_id", "missing_device_id":
+                case "invalidDeviceId", "missingDeviceId":
                     title = "Invalid Device"
-                case "missing_scope":
+                case "missingScope":
                     title = "Permission Denied"
                 default:
                     title = "Server Error"

@@ -40,9 +40,9 @@ public struct DeviceResponse: Codable {
     public let deviceType: String
     public let platform: String
     public let appVersion: String
-    public let status: String
+    public let status: String?
     public let isConnected: Bool
-    public let createdAt: Date
+    public let createdAt: Date?
     public let updatedAt: Date?
 }
 
@@ -275,7 +275,6 @@ public enum AuthError: Error, LocalizedError, Codable {
 extension JSONDecoder {
     static let deviceAPIDecoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
 
         // Configure date decoding for ISO 8601 format
         let formatter = DateFormatter()

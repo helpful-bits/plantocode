@@ -1509,7 +1509,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                                 queue().enqueue(key, envelope_value);
 
                                 let queued_response = serde_json::json!({
-                                    "type": "relayResponse",
+                                    "type": "relay_response",
                                     "clientId": device_id_clone,
                                     "response": {
                                         "correlationId": correlation_id_clone,
@@ -1526,7 +1526,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                                 });
                             } else {
                                 let error_response = serde_json::json!({
-                                    "type": "relayResponse",
+                                    "type": "relay_response",
                                     "clientId": device_id_clone,
                                     "response": {
                                         "correlationId": correlation_id_clone,
@@ -1586,7 +1586,7 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
 
         if let Some(connection_manager) = &self.connection_manager {
             let relay_response = serde_json::json!({
-                "type": "relayResponse",
+                "type": "relay_response",
                 "clientId": client_id,
                 "response": response_payload
             });

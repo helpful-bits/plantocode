@@ -102,7 +102,7 @@ public struct ProjectFolderSelectionView: View {
                 }
             } else if deviceDiscovery.error == nil && !deviceDiscovery.isLoading {
                 connectionLost = true
-                errorCode = "device_unlinked"
+                errorCode = "deviceUnlinked"
                 errorMessage = "Desktop device is no longer available"
                 goToDeviceSelection()
             }
@@ -112,7 +112,7 @@ public struct ProjectFolderSelectionView: View {
             if newDeviceId == nil && !currentPath.isEmpty {
                 connectionLost = true
                 errorMessage = "Desktop connection lost"
-                errorCode = "connection_lost"
+                errorCode = "connectionLost"
             }
         }
         .onChange(of: multi.connectionStates) { states in
@@ -127,11 +127,11 @@ public struct ProjectFolderSelectionView: View {
                         let info = extractErrorInfo(from: relayError)
                         errorCode = info.code
                         errorMessage = info.message
-                        if info.code == "auth_required" {
+                        if info.code == "authRequired" {
                             goToDeviceSelection()
                         }
                     } else {
-                        errorCode = "connection_failed"
+                        errorCode = "connectionFailed"
                         errorMessage = error.localizedDescription
                     }
                 case .disconnected:
@@ -477,7 +477,7 @@ public struct ProjectFolderSelectionView: View {
                             errorMessage = error.message
                             errorCode = extractErrorCode(from: error.message)
                             checkConnectionLost(errorCode: errorCode)
-                            if errorCode == "auth_required" {
+                            if errorCode == "authRequired" {
                                 goToDeviceSelection()
                             }
                             finishLoading()
@@ -498,7 +498,7 @@ public struct ProjectFolderSelectionView: View {
                         errorCode = info.code
                         errorMessage = info.message
                     } else {
-                        errorCode = "unknown_error"
+                        errorCode = "unknownError"
                     }
                     checkConnectionLost(errorCode: errorCode)
                     finishLoading()
@@ -546,7 +546,7 @@ public struct ProjectFolderSelectionView: View {
                         errorMessage = error.message
                         errorCode = extractErrorCode(from: error.message)
                         checkConnectionLost(errorCode: errorCode)
-                        if errorCode == "auth_required" {
+                        if errorCode == "authRequired" {
                             goToDeviceSelection()
                         }
                         finishLoading()
@@ -564,7 +564,7 @@ public struct ProjectFolderSelectionView: View {
                     errorCode = info.code
                     errorMessage = info.message
                 } else {
-                    errorCode = "unknown_error"
+                    errorCode = "unknownError"
                 }
                 checkConnectionLost(errorCode: errorCode)
                 finishLoading()
@@ -624,15 +624,15 @@ public struct ProjectFolderSelectionView: View {
         case .timeout:
             return ("timeout", "Connection timed out")
         case .notConnected:
-            return ("not_connected", "Not connected to relay")
+            return ("notConnected", "Not connected to relay")
         case .networkError(let underlyingError):
-            return ("network_error", underlyingError.localizedDescription)
+            return ("networkError", underlyingError.localizedDescription)
         case .invalidURL:
-            return ("invalid_url", "Invalid relay URL")
+            return ("invalidUrl", "Invalid relay URL")
         case .invalidState(let message):
-            return ("invalid_state", message)
+            return ("invalidState", message)
         case .encodingError(let underlyingError):
-            return ("encoding_error", underlyingError.localizedDescription)
+            return ("encodingError", underlyingError.localizedDescription)
         case .disconnected:
             return ("disconnected", "Disconnected from relay")
         }
@@ -641,11 +641,15 @@ public struct ProjectFolderSelectionView: View {
     /// Extract error code from error message string (if it looks like a code)
     private func extractErrorCode(from message: String) -> String? {
         let lowercased = message.lowercased()
-        if lowercased.contains("auth_required") || lowercased.contains("authrequired") {
-            return "auth_required"
+        if lowercased.contains("authrequired") {
+            return "authRequired"
         }
-        let commonErrorCodes = ["relay_failed", "timeout", "not_connected", "disconnected", "network_error"]
-        for code in commonErrorCodes where lowercased.contains(code) {
+        if lowercased.contains("relayfailed") {
+            return "relayFailed"
+        }
+        // Local error codes (not from server)
+        let localErrorCodes = ["timeout", "notConnected", "disconnected", "networkError"]
+        for code in localErrorCodes where lowercased.contains(code) {
             return code
         }
         return nil
@@ -653,13 +657,13 @@ public struct ProjectFolderSelectionView: View {
 
     /// Check if error code indicates connection loss
     private func checkConnectionLost(errorCode: String?) {
-        let connectionLostCodes = ["auth_required", "relay_failed", "disconnected", "not_connected", "connection_lost", "network_error"]
+        let connectionLostCodes = ["authRequired", "relayFailed", "disconnected", "notConnected", "connectionLost", "networkError"]
         if let code = errorCode, connectionLostCodes.contains(code) {
             connectionLost = true
 
             // For critical connection errors where we can't browse folders at all,
             // navigate to device selection to let user fix the connection
-            let criticalErrors = ["auth_required", "authrequired", "device_unlinked"]
+            let criticalErrors = ["authRequired", "deviceUnlinked"]
             if criticalErrors.contains(code) {
                 goToDeviceSelection()
             }
@@ -669,19 +673,19 @@ public struct ProjectFolderSelectionView: View {
     /// Get suggested action for error code
     private func getSuggestedAction(for errorCode: String) -> String {
         switch errorCode {
-        case "relay_failed", "not_connected", "disconnected":
+        case "relayFailed", "notConnected", "disconnected":
             return "Ensure the desktop app is running and 'Allow Remote Access' is enabled in Settings."
 
         case "timeout":
             return "Check your network connection and ensure the desktop is online and accessible."
 
-        case "network_error":
+        case "networkError":
             return "Check your internet connection and try again."
 
-        case "auth_required":
+        case "authRequired":
             return "Please sign in to continue."
 
-        case "connection_lost":
+        case "connectionLost":
             return "The desktop became unavailable. Check if the app is still running."
 
         default:
@@ -720,7 +724,7 @@ public struct ProjectFolderSelectionView: View {
                         errorCode = info.code
                         errorMessage = info.message
                     } else {
-                        errorCode = "reconnection_failed"
+                        errorCode = "reconnectionFailed"
                     }
                     connectionLost = true
                     isLoading = false

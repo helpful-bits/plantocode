@@ -1032,14 +1032,14 @@ impl DeviceLinkClient {
             false
         };
 
-        // Build registration request
+        // Build registration request (camelCase to match server API contract)
         let registration_body = serde_json::json!({
-            "device_name": device_name,
-            "device_type": "desktop",
+            "deviceName": device_name,
+            "deviceType": "desktop",
             "platform": platform,
-            "platform_version": std::env::consts::OS,
-            "app_version": app_version,
-            "relay_eligible": relay_eligible,
+            "platformVersion": std::env::consts::OS,
+            "appVersion": app_version,
+            "relayEligible": relay_eligible,
             "capabilities": serde_json::Value::Object(capabilities_map)
         });
 

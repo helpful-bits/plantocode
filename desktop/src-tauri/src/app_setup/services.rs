@@ -31,7 +31,7 @@ fn device_link_server_url() -> &'static Mutex<Option<String>> {
     DEVICE_LINK_SERVER_URL.get_or_init(|| Mutex::new(None))
 }
 
-fn lock_mutex<T>(mutex: &Mutex<T>, label: &str) -> std::sync::MutexGuard<'_, T> {
+fn lock_mutex<'a, T>(mutex: &'a Mutex<T>, label: &str) -> std::sync::MutexGuard<'a, T> {
     match mutex.lock() {
         Ok(guard) => guard,
         Err(poisoned) => {

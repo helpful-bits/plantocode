@@ -93,7 +93,13 @@ impl EstimationCoefficientRepository {
                 let estimated_output = estimated_output_bd.to_i64().unwrap_or(base_output).max(0); // Ensure non-negative
 
                 // Apply safety cap of 4000 tokens
-                let capped_output = cmp::min(estimated_output, 4000);
+                let mut capped_output = cmp::min(estimated_output, 4000);
+
+                // Cap output to fit within the model's context window (if provided)
+                if let Some(window) = context_window.filter(|v| *v > 0) {
+                    let available = (window as i64).saturating_sub(input_tokens);
+                    capped_output = cmp::min(capped_output, available);
+                }
 
                 Ok((estimated_input, capped_output))
             }
@@ -101,7 +107,12 @@ impl EstimationCoefficientRepository {
                 // No coefficients found, use defaults
                 warn!("No estimation coefficients found for model: {}", model_id);
                 let output = max_output_tokens.unwrap_or(2000) as i64;
-                let capped_output = cmp::min(output, 4000);
+                let mut capped_output = cmp::min(output, 4000);
+
+                if let Some(window) = context_window.filter(|v| *v > 0) {
+                    let available = (window as i64).saturating_sub(input_tokens);
+                    capped_output = cmp::min(capped_output, available);
+                }
                 Ok((input_tokens, capped_output))
             }
         }

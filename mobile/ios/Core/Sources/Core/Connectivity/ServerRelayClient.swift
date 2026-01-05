@@ -1073,7 +1073,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         // Extract sessionId and expiresAt
         guard let sessionId = json["sessionId"] as? String else {
             logger.error("Missing sessionId in resumed response")
-            registrationPromise?(.failure(.serverError("invalid_response", "Missing sessionId")))
+            registrationPromise?(.failure(.serverError("invalidResponse", "Missing sessionId")))
             registrationPromise = nil
             return
         }
@@ -1175,7 +1175,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
                let queued = resultDict["queued"] as? Bool,
                queued == true {
                 let error = ServerRelayError.serverError(
-                    "relay_failed",
+                    "relayFailed",
                     "Target device is offline (message queued by relay)"
                 )
                 self.lastError = error
@@ -1226,7 +1226,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
             // Complete stream if final or error
             if rpcError != nil {
-                responseSubject.send(completion: .failure(.serverError("rpc_error", errorMsg ?? "Unknown RPC error")))
+                responseSubject.send(completion: .failure(.serverError("rpcError", errorMsg ?? "Unknown RPC error")))
                 self.removePendingCall(id: correlationId)
             } else if isFinal {
                 responseSubject.send(completion: .finished)
@@ -1312,22 +1312,22 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func handleErrorMessage(_ json: [String: Any]) {
         let errorMessage = json["message"] as? String ?? "Unknown error"
-        let rawCode = json["code"] as? String ?? "unknown"
-        let errorCode = normalizeErrorCode(rawCode)
+        let errorCode = (json["code"] as? String ?? "unknown").trimmingCharacters(in: .whitespacesAndNewlines)
 
         logger.error("Received relay error: \(errorMessage)")
 
+        // Non-retryable error codes (camelCase from server, except status codes which are snake_case)
         let nonRetryableCodes: Set<String> = [
-            "auth_required",
-            "invalid_device_id",
-            "missing_scope",
-            "device_ownership_failed",
-            "missing_target_device_id",
-            "invalid_relay_envelope",
-            "invalid_payload",
-            "invalid_rpc_payload",
-            "missing_method",
-            "invalid_params"
+            "authRequired",
+            "invalidDeviceId",
+            "missingScope",
+            "device_ownership_failed",  // snake_case status code
+            "missingTargetDeviceId",
+            "invalidRelayEnvelope",
+            "invalidPayload",
+            "invalidRpcPayload",
+            "missingMethod",
+            "invalidParams"
         ]
 
         if nonRetryableCodes.contains(errorCode) {
@@ -1342,8 +1342,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
-        // Check if this is an invalid_resume error
-        if errorCode == "invalid_resume" {
+        // Check if this is an invalidResume error
+        if errorCode == "invalidResume" {
             logger.warning("resume_failed_retrying_register")
 
             // Clear stored resume token
@@ -1363,31 +1363,6 @@ public class ServerRelayClient: NSObject, ObservableObject {
         publishOnMain {
             self.lastError = .serverError(errorCode, errorMessage)
         }
-    }
-
-    private func normalizeErrorCode(_ code: String) -> String {
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            return "unknown"
-        }
-
-        let lowered = trimmed.replacingOccurrences(of: "-", with: "_").lowercased()
-        let compact = lowered.replacingOccurrences(of: "_", with: "")
-
-        let mapping: [String: String] = [
-            "authrequired": "auth_required",
-            "invaliddeviceid": "invalid_device_id",
-            "missingdeviceid": "missing_device_id",
-            "deviceownershipfailed": "device_ownership_failed",
-            "missingtargetdeviceid": "missing_target_device_id",
-            "missingclientid": "missing_client_id",
-            "invalidpayload": "invalid_payload",
-            "invalidrpcpayload": "invalid_rpc_payload",
-            "missingmethod": "missing_method",
-            "invalidresume": "invalid_resume"
-        ]
-
-        return mapping[compact] ?? lowered
     }
 
     private func handleDeviceStatusMessage(_ json: [String: Any]) {
@@ -1580,7 +1555,7 @@ public struct RpcError: Codable, CustomStringConvertible {
         case RpcError.VALIDATION_ERROR_CODE:
             return .validation(message)
         default:
-            return .serverError("rpc_error: \(message)")
+            return .serverError("rpcError: \(message)")
         }
     }
 }

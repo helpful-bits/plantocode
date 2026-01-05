@@ -1246,7 +1246,7 @@ public struct CommandRouter {
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpc_error", error.message)
+                throw ServerRelayError.serverError("rpcError", error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1289,7 +1289,7 @@ public struct CommandRouter {
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpc_error", error.message)
+                throw ServerRelayError.serverError("rpcError", error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1329,7 +1329,7 @@ public struct CommandRouter {
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpc_error", error.message)
+                throw ServerRelayError.serverError("rpcError", error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1361,7 +1361,7 @@ public struct CommandRouter {
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpc_error", error.message)
+                throw ServerRelayError.serverError("rpcError", error.message)
             }
 
             if let result = response.result?.value as? [String: Any] {
@@ -1394,7 +1394,7 @@ public struct CommandRouter {
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpc_error", error.message)
+                throw ServerRelayError.serverError("rpcError", error.message)
             }
 
             if let result = response.result?.value as? [String: Any] {
