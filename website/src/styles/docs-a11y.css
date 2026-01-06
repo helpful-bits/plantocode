@@ -12,7 +12,8 @@ html {
 
 /* Specific scroll margin for headings in doc content */
 #doc-content h2,
-#doc-content h3 {
+#doc-content h3,
+#doc-content h4 {
   scroll-margin-top: 6rem;
 }
 
@@ -34,24 +35,24 @@ html {
   height: auto;
   padding: 0.75rem 1rem;
   z-index: 1000;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
   border-radius: 0.5rem;
   font-weight: 600;
   text-decoration: none;
   box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   transition: all 0.2s ease-in-out;
-  border: 2px solid hsl(var(--primary));
+  border: 2px solid var(--color-primary);
 }
 
 .skip-link:focus:hover {
-  background: hsl(var(--primary) / 0.9);
+  background: color-mix(in oklch, var(--color-primary) 90%, transparent);
   transform: translateY(-1px);
 }
 
 /* Enhanced focus-visible styles for better accessibility */
 *:focus-visible {
-  outline: 2px solid hsl(var(--primary));
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: 0.25rem;
 }
@@ -63,9 +64,9 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid hsl(var(--primary));
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
-  box-shadow: 0 0 0 4px hsl(var(--primary) / 0.1);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--color-primary) 10%, transparent);
 }
 
 /* Remove default focus outline for mouse interactions */
@@ -76,9 +77,9 @@ select:focus-visible,
 /* Enhanced focus for navigation elements */
 nav a:focus-visible,
 [role="navigation"] a:focus-visible {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-  outline: 2px solid hsl(var(--primary));
+  background: color-mix(in oklch, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   border-radius: 0.5rem;
 }
@@ -92,12 +93,6 @@ nav a:focus-visible,
   *:focus-visible {
     outline-width: 3px;
   }
-}
-
-/* Scroll margin for content headings */
-#doc-content h2,
-#doc-content h3 {
-  scroll-margin-top: 6rem;
 }
 
 /* Reduced motion support */

@@ -48,7 +48,7 @@ export function MacDownloadButton({
     <button
       onClick={handleDownload}
       className={cn(
-        'inline-flex items-center justify-center font-semibold transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
+        'inline-flex items-center justify-center font-semibold transition-all hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
         className
       )}
       aria-label="Download PlanToCode for Mac"
@@ -58,15 +58,22 @@ export function MacDownloadButton({
         fontSize: dimensions.fontSize,
         padding: '0 12px',
         borderRadius: '12px',
-        border: isDark ? '2px solid #ffffff' : '2px solid #000000',
-        backgroundColor: isDark ? '#000000' : '#ffffff',
-        color: isDark ? '#ffffff' : '#000000',
+        border: isDark ? '2px solid #ffffff' : '2px solid #18181b',
+        backgroundColor: isDark ? '#18181b' : '#ffffff',
+        color: isDark ? '#ffffff' : '#18181b',
+        boxShadow: isDark
+          ? '0 2px 8px rgba(0, 0, 0, 0.3)'
+          : '0 2px 8px rgba(0, 0, 0, 0.1)',
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.opacity = '0.85';
+        e.currentTarget.style.boxShadow = isDark
+          ? '0 4px 12px rgba(0, 0, 0, 0.4)'
+          : '0 4px 12px rgba(0, 0, 0, 0.15)';
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.opacity = '1';
+        e.currentTarget.style.boxShadow = isDark
+          ? '0 2px 8px rgba(0, 0, 0, 0.3)'
+          : '0 2px 8px rgba(0, 0, 0, 0.1)';
       }}
     >
       <svg

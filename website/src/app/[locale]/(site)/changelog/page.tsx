@@ -309,7 +309,7 @@ function ChangeList({ title, items, type }: { title: string; items: string[]; ty
   );
 }
 
-function getTranslatedChangeTitle(type: keyof ChangelogEntry['changes'], t: Record<string, string>): string {
+function getTranslatedChangeTitle(type: keyof ChangelogEntry['changes'], t: Record<string, string | undefined>): string {
   switch (type) {
     case 'added':
       return t['changelog.changes.added'] ?? 'Added';
@@ -338,10 +338,10 @@ export default async function ChangelogPage({ params }: { params: Promise<{ loca
         {/* Hero Section */}
         <div className="text-center mb-12 sm:mb-16">
           <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-6 sm:mb-8 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
-            {t['changelog.hero.title'] ?? 'Changelog'}
+            {t['changelog.hero.title']}
           </h1>
           <p className="text-lg text-muted-foreground max-w-3xl mx-auto leading-relaxed">
-            {t['changelog.hero.subtitle'] ?? 'Stay updated with the latest features, improvements, and fixes in PlanToCode. Track our journey as we enhance your Claude Code and Cursor workflows.'}
+            {t['changelog.hero.subtitle']}
           </p>
         </div>
 
@@ -409,10 +409,10 @@ export default async function ChangelogPage({ params }: { params: Promise<{ loca
         <footer className="mt-16 text-center">
           <GlassCard className="p-8 space-y-4">
             <h3 className="text-xl font-bold text-foreground">
-              {t['changelog.footer.title'] ?? 'Stay in the Loop'}
+              {t['changelog.footer.title']}
             </h3>
             <p className="text-muted-foreground leading-relaxed">
-              {t['changelog.footer.subtitle'] ?? 'Want to be notified about new releases and features?'}
+              {t['changelog.footer.subtitle']}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <a
@@ -421,7 +421,7 @@ export default async function ChangelogPage({ params }: { params: Promise<{ loca
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {t['changelog.footer.followX'] ?? 'Follow us on X'}
+                {t['changelog.footer.followX']}
               </a>
               <a
                 href="https://plantocode.featurebase.app"
@@ -429,7 +429,7 @@ export default async function ChangelogPage({ params }: { params: Promise<{ loca
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {t['changelog.footer.joinCommunity'] ?? 'Join our Community'}
+                {t['changelog.footer.joinCommunity']}
               </a>
             </div>
           </GlassCard>

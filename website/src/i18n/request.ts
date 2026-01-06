@@ -7,12 +7,11 @@ import type { Locale } from '@/i18n/config';
  * Unlike loadMessages from lib/i18n, this keeps the nested structure
  */
 async function loadNestedMessages(locale: Locale) {
-  const [common, seo, home, features, solutions, docs, pages, legal] = await Promise.all([
+  const [common, seo, home, features, docs, pages, legal] = await Promise.all([
     import(`@/messages/${locale}/common.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/seo.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/home.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/features.json`).then(m => m.default).catch(() => ({})),
-    import(`@/messages/${locale}/solutions.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/docs.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/pages.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/legal.json`).then(m => m.default).catch(() => ({})),
@@ -24,7 +23,6 @@ async function loadNestedMessages(locale: Locale) {
     seo,
     home,
     features,
-    solutions,
     docs,
     pages,
     legal,

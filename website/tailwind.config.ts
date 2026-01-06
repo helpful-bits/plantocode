@@ -1,5 +1,8 @@
 import type { Config } from "tailwindcss";
 
+const withAlpha = (variable: string) =>
+  `color-mix(in oklch, var(${variable}) calc(<alpha-value> * 100%), transparent)`;
+
 const config: Config = {
   content: [
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -7,28 +10,39 @@ const config: Config = {
   ],
   darkMode: "class",
   theme: {
+    container: {
+      center: true,
+      padding: '1rem',
+      screens: {
+        sm: '640px',
+        md: '768px',
+        lg: '1024px',
+        xl: '1280px',
+        '2xl': '1440px',
+      },
+    },
     extend: {
       colors: {
-        // Map semantic names to CSS variables using OKLCH
-        primary: 'oklch(var(--color-primary) / <alpha-value>)',
-        secondary: 'oklch(var(--color-secondary) / <alpha-value>)',
-        destructive: 'oklch(var(--color-destructive) / <alpha-value>)',
-        muted: 'oklch(var(--color-muted) / <alpha-value>)',
-        accent: 'oklch(var(--color-accent) / <alpha-value>)',
-        card: 'oklch(var(--color-card) / <alpha-value>)',
-        popover: 'oklch(var(--color-popover) / <alpha-value>)',
-        border: 'oklch(var(--color-border) / <alpha-value>)',
-        input: 'oklch(var(--color-input) / <alpha-value>)',
-        ring: 'oklch(var(--color-ring) / <alpha-value>)',
-        background: 'oklch(var(--color-background) / <alpha-value>)',
-        foreground: 'oklch(var(--color-foreground) / <alpha-value>)',
-        'primary-foreground': 'oklch(var(--color-primary-foreground) / <alpha-value>)',
-        'secondary-foreground': 'oklch(var(--color-secondary-foreground) / <alpha-value>)',
-        'destructive-foreground': 'oklch(var(--color-destructive-foreground) / <alpha-value>)',
-        'muted-foreground': 'oklch(var(--color-muted-foreground) / <alpha-value>)',
-        'accent-foreground': 'oklch(var(--color-accent-foreground) / <alpha-value>)',
-        'card-foreground': 'oklch(var(--color-card-foreground) / <alpha-value>)',
-        'popover-foreground': 'oklch(var(--color-popover-foreground) / <alpha-value>)',
+        // Map semantic names to CSS variables using OKLCH-compatible alpha mixing
+        primary: withAlpha('--color-primary'),
+        secondary: withAlpha('--color-secondary'),
+        destructive: withAlpha('--color-destructive'),
+        muted: withAlpha('--color-muted'),
+        accent: withAlpha('--color-accent'),
+        card: withAlpha('--color-card'),
+        popover: withAlpha('--color-popover'),
+        border: withAlpha('--color-border'),
+        input: withAlpha('--color-input'),
+        ring: withAlpha('--color-ring'),
+        background: withAlpha('--color-background'),
+        foreground: withAlpha('--color-foreground'),
+        'primary-foreground': withAlpha('--color-primary-foreground'),
+        'secondary-foreground': withAlpha('--color-secondary-foreground'),
+        'destructive-foreground': withAlpha('--color-destructive-foreground'),
+        'muted-foreground': withAlpha('--color-muted-foreground'),
+        'accent-foreground': withAlpha('--color-accent-foreground'),
+        'card-foreground': withAlpha('--color-card-foreground'),
+        'popover-foreground': withAlpha('--color-popover-foreground'),
       },
       fontFamily: {
         sans: ["var(--font-inter)", "ui-sans-serif", "system-ui", "sans-serif"],
@@ -138,7 +152,7 @@ const config: Config = {
               fontFamily: "var(--font-jetbrains-mono)",
               fontSize: "0.875em",
               fontWeight: "500",
-              backgroundColor: "hsl(var(--muted))",
+              backgroundColor: "var(--color-muted)",
               padding: "0.25em 0.375em",
               borderRadius: "0.25rem",
             },
@@ -148,7 +162,7 @@ const config: Config = {
               fontFamily: "var(--font-jetbrains-mono)",
               fontSize: "0.875em",
               lineHeight: "1.5",
-              backgroundColor: "hsl(var(--muted))",
+              backgroundColor: "var(--color-muted)",
               padding: "1rem",
               borderRadius: "0.5rem",
               overflow: "auto",
@@ -157,7 +171,7 @@ const config: Config = {
             // Blockquotes
             blockquote: {
               fontStyle: "italic",
-              borderLeft: "4px solid hsl(var(--border))",
+              borderLeft: "4px solid var(--color-border)",
               paddingLeft: "1rem",
               marginLeft: "0",
               marginRight: "0",
@@ -165,7 +179,7 @@ const config: Config = {
             
             // Links
             a: {
-              color: "hsl(var(--primary))",
+              color: "var(--color-primary)",
               textDecoration: "none",
               fontWeight: "500",
               "&:hover": {
@@ -188,7 +202,7 @@ const config: Config = {
             figcaption: {
               fontSize: "0.875em",
               lineHeight: "1.4",
-              color: "hsl(var(--muted-foreground))",
+              color: "var(--color-muted-foreground)",
               textAlign: "center",
               marginTop: "0.5em",
             },
@@ -198,29 +212,29 @@ const config: Config = {
         // Dark mode overrides
         dark: {
           css: {
-            color: "hsl(var(--foreground))",
+            color: "var(--color-foreground)",
             
             code: {
-              backgroundColor: "hsl(var(--muted))",
-              color: "hsl(var(--foreground))",
+              backgroundColor: "var(--color-muted)",
+              color: "var(--color-foreground)",
             },
             
             pre: {
-              backgroundColor: "hsl(var(--muted))",
-              color: "hsl(var(--foreground))",
+              backgroundColor: "var(--color-muted)",
+              color: "var(--color-foreground)",
             },
             
             blockquote: {
-              borderLeftColor: "hsl(var(--border))",
-              color: "hsl(var(--muted-foreground))",
+              borderLeftColor: "var(--color-border)",
+              color: "var(--color-muted-foreground)",
             },
             
             a: {
-              color: "hsl(var(--primary))",
+              color: "var(--color-primary)",
             },
             
             figcaption: {
-              color: "hsl(var(--muted-foreground))",
+              color: "var(--color-muted-foreground)",
             },
           },
         },

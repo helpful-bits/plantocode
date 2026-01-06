@@ -1,308 +1,230 @@
 {
-  "capture": {
+  "technicalLanding": {
+    "title": "PlanToCode: Technical System Walkthrough",
+    "description": "A technical walk-through of how PlanToCode is built so you can study the architecture, reuse the patterns, or build a similar planning pipeline. The desktop app relies on external LLM providers configured with your API keys.",
+    "walkthroughTitle": "Step-by-step: how the pieces work together",
+    "walkthroughDescription": "Follow an end-to-end walkthrough of how the desktop app, Rust/Tauri backend, SQLite database, and LLM orchestration pipeline coordinate tasks and stream results back to the UI.",
+    "tags": [
+      "Tauri",
+      "Rust",
+      "SQLite",
+      "LLM orchestration"
+    ]
+  },
+  "gallery": {
+    "heading": "System Architecture and Implementation Walkthrough",
+    "intro": "Each panel below shows the desktop app and backend collaborating: Tauri shell, Rust job processors, SQLite persistence, and model orchestration coordinating planning and execution.",
+    "video": {
+      "title": "System Walkthrough Video",
+      "description": "A short, end-to-end walkthrough of the planning pipeline: task input, file discovery jobs, plan generation, merge instructions, and execution handoff.",
+      "bullets": [
+        "Tauri shell and React UI surface the workflow",
+        "Rust background jobs stream progress updates",
+        "SQLite stores sessions, jobs, and logs",
+        "LLM plans are generated and merged with structure"
+      ]
+    },
     "cards": {
-      "taskRefinement": {
-        "description": "Expand task descriptions by identifying implied requirements, clarifying expected behavior and edge cases, and adding technical considerations.",
-        "link": "Learn more →",
-        "title": "Task Refinement"
+      "fileFinder": {
+        "title": "File Discovery Pipeline",
+        "description": "A four-stage Rust workflow: LLM-assisted root selection, regex filtering, relevance scoring, and extended path finding to build a focused file set.",
+        "features": [
+          "Root folder selection uses the directory tree and task prompt",
+          "Regex filter generates pattern groups and applies git ls-files",
+          "Relevance scoring chunks file contents with token estimates",
+          "Extended path finder expands context with file + tree data"
+        ]
       },
-      "textEnhancement": {
-        "description": "Improve grammar, sentence structure, clarity, and conciseness while maintaining your original intent, tone, and technical detail level.",
-        "link": "Learn more →",
-        "title": "Text Enhancement"
+      "fileFinderWorkflow": {
+        "title": "Persisted File Context",
+        "description": "Each workflow stage writes results to background_jobs so file sets can be reused across sessions and inspected later.",
+        "features": [
+          "Workflow stages stored as job records",
+          "Selected file lists persisted as JSON responses",
+          "Session included_files reused across jobs",
+          "SQLite history survives restarts"
+        ]
       },
-      "voice": {
-        "description": "Capture initial requirements through voice input, which you can then refine manually for precision and clarity.",
-        "link": "Learn more →",
-        "title": "Voice Dictation"
+      "videoAnalysis": {
+        "title": "Video Analysis Ingestion",
+        "description": "Screen recordings are sent to the `/api/llm/video/analyze` endpoint with prompts and FPS settings to generate structured summaries.",
+        "features": [
+          "Multipart upload includes duration_ms and framerate",
+          "Model format is provider/model (google/* required)",
+          "Usage and cost tracked in server billing logs",
+          "Summary stored as job metadata artifacts"
+        ]
+      },
+      "implementationPlans": {
+        "title": "Multi-Model Plan Generation",
+        "description": "ImplementationPlanProcessor streams plan drafts from full file contents; merge jobs consolidate multiple drafts into one plan.",
+        "features": [
+          "Plan jobs include selected file contents + directory tree",
+          "Structured plan metadata captured per job",
+          "Merge prompt uses <source_plans> and <user_instructions>",
+          "Final plan stored alongside source drafts"
+        ]
+      },
+      "backgroundTasks": {
+        "title": "Background Job Monitoring",
+        "description": "Rust job processors stream progress and state transitions to the UI while persisting job history in SQLite.",
+        "features": [
+          "Created, queued, preparing, running, completed/failed/canceled",
+          "Streaming updates via Tauri events",
+          "Token usage captured per run",
+          "Cancel long-running jobs"
+        ]
+      },
+      "settingsPrompts": {
+        "title": "Prompt and Model Configuration",
+        "description": "Runtime model settings are fetched from `/api/config/desktop-runtime-config`; prompt overrides are stored in SQLite.",
+        "features": [
+          "Per-task allowed models and defaults",
+          "System prompts served by the server API",
+          "Project-level prompt overrides in project_system_prompts",
+          "Local key_value_store for runtime preferences"
+        ]
+      },
+      "terminalVoiceRecording": {
+        "title": "Workflow Automation Buttons",
+        "description": "Copy buttons insert templated prompts with task context for handoff into terminals or external tools.",
+        "features": [
+          "Templates sourced from task model config",
+          "Placeholders resolved against the active plan",
+          "Handoff to PTY sessions or clipboard",
+          "Actions tied to job metadata for audit"
+        ]
+      },
+      "mergeInstructionsWorkflow": {
+        "title": "Plan Merge Instructions",
+        "description": "ImplementationPlanMergeProcessor merges multiple plan drafts using XML-tagged source plans and optional instructions.",
+        "features": [
+          "Source plans pulled by job ID",
+          "Merge instructions stored in metadata",
+          "File contents + directory tree add context",
+          "Merged plan stored alongside inputs"
+        ]
+      },
+      "billingTransactions": {
+        "title": "Usage and Cost Ledger",
+        "description": "Server-side usage entries and job metadata capture model usage across providers.",
+        "features": [
+          "Per-job token and cost metadata",
+          "Provider-aware usage entries",
+          "Billing endpoints expose usage summaries",
+          "Audit trail for model spend"
+        ]
       }
     },
-    "subtitle": "Rapidly crystallize ideas into clear, actionable specifications with voice dictation and AI-powered enhancement.",
-    "title": "Specification Capture & Refinement"
-  },
-  "cta": {
-    "badge": "Human-in-the-loop AI Planning",
-    "buttons": {
-      "download": "Download for Free",
-      "talk": "Talk to an Expert"
-    },
-    "description": "Plan, review, and run AI-assisted changes from one workspace. Keep models, prompts, files, and terminal output aligned.",
-    "features": {
-      "instant": "Start working instantly",
-      "noCard": "No credit card required"
-    },
-    "title": "Ready to coordinate your next implementation plan?"
-  },
-  "faq": {
-    "items": {
-      "q1": {
-        "a": "Yes. PlanToCode provides a human-in-the-loop workflow where team leads and stakeholders can review generated implementation plans, edit details, request modifications, and approve changes before they are executed by coding agents or developers. This ensures corporate governance and prevents regressions.",
-        "q": "Can stakeholders review and approve plans before execution?"
-      },
-      "q10": {
-        "a": "Absolutely. Plans open in a Monaco editor with syntax highlighting, diff-friendly formatting, and clipboard helpers. You can tweak the prompt, copy individual steps, and rerun generation without leaving the workspace.",
-        "q": "Can I edit AI-generated plans before execution?"
-      },
-      "q11": {
-        "a": "Select two or more plans, write the merge guidance, and submit. The merged result is saved alongside the originals so you can compare drafts, keep notes, or rerun the merge with different instructions.",
-        "q": "How do merge instructions work?"
-      },
-      "q12": {
-        "a": "Token estimates, prompt previews, terminal health monitoring, and persistent sessions reduce rework. You decide when to run commands and which model to trust, while the app handles orchestration details.",
-        "q": "Why do senior engineers use this?"
-      },
-      "q13": {
-        "a": "Describe the task (typing or voice) → run the file finder workflow → generate one or more implementation plans → edit or merge plans in the Monaco editor → launch the built-in terminal to execute the plan and monitor logs. Sessions and logs stay available the next time you open the app.",
-        "q": "What does a typical workflow look like?"
-      },
-      "q2": {
-        "a": "Upload Microsoft Teams meeting recordings or screen captures to PlanToCode. Advanced multimodal models analyze both audio transcripts (including speaker identification) and visual content (shared screens, documents) to extract specification requirements. You review the extracted insights - decisions, action items, discussion points - and incorporate them into implementation plans.",
-        "q": "How do Teams meetings become specifications?"
-      },
-      "q3": {
-        "a": "Yes. Implementation plans break down changes on a file-by-file basis with exact repository paths corresponding to your project structure. This granular approach ensures you know exactly what will be modified before execution, providing complete visibility and control.",
-        "q": "Do plans map to exact files in our repo?"
-      },
-      "q4": {
-        "a": "PlanToCode is a desktop planning workspace. You run the file discovery workflow, review implementation plans in a Monaco editor, adjust prompts, and then launch the terminal from the same session. Chat tools hand you a single reply; here you stage the work before anything runs.",
-        "q": "How is this different from chat-based coding agents?"
-      },
-      "q5": {
-        "a": "Yes. The app assumes you already work in large repositories and are comfortable with terminals, dependency graphs, and architecture trade-offs. The software keeps context organized so you can apply your judgment faster.",
-        "q": "Do I need to know how to code?"
-      },
-      "q6": {
-        "a": "The default configuration ships with Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, o3, Grok 4, DeepSeek R1, and Kimi K2. You can switch models per task from the settings panel before submitting a job.",
-        "q": "Which AI models can generate plans?"
-      },
-      "q7": {
-        "a": "Project state, terminal logs, and plan drafts are stored locally in SQLite. Only the prompt you approve plus the files you select are sent through your configured server proxy. The Rust server in this repo can be self-hosted when you need to keep traffic on your own infrastructure.",
-        "q": "What happens to my source code?"
-      },
-      "q8": {
-        "a": "The terminal boots the same shell you use on the host machine and auto-detects claude, cursor, codex, and gemini binaries. You can still run any other tooling manually - the PTY session is a regular shell with voice dictation available when you need hands-free input.",
-        "q": "Which CLI tools work inside the terminal?"
-      },
-      "q9": {
-        "a": "Start the file finder workflow to generate search patterns, relevance scoring, and prioritized file lists. Each stage runs as its own background job so you can inspect results before applying the selections to your session.",
-        "q": "How does it cope with large codebases?"
-      }
-    },
-    "subtitle": "Everything you need to know about PlanToCode",
-    "title": "Frequently Asked Questions"
-  },
-  "features": {
-    "cards": {
-      "fileDiscovery": {
-        "description": "Start staged background jobs for regex pattern generation, relevance scoring. Review each stage before applying the results to your session.",
-        "title": "File discovery workflow"
-      },
-      "implementation": {
-        "description": "Generate file-by-file implementation plans with exact repository paths. Review, edit, and approve changes before execution to prevent regressions and ensure alignment with requirements.",
-        "title": "Human-reviewed implementation plans"
-      },
-      "integratedTerminal": {
-        "description": "Launch claude, cursor, codex, or gemini directly in the built-in terminal. Health monitoring, auto-recovery, and resize handling keep long-running jobs stable.",
-        "title": "Integrated PTY terminal with CLI detection"
-      },
-      "meeting": {
-        "description": "Upload Microsoft Teams meetings or screen recordings. Multimodal analysis extracts specifications from audio transcripts and visual content for review and incorporation.",
-        "title": "Meeting recording ingestion"
-      },
-      "mergePlans": {
-        "description": "Select multiple plans, write merge guidance, and keep the merged output alongside the originals. Iterate until the approach matches your standards.",
-        "title": "Merge plans with instructions"
-      },
-      "modelConfiguration": {
-        "description": "Choose from Gemini 3 Pro, GPT-5.2, Claude 4.5 Sonnet, Grok 4, DeepSeek R1, and Kimi K2 for implementation plans. Settings persist per project.",
-        "title": "Model configuration per task"
-      },
-      "monacoEditor": {
-        "description": "Plans open in a Monaco editor with syntax highlighting, diff-friendly formatting, and clipboard helpers. Edit steps, store drafts, and keep templates ready for the next task.",
-        "title": "Monaco implementation plan editor"
-      },
-      "persistentSessions": {
-        "description": "Terminal output is stored in a 5 MB ring buffer and project sessions reload on start-up. Pick up outstanding work without rebuilding context.",
-        "title": "Persistent sessions and logs"
-      },
-      "specification": {
-        "description": "Voice dictation for rapid input, text enhancement for clarity, and task refinement to identify implied requirements and edge cases.",
-        "title": "Specification capture & refinement"
-      },
-      "textImprovement": {
-        "description": "Highlight any selection to run the text-improvement job with Claude 4.5 Sonnet or Gemini 3 Flash. The rewrite preserves formatting and applies inside Monaco editors, task inputs, and terminal dictation.",
-        "title": "Text improvement popover"
-      },
-      "tokenGuardrails": {
-        "description": "View the exact prompt, estimated token counts, and context window warnings before you submit a job. Adjust instructions with full visibility.",
-        "title": "Token guardrails & prompt preview"
-      },
-      "voiceTranscription": {
-        "description": "Record task descriptions or terminal commands and send them through the transcription service. Configure language and temperature defaults for each project.",
-        "title": "Voice transcription pipeline"
-      }
-    },
-    "linkText": "Learn more",
-    "subtitle": "Built for developers tackling large & legacy codebases. If you use Claude Code, Cursor, or Aider - this is your planning layer.",
-    "title": "Mechanisms"
+    "viewFullSize": "View full size",
+    "cta": {
+      "title": "Explore the architecture in context",
+      "description": "Map each UI panel to the underlying processors, then dive deeper into the architecture docs and build guides.",
+      "primary": "Architecture overview",
+      "secondary": "Runtime walkthrough"
+    }
   },
   "governance": {
     "cards": {
       "filePlans": {
-        "description": "Implementation plans break down changes on a file-by-file basis with exact repository paths, ensuring complete visibility into what will be modified.",
-        "title": "File-by-file Plans with Exact Paths"
+        "description": "Implementation plans break down changes by file and operation, making scope and impact explicit.",
+        "title": "File-by-file plans with exact paths"
       },
       "handoff": {
-        "description": "Once approved, plans are securely transmitted to your chosen coding agent or assigned to developers, preventing regressions and ensuring alignment with requirements.",
-        "title": "Safe Handoff to Agents"
+        "description": "Approved plans are handed to terminals or external tools with full context and audit logs.",
+        "title": "Execution handoff"
       },
       "workflow": {
-        "description": "Team leads and stakeholders can review proposed changes, directly edit plan details, request modifications, and approve plans before execution.",
-        "title": "Review, Edit & Approve Workflow"
+        "description": "Plans can be revised, annotated, and approved before execution. Every revision is preserved.",
+        "title": "Review, edit, approve"
       }
     },
-    "subtitle": "Maintain full control over AI-generated implementation plans. Review, edit, approve, and audit every step before execution.",
-    "title": "Human-in-the-loop Governance"
-  },
-  "hero": {
-    "titleLine1": "Plan Complex Changes",
-    "titleLine2": "With Architect-Level Precision",
-    "subtitle": "[b]AI Architect[/b] generates detailed implementation plans with exact file paths. You review and approve every change before execution. [b]Clean architecture[/b].",
-    "cta": {
-      "viewDemo": "View Demo",
-      "howItWorks": "See how it works"
-    },
-    "panel1": {
-      "title": "Crystallize & Scope",
-      "description": "Voice or text input with optional AI refinement. Isolate files specifically relevant to this task.",
-      "descriptionDesktop": "Start with voice or text. Use AI for optional text improvement and task refinement. Then scope exact files via targeted discovery.",
-      "link": "See how it works",
-      "linkDesktop": "Explore discovery",
-      "features": {
-        "voice": "Voice dictation",
-        "textImprovement": "Text improvement",
-        "taskRefinement": "Task refinement",
-        "fileDiscovery": "Targeted file discovery",
-        "scopedSelection": "Task‑specific selection"
-      }
-    },
-    "panel2": {
-      "title": "Multiple Perspectives",
-      "description": "Same task, same files, same context. Run multiple times - same model or mixed. Each AI has unique architectural taste. See different valid approaches in standardized format.",
-      "link": "Explore the workflow",
-      "runs": {
-        "run1": "Run 1 - GPT-5.2",
-        "run2": "Run 2 - Gemini 3 Pro",
-        "run3": "Run 3 - GPT-5.2"
-      },
-      "tags": {
-        "middlewareFirst": "Middleware approach",
-        "serviceLayer": "Service layer approach",
-        "apiFirst": "API-first approach"
-      }
-    },
-    "panel3": {
-      "title": "Automatic Merge",
-      "description": "System evaluates and rates all plans to identify the most architecturally appropriate approaches for your codebase, then merges them into one superior implementation. Optional merge instructions guide synthesis.",
-      "link": "Merge details",
-      "merge": {
-        "line1": "Input: 4 plans (2×GPT-5.2, 2×Gemini)",
-        "line2": "Scope: Files across all plans",
-        "line3": "Strategy: Apply merge instructions",
-        "line4": "Output: File-by-file plan",
-        "line5": "Provenance: [src:P2], [src:P1]"
-      }
-    }
+    "subtitle": "Plans are stored as artifacts you can review, edit, and approve before any command is run.",
+    "title": "Plan Review and Execution Gates"
   },
   "integrations": {
     "cards": {
       "allIntegrations": {
-        "description": "Explore all supported AI coding tools and integration patterns",
-        "link": "View integrations →",
-        "title": "All Integrations"
+        "description": "How PTY sessions are created, logged, and resumed across restarts.",
+        "link": "Terminal session docs \u2192",
+        "title": "Terminal session internals"
       },
       "claudeCode": {
-        "description": "Run Claude Code in persistent terminals with full session recording and health monitoring",
-        "link": "Setup guide →",
-        "title": "Claude Code Integration"
+        "description": "Requests are normalized and streamed through the server layer so provider behavior stays consistent.",
+        "link": "Architecture notes \u2192",
+        "title": "Provider routing layer"
       },
       "cursor": {
-        "description": "Give Cursor Composer architectural context and file discovery capabilities",
-        "link": "Setup guide →",
-        "title": "Cursor Enhancement"
+        "description": "Export plans to external tools or run them in the integrated terminal with full context and logs.",
+        "link": "Implementation plan docs \u2192",
+        "title": "Execution handoff"
       }
     },
-    "subtitle": "Enhance Claude Code, Cursor, and Codex CLI with architectural planning",
-    "title": "Works With Your Favorite AI Tools"
+    "subtitle": "How the system connects to terminals, editors, and model providers.",
+    "title": "External interfaces"
   },
-  "meetings": {
-    "cards": {
-      "insights": {
-        "description": "Extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.",
-        "link": "Learn more →",
-        "title": "Review & Incorporate Insights"
+  "faq": {
+    "items": {
+      "q1": {
+        "q": "Do I need an external LLM provider?",
+        "a": "Yes. PlanToCode orchestrates planning, transcription, and analysis jobs by sending prompts to external LLM providers. You must configure your own API keys for those providers."
       },
-      "multimodal": {
-        "description": "Upload Microsoft Teams meetings or screen recordings. Advanced multimodal models analyze both audio transcripts (with speaker identification) and relevant visual content (shared screens, presented documents, key moments) to extract specification requirements.",
-        "link": "Learn more →",
-        "title": "Multimodal Analysis"
+      "q10": {
+        "q": "Can I edit plans before execution?",
+        "a": "Yes. Plans open in a Monaco editor with structured steps and copy helpers. You can revise content and rerun generation without leaving the session."
+      },
+      "q11": {
+        "q": "How do merge instructions work?",
+        "a": "Multiple plan drafts can be merged by providing guidance. The merge processor aligns structured steps, resolves conflicts, and stores the merged result alongside the originals."
+      },
+      "q12": {
+        "q": "What guardrails exist before execution?",
+        "a": "Token estimates, prompt previews, model allowlists, and terminal health checks surface issues before any command runs. Every job records its inputs and outputs."
+      },
+      "q13": {
+        "q": "What does a typical workflow look like?",
+        "a": "Describe the task \u2192 run file discovery \u2192 generate one or more plans \u2192 review or merge \u2192 execute in the integrated terminal or export to another tool. Each step is tracked as a job with stored artifacts."
+      },
+      "q2": {
+        "q": "What gets sent to LLM providers?",
+        "a": "Only the prompts you approve plus the files or excerpts you select are sent. Local project state, terminal logs, and plan drafts remain in the SQLite database unless you explicitly export them."
+      },
+      "q3": {
+        "q": "Do plans map to exact files in the repo?",
+        "a": "Yes. Plans are structured around explicit file paths and operations (create, modify, delete) so you can review scope before execution."
+      },
+      "q4": {
+        "q": "How is this different from chat-based coding agents?",
+        "a": "Chat tools produce a single response. PlanToCode separates planning from execution: file discovery, plan generation, plan review, and terminal execution are tracked as discrete jobs with stored artifacts."
+      },
+      "q5": {
+        "q": "Can I run it without an LLM provider?",
+        "a": "Only limited UI flows work without a provider. Planning, transcription, and analysis rely on external LLM APIs, so the app is not useful without configured providers."
+      },
+      "q6": {
+        "q": "Which models are supported?",
+        "a": "The allowed models come from your server configuration and per-task settings. You choose which providers and models are available for planning and analysis."
+      },
+      "q7": {
+        "q": "Where is project state stored?",
+        "a": "Plans, job history, and terminal output are stored locally in SQLite. You can resume sessions because the job records and artifacts persist across restarts."
+      },
+      "q8": {
+        "q": "How does the integrated terminal work?",
+        "a": "Each tab is a PTY session managed by the Rust backend. Output is streamed to the UI and stored in SQLite so you can audit or resume later."
+      },
+      "q9": {
+        "q": "How does it handle large codebases?",
+        "a": "File discovery is a multi-stage pipeline that filters and scores candidate paths before any plan generation. Each stage is stored as a background job so you can inspect results."
       }
     },
-    "subtitle": "Transform Microsoft Teams meetings and screen recordings into actionable implementation requirements.",
-    "title": "Meeting & Recording Ingestion"
+    "subtitle": "Common questions about the planning pipeline, data flow, and execution handoff.",
+    "title": "Workflow questions"
   },
-  "pricing": {
-    "card": {
-      "description": "Start with usage-based pricing to validate results. No subscriptions. Just transparent API costs.",
-      "pricing": {
-        "description": "Test Plan Editor, Merge Instructions, Terminal Integration. Auto top-off when you're convinced.",
-        "subtitle": "Pay only for what you use.",
-        "title": "Usage-Based Pricing"
-      },
-      "title": "Transparent Pricing"
-    },
-    "subtitle": "Pay only for AI inference with transparent token costs. Watch your ROI in real-time - one saved production incident pays for months of usage.",
-    "title": "Built for Professional Development"
-  },
-  "problems": {
-    "cards": {
-      "browseAll": {
-        "description": "Explore workflows for refactors, migrations, incident response, and more",
-        "link": "View all workflows →",
-        "title": "Browse All Workflows"
-      },
-      "hardBugs": {
-        "description": "Debug with preserved context, reproducible steps, and complete investigation history",
-        "link": "Learn more →",
-        "title": "Hard Production Bugs"
-      },
-      "largeFeatures": {
-        "description": "Plan complex implementations with architectural awareness and impact analysis",
-        "link": "Learn more →",
-        "title": "Large Features"
-      },
-      "legacyRefactoring": {
-        "description": "Modernize legacy codebases with AI-assisted refactoring that preserves functionality while improving structure",
-        "link": "Learn more →",
-        "title": "Legacy Code Refactoring"
-      },
-      "libraryUpgrades": {
-        "description": "Safely update dependencies with breaking change detection and migration planning",
-        "link": "Learn more →",
-        "title": "Library Upgrades"
-      },
-      "preventDuplicates": {
-        "description": "Detect and prevent duplicate code, components, and implementations across your codebase",
-        "link": "Learn more →",
-        "title": "Prevent Duplicate Files"
-      },
-      "safeRefactoring": {
-        "description": "Refactor with confidence using architectural awareness and comprehensive impact analysis",
-        "link": "Learn more →",
-        "title": "Safe Refactoring"
-      }
-    },
-    "subtitle": "Real solutions for the hardest problems in software development",
-    "title": "Solve Complex Development Challenges"
+  "hero": {
+    "cta": {
+      "viewDemo": "View walkthrough",
+      "howItWorks": "Runtime walkthrough"
+    }
   }
 }

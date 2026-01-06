@@ -4,3 +4,4 @@ export const FEATUREBASE_ORG = process.env.NEXT_PUBLIC_FEATUREBASE_ORG || 'plant
 export const BRAND_X_URL = `https://x.com/${BRAND_X_HANDLE}`;
 export const FEATUREBASE_BASE_URL = `https://${FEATUREBASE_ORG}.featurebase.app`;
 export const CALENDLY_URL = 'https://calendly.com/kkazlovich-helpfulbits/30min';
+export const GITHUB_REPO_URL = 'https://github.com/helpful-bits/plantocode';

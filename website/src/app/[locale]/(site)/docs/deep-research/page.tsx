@@ -1,7 +1,9 @@
 import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
+import { DocsMediaBlock } from '@/components/docs/DocsMediaBlock';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
@@ -17,32 +19,39 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: L
     description: t['deepResearch.meta.description'],
   });
 }
-const structuredData = {
-  '@context': 'https://schema.org',
-  '@type': 'Article',
-  headline: 'Deep research - PlanToCode',
-  description:
-    'Technical documentation for the web search feature, including architecture, workflow stages, API integration, and best practices.',
-};
 export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
 export default async function DeepResearchDocPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = await params;
   const t = await loadMessages(locale);
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: t['deepResearch.meta.title'],
+    description: t['deepResearch.meta.description'],
+  };
   return (
     <>
       <StructuredData data={structuredData} />
       <DocsArticle
-        title={t['deepResearch.title'] ?? ''}
-        description={t['deepResearch.description'] ?? ''}
-        date={t['deepResearch.date'] ?? ''}
-        readTime={t['deepResearch.readTime'] ?? ''}
-        category={t['deepResearch.category'] ?? ''}
+        title={t['deepResearch.title']}
+        description={t['deepResearch.description']}
+        date={t['deepResearch.date']}
+        readTime={t['deepResearch.readTime']}
+        category={t['deepResearch.category']}
       >
         <p className="text-base text-muted-foreground leading-relaxed mb-6">
           {t['deepResearch.intro']}
         </p>
+        <DocsMediaBlock
+          className="mb-12"
+          title={t['deepResearch.visuals.pipeline.title']}
+          description={t['deepResearch.visuals.pipeline.description']}
+          imageSrc={t['deepResearch.visuals.pipeline.imageSrc']}
+          imageAlt={t['deepResearch.visuals.pipeline.imageAlt']}
+          caption={t['deepResearch.visuals.pipeline.caption']}
+        />
         <GlassCard className="p-6 mb-10">
           <h2 className="text-xl font-semibold mb-3">{t['deepResearch.architecture.heading']}</h2>
           <p className="text-muted-foreground leading-relaxed">
@@ -108,25 +117,14 @@ export default async function DeepResearchDocPage({ params }: { params: Promise<
               {t['deepResearch.apiIntegration.providerConfig.description']}
             </p>
             <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-              <pre className="text-slate-100 text-sm"><code>{`// Search provider configuration
-{
-  "providers": {
-    "primary": {
-      "name": "web_search_api",
-      "rate_limit": "100/hour",
-      "geographic_restrictions": ["US"]
-    },
-    "fallback": {
-      "name": "secondary_provider",
-      "rate_limit": "50/hour"
-    }
-  },
-  "query_optimization": {
-    "max_results": 10,
-    "filter_domains": ["stackoverflow.com", "github.com"],
-    "exclude_domains": ["spam-sites.com"]
-  }
-}`}</code></pre>
+              <pre className="text-slate-100 text-sm"><code>{`// Start the web search workflow (Tauri command)
+await invoke("start_web_search_workflow", {
+  sessionId,
+  taskDescription,
+  projectDirectory,
+  excludedPaths: ["node_modules", "dist"],
+  timeoutMs: 300000,
+});`}</code></pre>
             </div>
           </GlassCard>
           <GlassCard className="p-6">
@@ -135,18 +133,13 @@ export default async function DeepResearchDocPage({ params }: { params: Promise<
               {t['deepResearch.apiIntegration.pipeline.description']}
             </p>
             <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-              <pre className="text-slate-100 text-sm"><code>{`// Content processing flow
-interface SearchResult {
-  url: string;
-  title: string;
-  content: string;
-  metadata: {
-    source_type: 'documentation' | 'forum' | 'repository' | 'blog';
-    last_updated: Date;
-    authority_score: number;
-    code_snippets: CodeSnippet[];
-  };
-  relevance_score: number;
+              <pre className="text-slate-100 text-sm"><code>{`// WebSearchExecution response (stored in job.response)
+{
+  "searchResults": [
+    { "title": "Research Task 1", "findings": "Summary text..." }
+  ],
+  "searchResultsCount": 1,
+  "summary": "Found 1 research findings"
 }`}</code></pre>
             </div>
           </GlassCard>
@@ -300,7 +293,14 @@ Results integrated as:
             <p className="text-muted-foreground leading-relaxed mb-4">
               {t['deepResearch.cta.description']}
             </p>
-            <PlatformDownloadSection location="docs_deep_research" />
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button asChild size="lg">
+                <Link href="/docs/architecture">{t['deepResearch.cta.links.architecture']}</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link href="/docs/build-your-own">{t['deepResearch.cta.links.buildYourOwn']}</Link>
+              </Button>
+            </div>
           </GlassCard>
         </div>
       </DocsArticle>

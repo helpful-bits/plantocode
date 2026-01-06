@@ -17,11 +17,11 @@ export const BASE_METADATA = {
     url: cdnUrl('/images/og-image.png'),
     width: 1200,
     height: 630,
-    alt: 'PlanToCode - AI Planning for Code',
+    alt: 'PlanToCode - Architecture walkthrough',
   },
   twitterHandle: '@helpfulbits_com',
-  defaultTitle: 'PlanToCode - AI Planning for Code',
-  defaultDescription: 'Plan and ship code changes with AI. Find files, generate and merge AI plans from multiple models, run them in a persistent terminal. Free app with pay-as-you-go usage.',
+  defaultTitle: 'PlanToCode - Architecture Walkthrough',
+  defaultDescription: 'Technical walkthroughs of the PlanToCode architecture, workflows, and execution handoff.',
 } as const;
 
 /**
@@ -234,36 +234,31 @@ export function generatePageMetadata(opts: {
 // Common keywords that can be reused
 export const COMMON_KEYWORDS = {
   core: [
-    'ai code planning',
     'implementation planning',
-    'plan mode',
-    'ai coding assistant',
-    'code generation',
-  ],
-  cliTools: [
-    'cursor cli',
-    'claude code',
-    'codex cli',
-    'gemini cli',
+    'planning pipeline',
+    'workflow orchestration',
+    'terminal execution',
+    'llm routing',
   ],
   features: [
-    'file discovery',
+    'file discovery pipeline',
     'voice transcription',
     'integrated terminal',
     'implementation plans',
-    'text improvement',
+    'plan merge instructions',
+    'text refinement',
   ],
   teamFeatures: [
-    'human-in-the-loop ai',
-    'corporate ai governance',
-    'ai plan approval workflow',
-    'team collaboration',
+    'human-in-the-loop review',
+    'plan governance',
+    'approval workflow',
+    'audit trails',
   ],
   models: [
-    'gpt-5 planning',
-    'claude sonnet 4',
-    'gemini 2.5 pro',
-    'multi model planning',
+    'multi-model routing',
+    'provider configuration',
+    'token estimation',
+    'usage tracking',
   ],
 } as const;
 
@@ -478,7 +473,7 @@ export const metadataPresets = {
     toolNames: string[];
   }): Metadata => {
     const comparisonKeywords = options.toolNames.map(tool =>
-      `${tool.toLowerCase()} vs plantocode`
+      `${tool.toLowerCase()} architecture comparison`
     );
 
     return generateMetadata({
@@ -486,8 +481,8 @@ export const metadataPresets = {
       type: 'comparison',
       keywords: [
         ...comparisonKeywords,
-        'ai coding tool comparison',
-        'best coding assistant',
+        'architecture comparison',
+        'workflow comparison',
         ...COMMON_KEYWORDS.core,
       ],
     });
@@ -654,14 +649,14 @@ export function generateSoftwareApplicationSchema(options?: {
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: options?.url || BASE_METADATA.siteUrl,
-    description: options?.description || 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
+    description: options?.description || 'Planning-first desktop workflow for orchestrating multi-file code changes with multi-model LLMs.',
     softwareVersion: '1.0.23',
     downloadUrl: `${BASE_METADATA.siteUrl}/downloads`,
     offers: {
       '@type': 'Offer',
       price: 0,
       priceCurrency: 'USD',
-      description: 'Free app with pay-as-you-go API usage. $5 free credits on signup.',
+      description: 'Desktop app for planning workflows; requires external LLM providers with your API keys.',
       availability: 'https://schema.org/InStock',
     },
     creator: {
@@ -694,7 +689,7 @@ export function generateOrganizationSchema() {
       width: '512',
       height: '512'
     },
-    description: 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
+    description: 'AI-assisted development workspace focused on planning, review, and execution handoff.',
     foundingDate: '2024',
     sameAs: [
       'https://github.com/plantocode',

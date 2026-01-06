@@ -5,81 +5,75 @@
     "toggleMenu": "Toggle navigation menu"
   },
   "breadcrumb": {
-    "blog": "Blog",
-    "comparisons": "Comparisons",
     "docs": "Documentation",
-    "features": "Features",
-    "home": "Home",
-    "integrations": "Integrations",
-    "solutions": "Solutions",
-    "stacks": "Technology Stacks",
-    "useCases": "Use Cases",
-    "workflows": "Workflows"
+    "features": "Components",
+    "home": "Home"
   },
   "cta": {
     "download": "Download",
-    "talkToArchitect": "Talk to an Architect"
+    "talkToArchitect": "Technical discussion",
+    "viewSource": "View Source"
   },
   "feature": {
     "copyButtons": {
-      "description": "Configurable workflow automation",
+      "description": "Template-driven workflow handoff",
       "label": "Copy Buttons"
     },
     "deepResearch": {
-      "description": "Web search and information synthesis",
+      "description": "Web search, extraction, and synthesis jobs",
       "label": "Deep Research"
     },
     "fileDiscovery": {
-      "description": "AI-powered intelligent file selection",
+      "description": "Multi-stage file selection pipeline",
       "label": "File Discovery"
     },
     "integratedTerminal": {
-      "description": "Persistent sessions with auto-start CLI",
+      "description": "Persistent PTY sessions with logging",
       "label": "Integrated Terminal"
     },
     "mergeInstructions": {
-      "description": "Control over plan merging",
+      "description": "Structured plan merge workflow",
       "label": "Merge Instructions"
     },
     "planEditor": {
-      "description": "Full Monaco editor for AI plans",
+      "description": "Monaco editor for plan review",
       "label": "Plan Editor"
     },
-    "planModeGuides": {
-      "description": "Workflows for Codex, Claude, and Cursor",
-      "label": "Plan Mode Guides"
-    },
     "textImprovement": {
-      "description": "Inline rephrasing in Monaco and task inputs",
+      "description": "Text refinement jobs for specs",
       "label": "Text Improvement"
     },
     "voiceTranscription": {
-      "description": "Hands-free input for tasks and terminal",
+      "description": "Voice capture and transcription",
       "label": "Voice Transcription"
     }
   },
+  "videoButton": {
+    "label": "View walkthrough video"
+  },
+  "videoModal": {
+    "closeLabel": "Close video",
+    "unsupported": "Your browser does not support the video tag."
+  },
   "footer": {
-    "about": "About Us",
+    "about": "About",
     "architecture": "Architecture",
     "changelog": "Changelog",
-    "company": "Company",
-    "copyright": "© {year} helpful bits GmbH",
+    "company": "Source",
+    "copyright": "\u00a9 {year} helpful bits GmbH",
     "documentation": "Documentation",
     "downloads": "Downloads",
+    "evolution": "Evolution",
     "feedback": "Feedback",
-    "howItWorks": "How It Works",
-    "imprint": "Imprint",
-    "interactiveDemo": "Interactive Demo",
     "legal": "Legal",
-    "madeInGermany": "Made in Germany by a German Company",
-    "notAffiliated": "Not affiliated with Anthropic, Cursor, OpenAI, or Cline.",
-    "pricing": "Pricing",
+    "madeInGermany": "Made in Germany",
     "privacy": "Privacy",
-    "product": "Product",
+    "product": "Project",
     "resources": "Resources",
+    "runtimeWalkthrough": "Runtime Walkthrough",
+    "sourceCode": "Source Code",
     "support": "Support",
-    "tagline": "Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.",
-    "talkToArchitect": "Talk to an Architect",
+    "tagline": "A technical breakdown of an AI-assisted development workspace.",
     "terms": "Terms"
   },
   "label": {
@@ -87,29 +81,19 @@
     "german": "German"
   },
   "nav": {
-    "compare": "Compare",
-    "demo": "Demo",
     "docs": "Documentation",
     "downloads": "Downloads",
-    "features": "Features",
-    "solutions": "Solutions"
-  },
-  "solution": {
-    "hardBugs": {
-      "description": "Visual debugging with screen capture",
-      "label": "Complex Bugs"
-    },
-    "largeFeatures": {
-      "description": "Planning multi-file features",
-      "label": "Large Features"
-    },
-    "libraryUpgrades": {
-      "description": "Dependency management",
-      "label": "Library Upgrades"
-    },
-    "maintenance": {
-      "description": "Technical debt cleanup",
-      "label": "Maintenance"
-    }
+    "features": "Components",
+    "architecture": "Architecture",
+    "evolution": "Evolution",
+    "evolutionDescription": "How the architecture evolved over time",
+    "runtimeWalkthrough": "Runtime Walkthrough",
+    "source": "Source Code",
+    "sourceDescription": "Browse the full source on GitHub",
+    "more": "More",
+    "downloadsDescription": "Get the latest builds",
+    "supportDescription": "Community support and resources",
+    "changelogDescription": "Recent updates and releases",
+    "aboutDescription": "About the project and team"
   }
 }

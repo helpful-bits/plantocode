@@ -8,7 +8,7 @@ import { cdnUrl } from '@/lib/cdn';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { useMessages } from '@/components/i18n/useMessages';
 import {
   Search,
   FileText,
@@ -29,139 +29,105 @@ interface ScreenshotCard {
   image: string;
   icon: React.ReactNode;
   features?: string[];
-  aspectRatio?: string; // Custom aspect ratio for each image
+  aspectRatio?: string | undefined; // Custom aspect ratio for each image
 }
 
-const screenshots: ScreenshotCard[] = [
+interface ScreenshotDefinition {
+  id: string;
+  titleKey: string;
+  descriptionKey: string;
+  featuresKey: string;
+  image: string;
+  icon: React.ReactNode;
+  aspectRatio?: string;
+}
+
+const screenshotDefinitions: ScreenshotDefinition[] = [
   {
     id: 'file-finder',
-    title: 'Stop Playing Hide and Seek',
-    description: 'Your codebase is vast. Thousand files. AI reads, understands, and connects the dots - finding exactly what you need with one click.',
+    titleKey: 'gallery.cards.fileFinder.title',
+    descriptionKey: 'gallery.cards.fileFinder.description',
+    featuresKey: 'gallery.cards.fileFinder.features',
     image: cdnUrl('/assets/images/demo-file-finder.jpg'),
     icon: <Search className="w-5 h-5" />,
     aspectRatio: '1478/1364',
-    features: [
-      'AI reads actual code, not just names',
-      'Finds dependencies you forgot existed',
-      'From 1,000 files to the 10 that matter',
-      'Stop grepping. Start shipping.'
-    ]
   },
   {
     id: 'file-finder-workflow',
-    title: 'Find It. Keep It.',
-    description: 'Three stages of discovery. Every result saved. Every file list reusable. Nothing lost, everything ready when you need it again.',
+    titleKey: 'gallery.cards.fileFinderWorkflow.title',
+    descriptionKey: 'gallery.cards.fileFinderWorkflow.description',
+    featuresKey: 'gallery.cards.fileFinderWorkflow.features',
     image: cdnUrl('/assets/images/demo-file-finder-workflow.jpg'),
     icon: <Search className="w-5 h-5" />,
     aspectRatio: '608/980',
-    features: [
-      'Results persist across sessions',
-      '"Use Files" - instant context reuse',
-      'Build your knowledge base over time',
-      'Never search for the same files twice'
-    ]
   },
   {
     id: 'video-analysis',
-    title: 'Show. Don\'t Tell.',
-    description: 'Record your screen. Add voice notes. AI watches every frame, understands your workflow, and generates implementation plans from what it sees.',
+    titleKey: 'gallery.cards.videoAnalysis.title',
+    descriptionKey: 'gallery.cards.videoAnalysis.description',
+    featuresKey: 'gallery.cards.videoAnalysis.features',
     image: cdnUrl('/assets/images/demo-video-analysis.jpg'),
     icon: <Video className="w-5 h-5" />,
     aspectRatio: '1024/1366',
-    features: [
-      'Record up to 2 minutes of workflow',
-      'Include voice dictation for context',
-      'AI analyzes frame by frame',
-      'Turn demos into detailed specs'
-    ]
   },
   {
     id: 'implementation-plans',
-    title: 'Every Model. One Click.',
-    description: 'Generate multiple plans with one click. Review and edit each approach. Don\'t like something? Add merge instructions to refine it. Combine the best ideas into one blueprint for Claude Code, Cursor, or OpenAI Codex.',
+    titleKey: 'gallery.cards.implementationPlans.title',
+    descriptionKey: 'gallery.cards.implementationPlans.description',
+    featuresKey: 'gallery.cards.implementationPlans.features',
     image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
     icon: <FileText className="w-5 h-5" />,
     aspectRatio: '1714/1574',
-    features: [
-      'Click multiple times for more plans',
-      'Review and edit each approach',
-      'Merge the best ideas together',
-      'Export to Claude Code, Cursor, or OpenAI Codex'
-    ]
   },
   {
     id: 'background-tasks',
-    title: 'Track Every Penny',
-    description: 'Plans generating. Tokens counting. Full transparency. Cancel anytime.',
+    titleKey: 'gallery.cards.backgroundTasks.title',
+    descriptionKey: 'gallery.cards.backgroundTasks.description',
+    featuresKey: 'gallery.cards.backgroundTasks.features',
     image: cdnUrl('/assets/images/demo-background-tasks.jpg'),
     icon: <Zap className="w-5 h-5" />,
     aspectRatio: '642/1654',
-    features: [
-      'Live progress and costs',
-      'Real-time token counts',
-      'Know if it\'s worth the wait',
-      'Stop before it gets expensive'
-    ]
   },
   {
     id: 'settings-prompts',
-    title: 'Your Tool. Your Rules.',
-    description: 'System prompts exposed. Every stage customizable. Change how it thinks. Make it work your way.',
+    titleKey: 'gallery.cards.settingsPrompts.title',
+    descriptionKey: 'gallery.cards.settingsPrompts.description',
+    featuresKey: 'gallery.cards.settingsPrompts.features',
     image: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
     icon: <Settings className="w-5 h-5" />,
     aspectRatio: '1838/1626',
-    features: [
-      'Edit prompts at every stage',
-      'Save configs per project',
-      'Toggle between custom and default',
-      'Control every decision'
-    ]
   },
   {
     id: 'terminal-voice-recording',
-    title: 'Workflows. One Click.',
-    description: 'That Claude prompt that always works? That agent setup you perfected? Button it. Ship it. Stop copy-pasting. Server-configured buttons with smart templates and drag-drop reordering.',
+    titleKey: 'gallery.cards.terminalVoiceRecording.title',
+    descriptionKey: 'gallery.cards.terminalVoiceRecording.description',
+    featuresKey: 'gallery.cards.terminalVoiceRecording.features',
     image: cdnUrl('/assets/images/demo-terminal-voice-recording.jpg'),
     icon: <Copy className="w-5 h-5" />,
     aspectRatio: '1478/820',
-    features: [
-      'Any prompt becomes a button',
-      'Smart templates with placeholders',
-      'Complex workflows, instant launch',
-      'Your best tricks, always ready'
-    ]
   },
   {
     id: 'merge-instructions-workflow',
-    title: 'Architect. Don\'t Concatenate.',
-    description: 'Genuine analysis. Not concatenation - deep architectural analysis using SOLID principles. Source traceability with [src:P1 step 2] attribution. Emergent solutions beyond simple combination.',
+    titleKey: 'gallery.cards.mergeInstructionsWorkflow.title',
+    descriptionKey: 'gallery.cards.mergeInstructionsWorkflow.description',
+    featuresKey: 'gallery.cards.mergeInstructionsWorkflow.features',
     image: cdnUrl('/assets/images/demo-merge-instructions-panel.jpg'),
     icon: <FileText className="w-5 h-5" />,
     aspectRatio: '1420/790',
-    features: [
-      'SOLID principle-based conflict resolution',
-      'Source traceability for every decision',
-      'Intelligent instructions: "Focus on Plan 2\'s security"',
-      'Notes panel for architectural iteration'
-    ]
   },
   {
     id: 'billing-transactions',
-    title: 'Every Penny. Tracked.',
-    description: 'No subscriptions. No surprises. Pay per use. Every call logged. Every cost visible. Total transparency.',
+    titleKey: 'gallery.cards.billingTransactions.title',
+    descriptionKey: 'gallery.cards.billingTransactions.description',
+    featuresKey: 'gallery.cards.billingTransactions.features',
     image: cdnUrl('/assets/images/demo-billing-transactions.jpg'),
     icon: <CreditCard className="w-5 h-5" />,
     aspectRatio: '1822/1604',
-    features: [
-      '686 calls, all itemized',
-      'Real costs, not estimates',
-      'Export for accounting',
-      'Know before you overspend'
-    ]
   }
 ];
 
 export function ScreenshotGallery() {
+  const { t } = useMessages();
   const [selectedImage, setSelectedImage] = useState<ScreenshotCard | null>(null);
   const [showVideo, setShowVideo] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -184,9 +150,29 @@ export function ScreenshotGallery() {
     }, 100);
   };
 
+  const getFeatures = (key: string) => t(key) as string[];
+
+  const screenshots: ScreenshotCard[] = screenshotDefinitions.map((definition) => ({
+    id: definition.id,
+    title: t(definition.titleKey),
+    description: t(definition.descriptionKey),
+    image: definition.image,
+    icon: definition.icon,
+    aspectRatio: definition.aspectRatio,
+    features: getFeatures(definition.featuresKey),
+  }));
+
   return (
     <>
       <div className="py-8 max-w-7xl mx-auto">
+        <div className="mb-12 text-center space-y-4 px-4">
+          <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            {t('gallery.heading')}
+          </h2>
+          <p className="text-muted-foreground max-w-3xl mx-auto">
+            {t('gallery.intro')}
+          </p>
+        </div>
         {/* Hero Video Section */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
@@ -198,7 +184,7 @@ export function ScreenshotGallery() {
           className="mb-20"
         >
           <GlassCard className="!p-0 !rounded-3xl hover:shadow-2xl hover:shadow-primary/20" highlighted>
-            <div className="lg:flex">
+            <div className="flex flex-col lg:flex-row items-center gap-8">
               {/* Content Section */}
               <div className="lg:w-2/5 p-8 lg:p-12 flex flex-col justify-center">
                 <div className="flex items-center gap-4 mb-6">
@@ -206,37 +192,27 @@ export function ScreenshotGallery() {
                     <Play />
                   </div>
                   <h3 className="text-3xl lg:text-4xl font-bold text-foreground">
-                    See It In Action
+                    {t('gallery.video.title')}
                   </h3>
                 </div>
 
                 <p className="text-lg text-muted-foreground leading-relaxed mb-8">
-                  Watch how PlanToCode transforms your workflow. From idea to implementation in under 2 minutes.
+                  {t('gallery.video.description')}
                 </p>
 
                 <ul className="space-y-3 mb-8">
-                  <li className="flex items-center gap-3">
-                    <span className="text-primary flex-shrink-0">✓</span>
-                    <span className="text-base text-muted-foreground">AI-powered file discovery</span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="text-primary flex-shrink-0">✓</span>
-                    <span className="text-base text-muted-foreground">Multi-model plan generation</span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="text-primary flex-shrink-0">✓</span>
-                    <span className="text-base text-muted-foreground">Intelligent plan merging</span>
-                  </li>
-                  <li className="flex items-center gap-3">
-                    <span className="text-primary flex-shrink-0">✓</span>
-                    <span className="text-base text-muted-foreground">Direct export to Claude, Cursor & Codex</span>
-                  </li>
+                  {getFeatures('gallery.video.bullets').map((bullet, index) => (
+                    <li key={index} className="flex items-center gap-3">
+                      <span className="text-primary flex-shrink-0">✓</span>
+                      <span className="text-base text-muted-foreground">{bullet}</span>
+                    </li>
+                  ))}
                 </ul>
               </div>
 
               {/* Video Preview Section */}
               <div
-                className="lg:w-3/5 bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
+                className="lg:w-3/5 flex justify-center bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
                 onClick={handleVideoClick}
               >
                 <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
@@ -271,18 +247,18 @@ export function ScreenshotGallery() {
               key={screenshot.id}
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ 
-                duration: 0.7, 
+              transition={{
+                duration: 0.7,
                 delay: index * 0.15,
                 ease: [0.21, 0.47, 0.32, 0.98]
               }}
               className="group"
             >
-              <GlassCard 
+              <GlassCard
                 className="!p-0 !rounded-3xl hover:shadow-2xl hover:shadow-primary/20"
                 highlighted={index === 0}
               >
-                <div className={`lg:flex ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
+                <div className={`flex flex-col lg:flex-row items-center gap-8 ${index % 2 === 1 ? 'lg:flex-row-reverse' : ''}`}>
                   {/* Content Section - Left/Right alternating */}
                   <div className="lg:w-2/5 p-8 lg:p-12 flex flex-col justify-center">
                     <div className="flex items-center gap-4 mb-6">
@@ -293,7 +269,7 @@ export function ScreenshotGallery() {
                         {screenshot.title}
                       </h3>
                     </div>
-                    
+
                     <p className="text-lg text-muted-foreground leading-relaxed mb-8">
                       {screenshot.description}
                     </p>
@@ -312,14 +288,14 @@ export function ScreenshotGallery() {
                   </div>
 
                   {/* Image Section - Right/Left alternating */}
-                  <div 
-                    className="lg:w-3/5 bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
+                  <div
+                    className="lg:w-3/5 flex justify-center bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
                     onClick={() => setSelectedImage(screenshot)}
                   >
                     <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
-                      <div 
+                      <div
                         className="relative"
-                        style={{ 
+                        style={{
                           aspectRatio: screenshot.aspectRatio || '16/10',
                           maxWidth: (screenshot.id === 'file-finder-workflow' || screenshot.id === 'background-tasks' || screenshot.id === 'plans-monitor') ? '400px' : undefined,
                           margin: (screenshot.id === 'file-finder-workflow' || screenshot.id === 'background-tasks' || screenshot.id === 'plans-monitor') ? '0 auto' : undefined
@@ -331,19 +307,19 @@ export function ScreenshotGallery() {
                           fill
                           className={`object-contain ${
                             screenshot.id === 'copy-buttons' ? 'mobile-zoom-pan-zigzag' :
-                            (screenshot.id === 'settings-prompts' || screenshot.id === 'implementation-plans') ? 'mobile-zoom-pan-horizontal' : 
+                            (screenshot.id === 'settings-prompts' || screenshot.id === 'implementation-plans') ? 'mobile-zoom-pan-horizontal' :
                             (screenshot.id === 'file-finder' || screenshot.id === 'video-analysis' || screenshot.id === 'billing-transactions') ? 'mobile-zoom-pan' : ''
                           }`}
                           sizes="(max-width: 640px) 90vw, (max-width: 1024px) 60vw, (max-width: 1280px) 50vw, 800px"
                           quality={85}
                           priority={index === 0}
-                          loading={index === 0 ? "eager" : "lazy"}
+                          loading={index === 0 ? 'eager' : 'lazy'}
                         />
                         {/* Hover Overlay */}
                         <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-6">
                           <div className="bg-white/90 dark:bg-background/95 backdrop-blur-xl rounded-full px-4 py-2 shadow-xl border border-primary/50 dark:border-primary/60 flex items-center gap-2">
                             <Maximize2 className="w-4 h-4 text-primary" />
-                            <span className="text-sm font-semibold text-primary dark:text-foreground">View full size</span>
+                            <span className="text-sm font-semibold text-primary dark:text-foreground">{t('gallery.viewFullSize')}</span>
                           </div>
                         </div>
                       </div>
@@ -359,27 +335,31 @@ export function ScreenshotGallery() {
         <div className="mt-20 px-4">
           <GlassCard className="max-w-3xl mx-auto p-8 sm:p-12 text-center" highlighted>
             <h2 className="text-2xl sm:text-3xl font-bold mb-4">
-              Ready to ship better code, faster?
+              {t('gallery.cta.title')}
             </h2>
+            <p className="text-lg text-foreground/80 mb-8 max-w-2xl mx-auto">
+              {t('gallery.cta.description')}
+            </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <motion.div
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="flex items-center"
               >
-                <PlatformDownloadSection
-                  location="demo_screenshots"
-                  redirectToDownloadPage={true}
-                />
+                <Button asChild size="lg" variant="cta">
+                  <Link href="/architecture">
+                    {t('gallery.cta.primary')}
+                  </Link>
+                </Button>
               </motion.div>
               <motion.div
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 className="flex items-center"
               >
-                <Button asChild size="lg" variant="cta">
-                  <Link href="/demo">
-                    Try Interactive Demo
+                <Button asChild size="lg" variant="outline">
+                  <Link href="/docs/runtime-walkthrough">
+                    {t('gallery.cta.secondary')}
                   </Link>
                 </Button>
               </motion.div>
@@ -439,7 +419,7 @@ export function ScreenshotGallery() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/98 backdrop-blur-xl"
-            style={{ 
+            style={{
               position: 'fixed',
               top: 0,
               left: 0,
@@ -459,39 +439,23 @@ export function ScreenshotGallery() {
               <X className="w-6 h-6 text-foreground" />
             </button>
 
+            {/* Image Container */}
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 300 }}
-              className="relative flex items-center justify-center"
-              style={{ width: '90vw', height: '90vh' }}
-              onClick={(e) => e.stopPropagation()}
+              transition={{ duration: 0.2 }}
+              className="relative w-full h-full flex items-center justify-center"
             >
-              {/* Full Size Image - Fixed sizing */}
-              <Image
-                src={selectedImage.image}
-                alt={selectedImage.title}
-                width={1920}
-                height={1080}
-                className="object-contain max-w-full max-h-full w-auto h-auto"
-                style={{ maxWidth: '90vw', maxHeight: '90vh' }}
-                quality={95}
-                priority
-              />
-
-              {/* Title Overlay - Bottom */}
-              <div className="absolute bottom-4 left-4 right-4 flex justify-center pointer-events-none">
-                <div className="glass backdrop-blur-md rounded-xl px-6 py-3 shadow-lg border border-primary/30 dark:border-primary/40 max-w-2xl">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-primary/20 dark:bg-primary/10 text-primary dark:text-primary">
-                      {selectedImage.icon}
-                    </div>
-                    <h3 className="text-lg font-semibold text-foreground">
-                      {selectedImage.title}
-                    </h3>
-                  </div>
-                </div>
+              <div className="relative w-full h-full">
+                <Image
+                  src={selectedImage.image}
+                  alt={selectedImage.title}
+                  fill
+                  className="object-contain"
+                  sizes="100vw"
+                  quality={100}
+                />
               </div>
             </motion.div>
           </motion.div>

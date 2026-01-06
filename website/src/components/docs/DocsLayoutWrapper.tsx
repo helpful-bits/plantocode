@@ -42,8 +42,8 @@ export function DocsLayoutWrapper({ children }: DocsLayoutWrapperProps) {
       </aside>
 
       {/* Main content with proper margins */}
-      <div className="pt-28 md:pt-16 md:ml-64 xl:ml-72 xl:mr-64">
-        <div className="px-4 sm:px-6 lg:px-8 pb-6 max-w-none">
+      <div className="pt-28 md:pt-16 md:ml-64 xl:ml-72 xl:mr-64 flex justify-center">
+        <div className="px-4 sm:px-6 lg:px-8 pb-6 w-full max-w-5xl">
           {/* Client-side components for mobile functionality */}
           <DocsLayoutClient currentPath={pathname} />
 

@@ -21,16 +21,16 @@ const FALLBACK: Dataset = {
   unit: 'percent',
   benchmark: 'Mixed-domain technical dictation (placeholder)',
   models: [
-    { id: 'gpt-4o-transcribe', label: 'OpenAI gpt-4o-transcribe', vendor: 'OpenAI', wer: 2.1 },
-    { id: 'google-stt-v2', label: 'Google Speech-to-Text v2', vendor: 'Google', wer: 4.0 },
-    { id: 'aws-transcribe', label: 'AWS Transcribe', vendor: 'AWS', wer: 6.2 },
-    { id: 'whisper-large-v2', label: 'Whisper large-v2', vendor: 'OpenAI Whisper', wer: 5.5 },
+    { id: 'primary-transcription', label: 'Primary transcription model', vendor: 'Provider A', wer: 2.1 },
+    { id: 'secondary-transcription', label: 'Secondary transcription model', vendor: 'Provider B', wer: 4.0 },
+    { id: 'baseline-transcription', label: 'Baseline transcription model', vendor: 'Provider C', wer: 6.2 },
+    { id: 'local-baseline', label: 'Local baseline model', vendor: 'Local', wer: 5.5 },
   ],
 };
 
 export function AccuracySection({
   datasetUrl = '/data/transcription/wer-benchmarks.json',
-  highlightId = 'gpt-4o-transcribe',
+  highlightId = 'primary-transcription',
   className
 }: AccuracySectionProps) {
   const effectiveUrl =
@@ -78,7 +78,7 @@ export function AccuracySection({
             desc="Lower is better."
           />
           <p className="mt-3 text-sm text-foreground/80" id="acc-summary">
-            {error ? error + ' ' : ''}gpt-4o-transcribe shows the lowest WER in this benchmark. Even a 1–2%
+            {error ? error + ' ' : ''}The highlighted model shows the lowest WER in this benchmark. Even a 1–2%
             absolute WER reduction can remove multiple mistakes per paragraph.
           </p>
           {omitted > 0 && (

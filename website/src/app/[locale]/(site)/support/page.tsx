@@ -12,17 +12,18 @@ import { generatePageMetadata } from '@/content/metadata';
 
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
+  const t = await loadMessages(locale);
 
   return generatePageMetadata({
     locale,
     slug: '/support',
-    title: 'PlanToCode Support - Help & Troubleshooting',
-    description: 'Get help with PlanToCode installation, Claude Code, Cursor, and Codex integration. Troubleshooting and feature requests. 24h response time.',
+    title: t['support.meta.title'],
+    description: t['support.meta.description'],
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
+      alt: 'PlanToCode overview',
     }],
   });
 }

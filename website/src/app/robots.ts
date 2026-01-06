@@ -15,7 +15,6 @@ export default function robots(): MetadataRoute.Robots {
           '/callbacks/',
           '/auth/',
           '/billing/',
-          '/all-pages', // Internal review page with noindex
         ],
       },
       // AI Assistants - Explicit Allow rules for AI crawler visibility

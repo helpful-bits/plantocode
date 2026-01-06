@@ -2,46 +2,19 @@
 // export const experimental_ppr = true;
 
 import type { Metadata } from 'next';
-import dynamic from 'next/dynamic';
 import { LOCALES } from '@/i18n/config';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
-import { HeroSection } from '@/components/landing/HeroSection';
 import { cdnUrl } from '@/lib/cdn';
-import type { SoftwareApplication, FAQPage, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
+import type { SoftwareApplication, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
 import { HomePageClient } from '@/components/landing/HomePageClient';
-import enFaqMessages from '@/messages/en/home.json';
 import { loadMessagesFor } from '@/lib/i18n';
-
-
-const Pricing = dynamic(() => import('@/components/landing/Pricing').then(mod => ({ default: mod.Pricing })), {
-  loading: () => <div className="h-[40vh]" />,
-});
-
-const FAQ = dynamic(() => import('@/components/landing/FAQ').then(mod => ({ default: mod.FAQ })), {
-  loading: () => <div className="h-[50vh]" />,
-});
-
-const CallToAction = dynamic(() => import('@/components/landing/CallToAction').then(mod => ({ default: mod.CallToAction })), {
-  loading: () => <div className="h-[30vh]" />,
-});
-
-const GovernanceSection = dynamic(() => import('@/components/landing/GovernanceSection').then(mod => ({ default: mod.GovernanceSection })), {
-  loading: () => <div className="h-[30vh]" />,
-});
-
-const SpecificationCaptureSection = dynamic(() => import('@/components/landing/SpecificationCaptureSection').then(mod => ({ default: mod.SpecificationCaptureSection })), {
-  loading: () => <div className="h-[30vh]" />,
-});
-
-const ProblemsSection = dynamic(() => import('@/components/landing/ProblemsSection').then(mod => ({ default: mod.ProblemsSection })), {
-  loading: () => <div className="h-[30vh]" />,
-});
-
-const IntegrationsSection = dynamic(() => import('@/components/landing/IntegrationsSection').then(mod => ({ default: mod.IntegrationsSection })), {
-  loading: () => <div className="h-[30vh]" />,
-});
+import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -50,6 +23,8 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }>}): Promise<Metadata> {
   const { locale } = await params;
   const t = await loadMessagesFor(locale as any, ['common', 'pages']);
+  const title = t['home.meta.title'];
+  const description = t['home.meta.description'];
 
   // Determine OpenGraph locale values based on current locale
   const ogLocale = locale === 'de' ? 'de_DE' : locale === 'fr' ? 'fr_FR' : locale === 'es' ? 'es_ES' : locale === 'ko' ? 'ko_KR' : locale === 'ja' ? 'ja_JP' : 'en_US';
@@ -63,54 +38,34 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   const canonicalUrl = `${siteUrl}${canonicalPath}`;
 
   return {
-    title: t['home.meta.title'],
-    description: t['home.meta.description'],
+    title,
+    description,
     keywords: [
-      'ai code planning',
-      'implementation planning tool',
-      'prevent duplicate files ai',
-      'ai code review',
-      'cursor alternative',
-      'safe refactoring tool',
-      'legacy code planning',
-      'human-in-the-loop ai',
-      'corporate ai governance',
-      'file-by-file implementation plans',
-      'legacy codebase planning',
-      'ai plan approval workflow',
-      'ai plan editor',
-      'monaco editor plans',
-      'merge ai plans',
-      'implementation plan editor',
-      'merge instructions ai',
-      'edit ai generated code',
-      'integrated terminal claude code',
-      'run claude code in app',
-      'codex cli terminal',
-      'cursor cli',
-      'gemini cli',
-      'multi model planning',
-      'gpt-5 planning',
-      'claude sonnet 4',
-      'gemini 2.5 pro',
-      'grok 4',
-      'deepseek r1',
-      'kimi k2',
+      'tauri desktop architecture',
+      'rust workflow orchestrator',
+      'sqlite persistence layer',
+      'pty terminal sessions',
+      'llm orchestration pipeline',
+      'implementation plan processor',
+      'multi-model planning',
       'file discovery workflow',
-      'voice transcription coding',
-      'token estimates',
-      'desktop ai planning',
+      'plan merge processor',
+      'ai development workspace',
+      'llm streaming api',
+      'background job processors',
+      'prompt configuration',
+      'local-first ai tooling',
     ],
     openGraph: {
-      title: 'PlanToCode - plan and ship code changes',
-      description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+      title,
+      description,
       url: canonicalUrl,
       siteName: 'PlanToCode',
       images: [{
         url: cdnUrl('/images/og-image.png'),
         width: 1200,
         height: 630,
-        alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
+        alt: 'PlanToCode - Technical walkthrough of the system',
         type: 'image/png',
       }],
       locale: ogLocale,
@@ -119,11 +74,11 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'PlanToCode - plan and ship code changes',
-      description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+      title,
+      description,
       images: [{
         url: cdnUrl('/images/og-image.png'),
-        alt: 'PlanToCode - AI Architect Studio with Integrated Terminal',
+        alt: 'PlanToCode - Technical walkthrough of the system',
         width: 1200,
         height: 630,
       }],
@@ -143,7 +98,36 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   };
 }
 
-export default function Home() {
+export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale as any, ['home', 'common']);
+  const heroTitle = typeof t['technicalLanding.title'] === 'string'
+    ? t['technicalLanding.title']
+    : '';
+  const heroDescription = typeof t['technicalLanding.description'] === 'string'
+    ? t['technicalLanding.description']
+    : '';
+  const walkthroughTitle = typeof t['gallery.video.title'] === 'string'
+    ? t['gallery.video.title']
+    : '';
+  const walkthroughDescription = typeof t['gallery.video.description'] === 'string'
+    ? t['gallery.video.description']
+    : '';
+  const badgeLabel = (typeof t['nav.architecture'] === 'string' ? t['nav.architecture'] : '')
+    || (typeof t['footer.architecture'] === 'string' ? t['footer.architecture'] : '');
+  const heroPrimaryCta = typeof t['hero.cta.viewDemo'] === 'string'
+    ? t['hero.cta.viewDemo']
+    : '';
+  const heroSecondaryCta = typeof t['hero.cta.howItWorks'] === 'string'
+    ? t['hero.cta.howItWorks']
+    : '';
+  const titleParts = heroTitle.split(':');
+  const titleLead = titleParts[0]?.trim();
+  const titleRest = titleParts.slice(1).join(':').trim();
+  const walkthroughBullets = Array.isArray(t['gallery.video.bullets'])
+    ? (t['gallery.video.bullets'] as string[])
+    : [];
+
   const organizationJsonLd: Organization = {
     '@type': 'Organization',
     name: 'PlanToCode',
@@ -154,7 +138,7 @@ export default function Home() {
       width: '512',
       height: '512'
     },
-    description: 'Plan and ship code changes - find files, generate and merge AI plans, run them in a persistent terminal.',
+    description: 'AI-assisted development workspace focused on planning, review, and execution handoff.',
     foundingDate: '2024',
     sameAs: [
       'https://github.com/plantocode',
@@ -178,7 +162,7 @@ export default function Home() {
     '@type': 'WebSite',
     name: 'PlanToCode',
     url: 'https://www.plantocode.com',
-    description: 'Plan and ship code changes - find files, generate and merge AI plans from multiple models, run them in a persistent terminal.',
+    description: 'Technical walkthroughs of the PlanToCode architecture, workflows, and implementation tradeoffs.',
     inLanguage: 'en-US',
     potentialAction: {
       '@type': 'SearchAction',
@@ -197,130 +181,89 @@ export default function Home() {
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.plantocode.com',
-    description: 'Plan and ship code changes. Find the right files, generate and merge implementation plans from multiple AI models, then run them in a persistent terminal. Available for Windows and macOS.',
+    description: 'Tauri desktop app with Rust orchestration, SQLite persistence, and multi-model LLM planning pipelines.',
     offers: {
       '@type': 'Offer',
       price: 0,
       priceCurrency: 'USD',
-      description: 'Pay-as-you-go API usage. No subscriptions or seat licenses.',
+      description: 'Desktop app for planning workflows; requires external LLM providers with your API keys.',
     },
     downloadUrl: 'https://www.plantocode.com/downloads',
     softwareVersion: '1.0.23',
-    // @ts-ignore - isRelatedTo is a valid schema.org property but not in the TypeScript types
-    isRelatedTo: [
-      {
-        '@type': 'SoftwareApplication',
-        name: 'Claude Code',
-        applicationCategory: 'DeveloperApplication',
-        creator: {
-          '@type': 'Organization',
-          name: 'Anthropic'
-        }
-      },
-      {
-        '@type': 'SoftwareApplication',
-        name: 'Cursor',
-        applicationCategory: 'DeveloperApplication'
-      },
-      {
-        '@type': 'SoftwareApplication',
-        name: 'OpenAI Codex',
-        applicationCategory: 'DeveloperApplication',
-        creator: {
-          '@type': 'Organization',
-          name: 'OpenAI'
-        }
-      }
-    ],
     // Note: aggregateRating and review should be added when visible on the page
-  };
-
-  // FAQ structured data (using English for SEO)
-  const FAQ_KEYS = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7', 'q8', 'q9', 'q10', 'q11', 'q12', 'q13'] as const;
-
-  const faqPageJsonLd: FAQPage = {
-    '@type': 'FAQPage',
-    mainEntity: FAQ_KEYS.map(key => ({
-      '@type': 'Question',
-      name: enFaqMessages.faq.items[key].q,
-      acceptedAnswer: {
-        '@type': 'Answer',
-        text: enFaqMessages.faq.items[key].a,
-      },
-    })),
   };
 
   // Video structured data for better indexing
   const videoStructuredData: VideoObject[] = [
     {
       '@type': 'VideoObject',
-      name: 'File Discovery & Search in Your Codebase',
+      name: 'File Discovery Pipeline Walkthrough',
       description: 'Walkthrough of the staged file finder workflow generating search patterns, relevance scoring, and prioritized selections before they are applied to a session.',
       thumbnailUrl: cdnUrl('/assets/images/step-2-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-2-find.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT50S',
-      embedUrl: 'https://www.plantocode.com/demo#file-discovery',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'Plan Creation & Merge from Multiple AI Models',
-      description: 'Demonstrates generating implementation plans from configured models such as Gemini 3 Pro, GPT-5.2, and Claude 4.5 Sonnet, then merging the preferred steps into a single draft.',
+      name: 'Multi-Model Plan Generation and Merge',
+      description: 'Demonstrates generating implementation plans from configured models and merging them into a single draft with structured prompts.',
       thumbnailUrl: cdnUrl('/assets/images/step-4-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-4-merge.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT60S',
-      embedUrl: 'https://www.plantocode.com/demo#plan-merge',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'Deep Research & Context Analysis',
+      name: 'Deep Research and Context Analysis',
       description: 'Shows background jobs collecting additional context and impact analysis before implementation planning begins.',
       thumbnailUrl: cdnUrl('/assets/images/step-3-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-3-generate.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT55S',
-      embedUrl: 'https://www.plantocode.com/demo#deep-research',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'AI Text Enhancement - Task Description',
+      name: 'AI Text Enhancement',
       description: 'Illustrates using the text improvement tools to enrich task descriptions with goals, constraints, and affected areas before planning.',
       thumbnailUrl: cdnUrl('/assets/images/step-1-text-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-1-text.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT45S',
-      embedUrl: 'https://www.plantocode.com/demo#text-improvement',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'Voice Dictation - Faster Input',
+      name: 'Voice Dictation Pipeline',
       description: 'Highlights the voice transcription pipeline that turns spoken input into task descriptions or terminal commands.',
       thumbnailUrl: cdnUrl('/assets/images/step-1-voice-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-1-voice.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT30S',
-      embedUrl: 'https://www.plantocode.com/demo#voice-transcription',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'Screen Recording - Instant Error Capture',
-      description: 'Captures how screen recordings are analysed so you can pull technical details into implementation plans.',
+      name: 'Screen Recording Analysis',
+      description: 'Captures how screen recordings are analyzed to extract technical details into implementation plans.',
       thumbnailUrl: cdnUrl('/assets/images/step-1-video-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-1-video.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT40S',
-      embedUrl: 'https://www.plantocode.com/demo#video-analysis',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
     {
       '@type': 'VideoObject',
-      name: 'Settings & Prompt Customization',
-      description: 'Covers configuring models, editing system prompts, and adjusting project defaults for the integrated terminal and planning tasks.',
+      name: 'Settings and Prompt Customization',
+      description: 'Covers configuring models, editing system prompts, and adjusting project defaults for the planning pipeline.',
       thumbnailUrl: cdnUrl('/assets/images/step-5-poster.jpg'),
       contentUrl: cdnUrl('/assets/videos/step-5-customize.mp4'),
       uploadDate: '2025-09-20T00:00:00Z',
       duration: 'PT45S',
-      embedUrl: 'https://www.plantocode.com/demo#settings',
+      embedUrl: 'https://www.plantocode.com/#walkthrough',
     },
   ];
 
@@ -337,8 +280,8 @@ export default function Home() {
     },
     {
       '@type': 'ImageObject',
-      name: 'PlanToCode File Discovery Screenshot',
-      description: 'Screenshot showing the AI-powered file discovery interface with generated search patterns and relevance ranking.',
+      name: 'File Discovery Pipeline',
+      description: 'Screenshot showing the file discovery interface with generated search patterns and relevance ranking.',
       contentUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-file-finder.jpg'),
     },
@@ -352,26 +295,24 @@ export default function Home() {
     {
       '@type': 'ImageObject',
       name: 'Video Analysis Feature',
-      description: 'Screen recording analysis interface showing Gemini 3 Pro extracting technical details from visual context',
+      description: 'Screen recording analysis interface showing technical detail extraction from visual context',
       contentUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-video-analysis.jpg'),
     },
     {
       '@type': 'ImageObject',
       name: 'Settings and Prompt Customization',
-      description: 'Configuration interface for AI models, system prompts, and workflow customization for Claude Code, Cursor, and OpenAI Codex',
+      description: 'Configuration interface for AI models, system prompts, and workflow customization for plan generation.',
       contentUrl: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
       thumbnailUrl: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
     },
   ];
-
 
   return (
     <>
       <StructuredData data={organizationJsonLd} />
       <StructuredData data={websiteJsonLd} />
       <StructuredData data={softwareApplicationJsonLd} />
-      <StructuredData data={faqPageJsonLd} />
       {videoStructuredData.map((video, index) => (
         <StructuredData key={`video-${index}`} data={video} />
       ))}
@@ -386,45 +327,109 @@ export default function Home() {
           <Header />
 
           <main className="flex-grow">
-            {/* SR-only content for better Google snippets */}
-            <div className="sr-only">
-              <h1>Plan software changes before you code</h1>
-              <p>PlanToCode helps you find the right files, generate and merge implementation plans, then run them in a persistent terminal. You see scope before you run anything. Plans are editable and traceable.</p>
-            </div>
-            <section className="mb-0">
-              <HeroSection />
+            <section className="relative overflow-hidden border-b border-border/40 py-16">
+              <div className="pointer-events-none absolute inset-0 -z-10">
+                <div
+                  className="absolute -top-28 left-1/2 h-72 w-[1100px] -translate-x-1/2 rounded-full opacity-70 blur-3xl"
+                  style={{
+                    background: 'radial-gradient(circle, oklch(0.68 0.085 195 / 0.16), transparent 60%)',
+                  }}
+                />
+                <div
+                  className="absolute inset-0 opacity-40"
+                  style={{
+                    backgroundImage: `
+                      linear-gradient(90deg, oklch(0.68 0.085 195 / 0.08) 1px, transparent 1px),
+                      linear-gradient(180deg, oklch(0.68 0.085 195 / 0.08) 1px, transparent 1px)
+                    `,
+                    backgroundSize: '48px 48px',
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-background/30 to-background/80" />
+              </div>
+
+              <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-24 pb-16 sm:pt-28 sm:pb-20 lg:pt-32 lg:pb-24">
+                <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] items-center">
+                  <div className="space-y-6">
+                    {badgeLabel ? (
+                      <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                        {badgeLabel}
+                      </div>
+                    ) : null}
+                    <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl text-hero-title">
+                      {titleRest ? (
+                        <>
+                          <span className="text-hero-title-gradient">{titleLead}</span>
+                          <span className="block">{titleRest}</span>
+                        </>
+                      ) : (
+                        <span className="text-hero-title-gradient">{heroTitle}</span>
+                      )}
+                    </h1>
+                    <p className="text-lg text-foreground/80 sm:text-xl max-w-2xl">
+                      {heroDescription}
+                    </p>
+                    {(heroPrimaryCta || heroSecondaryCta) ? (
+                      <div className="flex flex-wrap items-center gap-3">
+                        {heroPrimaryCta ? (
+                          <Button asChild size="lg" variant="cta">
+                            <a href="#walkthrough">{heroPrimaryCta}</a>
+                          </Button>
+                        ) : null}
+                        {heroSecondaryCta ? (
+                          <Button asChild size="lg" variant="outline">
+                            <Link href="/docs/runtime-walkthrough">{heroSecondaryCta}</Link>
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {Array.isArray(t['technicalLanding.tags']) ? (
+                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                        {(t['technicalLanding.tags'] as string[]).map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-border/60 bg-background/80 px-3 py-1"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <GlassCard highlighted className="p-6 lg:p-8">
+                    <div className="space-y-4">
+                      {walkthroughTitle ? (
+                        <h2 className="text-lg font-semibold text-foreground sm:text-xl">
+                          {walkthroughTitle}
+                        </h2>
+                      ) : null}
+                      {walkthroughDescription ? (
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {walkthroughDescription}
+                        </p>
+                      ) : null}
+                      {walkthroughBullets.length ? (
+                        <ul className="space-y-3 pt-2">
+                          {walkthroughBullets.map((bullet) => (
+                            <li key={bullet} className="flex items-start gap-3 text-sm text-muted-foreground">
+                              <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary/70" />
+                              <span>{bullet}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </GlassCard>
+                </div>
+              </div>
             </section>
             <SectionDividerMesh />
 
-            {/* Solve Complex Development Challenges - Internal Linking */}
-            <ProblemsSection />
-            <SectionDividerMesh />
-
-            {/* Specification Capture Mode */}
-            <SpecificationCaptureSection />
-            <SectionDividerMesh />
-
-            {/* Human-in-the-loop Implementation Planning */}
-            <GovernanceSection />
-            <SectionDividerMesh />
-
-            {/* Tool Integrations Section */}
-            <IntegrationsSection />
-            <SectionDividerMesh />
-
-            <section id="pricing">
-              <Pricing />
-            </section>
-            <SectionDividerMesh />
-
-
-            <section id="faq" className="pt-8">
-              <FAQ />
-            </section>
-            <SectionDividerMesh />
-
-            <section id="cta" className="pt-8">
-              <CallToAction />
+            <section id="walkthrough" className="py-12 lg:py-16">
+              <div className="container mx-auto max-w-6xl">
+                <ScreenshotGallery />
+              </div>
             </section>
           </main>
         </div>

@@ -11,52 +11,47 @@ export function IntegrationsSection() {
     <section className="py-16 px-4 bg-gradient-to-br from-background via-background to-primary/5">
       <div className="container mx-auto max-w-6xl">
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">
-          {t('integrations.title', 'Works With Your Favorite AI Tools')}
+          {t('integrations.title')}
         </h2>
         <p className="text-lg text-center text-foreground/80 mb-12 max-w-3xl mx-auto">
-          {t('integrations.subtitle', 'Enhance Claude Code, Cursor, and Codex CLI with architectural planning')}
+          {t('integrations.subtitle')}
         </p>
         <div className="grid md:grid-cols-3 gap-6 mb-8">
           <GlassCard className="p-6">
             <h3 className="text-xl font-semibold mb-3">
-              {t('integrations.cards.claudeCode.title', 'Claude Code Integration')}
+              {t('integrations.cards.claudeCode.title')}
             </h3>
             <p className="text-foreground/80 mb-4 text-sm">
-              {t('integrations.cards.claudeCode.description', 'Run Claude Code in persistent terminals with full session recording and health monitoring')}
+              {t('integrations.cards.claudeCode.description')}
             </p>
-            <Link href="/plan-mode/claude-code" className="text-primary hover:underline text-sm font-medium">
-              {t('integrations.cards.claudeCode.link', 'Setup guide →')}
+            <Link href="/docs/architecture" className="text-primary hover:underline text-sm font-medium">
+              {t('integrations.cards.claudeCode.link')}
             </Link>
           </GlassCard>
 
           <GlassCard className="p-6">
             <h3 className="text-xl font-semibold mb-3">
-              {t('integrations.cards.cursor.title', 'Cursor Enhancement')}
+              {t('integrations.cards.cursor.title')}
             </h3>
             <p className="text-foreground/80 mb-4 text-sm">
-              {t('integrations.cards.cursor.description', 'Give Cursor Composer architectural context and file discovery capabilities')}
+              {t('integrations.cards.cursor.description')}
             </p>
-            <Link href="/plan-mode/cursor" className="text-primary hover:underline text-sm font-medium">
-              {t('integrations.cards.cursor.link', 'Setup guide →')}
+            <Link href="/docs/implementation-plans" className="text-primary hover:underline text-sm font-medium">
+              {t('integrations.cards.cursor.link')}
             </Link>
           </GlassCard>
 
           <GlassCard className="p-6">
             <h3 className="text-xl font-semibold mb-3">
-              {t('integrations.cards.allIntegrations.title', 'All Integrations')}
+              {t('integrations.cards.allIntegrations.title')}
             </h3>
             <p className="text-foreground/80 mb-4 text-sm">
-              {t('integrations.cards.allIntegrations.description', 'Explore all supported AI coding tools and integration patterns')}
+              {t('integrations.cards.allIntegrations.description')}
             </p>
-            <Link href="/integrations" className="text-primary hover:underline text-sm font-medium">
-              {t('integrations.cards.allIntegrations.link', 'View integrations →')}
+            <Link href="/docs/terminal-sessions" className="text-primary hover:underline text-sm font-medium">
+              {t('integrations.cards.allIntegrations.link')}
             </Link>
           </GlassCard>
-        </div>
-        <div className="text-center">
-          <Link href="/comparisons" className="inline-flex items-center gap-2 text-primary hover:underline text-sm font-medium">
-            {t('integrations.compareTools', 'Compare PlanToCode with other AI coding tools')} →
-          </Link>
         </div>
       </div>
     </section>

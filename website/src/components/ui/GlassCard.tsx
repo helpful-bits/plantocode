@@ -11,22 +11,21 @@ export interface GlassCardProps extends HTMLAttributes<HTMLDivElement> {
 export const GlassCard = forwardRef<HTMLDivElement, GlassCardProps>(
   ({ className, highlighted = false, children, ...props }, ref) => {
     const glassClass = highlighted ? 'glass-highlighted' : 'glass';
-    const hasCustomPadding = className?.match(/p[xy]?-|p[trbl]-/);
+    const paddingRegex = /(?:^|\s)!?(p|px|py|pt|pr|pb|pl)-\d+/;
+    const hasCustomPadding = typeof className === 'string' && paddingRegex.test(className);
 
     return (
       <div
         ref={ref}
         className={cn(
-          'relative rounded-2xl overflow-hidden',
+          'relative z-10 rounded-xl border border-white/10 bg-white/5 backdrop-blur-sm',
           !hasCustomPadding && 'p-6',
           glassClass,
           className,
         )}
         {...props}
       >
-        <div className="relative z-10">
-          {children}
-        </div>
+        {children}
       </div>
     );
   },

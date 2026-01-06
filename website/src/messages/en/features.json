@@ -1,32 +1,111 @@
 {
   "hub": {
     "meta": {
-      "title": "PlanToCode Features - AI Development Planning Tools",
-      "description": "Explore powerful features: file discovery, multi-model planning, voice transcription, video analysis, merge instructions, and integrated terminal execution."
+      "title": "PlanToCode Feature Internals - System Components",
+      "description": "Technical walkthrough of the components that implement planning, file discovery, multimodal input, and execution."
     },
-    "badge": "Powerful Features",
+    "badge": "Component docs",
     "cta": {
-      "button": "Download PlanToCode",
-      "description": "Download PlanToCode and start planning your code changes with confidence.",
-      "title": "Ready to Experience Safe AI Development?"
+      "description": "Use these component docs to trace each subsystem to the processors, prompts, and UI surfaces that implement it.",
+      "title": "Trace the implementation",
+      "links": {
+        "docs": "Open docs",
+        "architecture": "Architecture overview"
+      }
     },
-    "description": "Comprehensive tools for planning, reviewing, and executing complex code changes. From file discovery to terminal execution, everything you need for safe AI-assisted development.",
-    "learnMore": "Learn more",
-    "title": "AI Development Planning Features"
+    "description": "Component-level documentation for each subsystem, with pointers to the job processors, storage tables, and UI surfaces that drive behavior. Most stages rely on external LLM providers configured with your API keys.",
+    "learnMore": "Open component",
+    "title": "Component Documentation"
+  },
+  "meetings": {
+    "meta": {
+      "title": "Meeting & Recording Ingestion - System Walkthrough",
+      "description": "How PlanToCode captures meetings and recordings, extracts requirements, and feeds them into planning workflows."
+    },
+    "badge": "Specification capture",
+    "title": "Meeting & Recording Ingestion",
+    "subtitle": "Multimodal pipeline that turns recorded discussions into structured requirements for planning. Analysis runs through the configured transcription and vision providers.",
+    "ariaLabel": "Meeting and recording ingestion features",
+    "cards": {
+      "multimodal": {
+        "title": "Multimodal extraction pipeline",
+        "description": "Audio and key frames are processed to produce transcripts, UI context, and requirement notes for task refinement.",
+        "link": "See video analysis"
+      },
+      "insights": {
+        "title": "Curated insights for planning",
+        "description": "Decisions, constraints, and action items are surfaced as selectable notes that feed the plan.",
+        "link": "See text improvement"
+      }
+    },
+    "benefits": {
+      "title": "What the system outputs",
+      "collaboration": {
+        "title": "Decision log",
+        "description": "Captures decisions and action items with timestamps for traceable planning."
+      },
+      "transcription": {
+        "title": "Speaker-aware transcript",
+        "description": "Transcribes audio with speaker segmentation so requirements keep attribution."
+      },
+      "visual": {
+        "title": "Visual context frames",
+        "description": "Summarizes screens and diagrams into notes used during task refinement."
+      }
+    },
+    "howItWorks": {
+      "title": "Pipeline steps",
+      "step1": {
+        "title": "Ingest recording",
+        "description": "Upload a Teams or Zoom recording or a screen capture; the system normalizes formats and indexes the media."
+      },
+      "step2": {
+        "title": "Multimodal analysis",
+        "description": "Audio transcript and key frames are analyzed to extract requirements, constraints, and UI state."
+      },
+      "step3": {
+        "title": "Attach to task",
+        "description": "Outputs are attached to the task as structured notes before planning and file discovery."
+      }
+    },
+    "relatedFeatures": {
+      "title": "Related components",
+      "videoAnalysis": {
+        "title": "Video Analysis",
+        "description": "Analyze screen recordings and capture UI context for planning."
+      },
+      "voiceTranscription": {
+        "title": "Voice Transcription",
+        "description": "Capture spoken requirements directly into the task input."
+      },
+      "textImprovement": {
+        "title": "Text Improvement",
+        "description": "Normalize raw notes into structured task descriptions."
+      },
+      "learnMore": "Learn more"
+    },
+    "cta": {
+      "title": "Continue the pipeline",
+      "description": "Follow the video analysis docs and the architecture overview to see how these notes flow into planning and execution.",
+      "links": {
+        "docs": "Video analysis docs",
+        "architecture": "Architecture overview"
+      }
+    }
   },
   "fileDiscovery": {
     "benefits": {
       "costEffective": {
-        "description": "Token-optimized workflow with intelligent batching. Cost tracking built into every stage.",
-        "title": "Cost-Effective Operation"
+        "description": "Token-aware batching with cost tracking at each stage.",
+        "title": "Token budgeting"
       },
       "multiStage": {
-        "description": "4-stage AI workflow with regex filtering, relevance assessment, and relationship analysis to identify the most relevant files.",
-        "title": "Multi-Stage Intelligence"
+        "description": "Four-stage workflow with regex filtering, relevance assessment, and relationship analysis to identify relevant files.",
+        "title": "Multi-stage pipeline"
       },
       "realTimeProgress": {
-        "description": "Live progress tracking with stage-by-stage updates. See exactly what the AI is discovering.",
-        "title": "Real-Time Progress"
+        "description": "Stage-by-stage progress updates emitted by background jobs.",
+        "title": "Progress visibility"
       }
     },
     "capabilities": {
@@ -41,18 +120,18 @@
         "title": "Git Repository Integration"
       },
       "planIntegration": {
-        "description": "Discovered files feed directly into the implementation planning system. Context is preserved and optimized for plan generation, ensuring comprehensive and accurate results.",
+        "description": "Discovered files feed directly into the implementation planning system. Context is preserved and reused across sessions.",
         "features": [
-          "Seamless plan generation integration",
+          "Plan generation handoff",
           "Context preservation across sessions",
-          "Multi-model plan generation support",
-          "Architectural synthesis preparation"
+          "Multiple plan drafts per task",
+          "Structured plan inputs"
         ],
         "title": "Implementation Plan Integration"
       },
       "title": "Advanced Discovery Capabilities",
       "tokenManagement": {
-        "description": "Content-aware token estimation optimizes batching. Different ratios for JSON/XML (5 chars/token), code (3 chars/token), and text (4 chars/token) ensure efficient processing.",
+        "description": "Content-aware token estimation drives batching. Ratios for JSON/XML (5 chars/token), code (3 chars/token), and text (4 chars/token) guide chunking.",
         "features": [
           "Dynamic chunk sizing per file type",
           "2000-token prompt overhead reservation",
@@ -73,48 +152,66 @@
       }
     },
     "cta": {
-      "description": "Let AI navigate your codebase intelligently. From repository analysis to implementation-ready context, this is how file discovery should work - smart, efficient, cost-effective.",
+      "description": "Dive deeper into the file discovery internals, from orchestration to relevance scoring, and map the pipeline to the codebase.",
       "links": {
-        "docs": "Read technical documentation",
-        "planMode": "See implementation planning"
+        "docs": "Read file discovery docs",
+        "buildYourOwn": "Build your own pipeline"
       },
-      "title": "Experience Intelligent File Discovery"
+      "title": "Explore the internals"
     },
     "hero": {
-      "badge": "AI-powered repository navigation",
-      "description": "PlanToCode maps impacted files before you run anything. You get a focused context you can trust.",
-      "title": "Find what matters in your codebase automatically"
+      "badge": "File discovery workflow",
+      "description": "PlanToCode stages file discovery as a Rust workflow that narrows, scores, and persists context before any plan generation.",
+      "title": "File Discovery Pipeline"
+    },
+    "pipeline": {
+      "title": "How the File Discovery Pipeline Works",
+      "description": "Before any LLM call, the system builds a candidate index, applies deterministic filters, then uses relevance scoring to minimize tokens and noise.",
+      "cards": {
+        "index": {
+          "title": "Index",
+          "description": "Scan Git-tracked paths and build a local candidate set with directory hierarchy context."
+        },
+        "filter": {
+          "title": "Filter",
+          "description": "Apply regex patterns, ignore rules, and file-type heuristics to reduce the candidate pool."
+        },
+        "score": {
+          "title": "Score",
+          "description": "Run LLM-assisted relevance scoring and persist ranked results for later plan generation."
+        }
+      }
     },
     "performance": {
       "accuracy": {
-        "description": "Multi-stage refinement with AI-powered relevance assessment and relationship analysis.",
-        "title": "Accuracy Rate",
-        "value": "High"
+        "description": "Multi-stage refinement with relevance assessment and relationship analysis captured per job.",
+        "title": "Relevance Quality",
+        "value": "Traceable"
       },
       "cost": {
-        "description": "Per workflow run. Smart token optimization keeps costs minimal while maximizing discovery quality.",
-        "title": "Typical Cost",
-        "value": "$0.10-0.15"
+        "description": "Token estimation and batching keep prompts small before LLM scoring.",
+        "title": "Token Budgeting",
+        "value": "Token-aware"
       },
       "speed": {
-        "description": "Depends on repository size and complexity. Real-time progress tracking with stage-by-stage updates.",
-        "title": "Processing Time",
-        "value": "Variable"
+        "description": "Stage-by-stage jobs stream updates without blocking the UI.",
+        "title": "Job Scheduling",
+        "value": "Staged"
       },
-      "title": "Cost-Effective and Fast"
+      "title": "Operational Characteristics"
     },
     "workflow": {
       "stage1": {
-        "description": "AI analyzes your directory structure (up to 2 levels deep) to identify relevant project areas. Uses hierarchical intelligence to select parent folders vs. subdirectories.",
+        "description": "Analyzes the directory structure (up to 2 levels deep) to identify candidate project areas and select parent folders vs. subdirectories.",
         "features": [
           "Hierarchical directory analysis",
-          "Smart parent/subdirectory selection",
+          "Parent/subdirectory selection heuristics",
           "Avoids redundant nested selections"
         ],
         "title": "Root Folder Selection"
       },
       "stage2": {
-        "description": "Generates intelligent regex patterns and performs initial file filtering. Integrates with git to respect .gitignore rules and filter binary files.",
+        "description": "Generates regex patterns and performs initial file filtering. Integrates with git to respect .gitignore rules and filter binary files.",
         "features": [
           "Dynamic regex pattern creation",
           "Git ls-files integration",
@@ -123,13 +220,13 @@
         "title": "Regex Pattern Generation & Filtering"
       },
       "stage3": {
-        "description": "Deep content analysis using LLM to assess file relevance to your task. Uses intelligent batching with content-aware token estimation for optimal processing.",
+        "description": "LLM-based relevance scoring to assess file relevance to the task. Uses token-aware batching with content-aware estimation.",
         "features": [
           "Content-based relevance scoring",
-          "Intelligent token-aware batching",
+          "Token-aware batching",
           "2000-token overhead management"
         ],
-        "title": "AI File Relevance Assessment"
+        "title": "File Relevance Assessment"
       },
       "stage4": {
         "description": "Discovers additional contextually relevant files through relationship analysis. Analyzes imports, configurations, and project structure to find related files.",
@@ -140,7 +237,7 @@
         ],
         "title": "Extended Path Discovery"
       },
-      "title": "The 4-Stage Discovery Process"
+      "title": "The 4-Stage Discovery Workflow"
     }
   },
   "mergeInstructions": {
@@ -176,69 +273,79 @@
             "example": "\"Prefer microservices over monolith\""
           }
         ],
-        "title": "How Instructions Control Synthesis"
+        "title": "How instructions guide the merge"
       },
-      "title": "Actual System Capabilities",
+      "title": "Merge processor capabilities",
       "whatAIDoes": {
         "items": [
-          "Studies all source plans to identify unique insights",
-          "Resolves architectural conflicts using SOLID principles",
-          "Creates emergent solutions beyond simple combination",
-          "Adds inline source markers for every decision",
-          "Validates architectural coherence throughout",
-          "Handles external example integration",
-          "Maintains relevance to original task"
+          "Parses source plans into a structured step schema",
+          "Aligns steps by tags, file paths, and intent",
+          "Flags conflicts for explicit resolution",
+          "Records source plan IDs for each merged step",
+          "Stores merge instructions and prompt inputs with the job",
+          "Incorporates external examples when provided",
+          "Keeps output scoped to the original task"
         ],
-        "title": "What the AI Actually Does"
+        "title": "What the merge processor does"
       }
     },
     "cta": {
-      "description": "Beyond merging - intelligent architectural analysis with SOLID principles. This is how plan synthesis should work - intelligent, traceable, emergent.",
+      "description": "See how merge instructions, plan tagging, and conflict resolution are represented in the implementation-plan pipeline.",
       "links": {
-        "demo": "Watch it in action",
-        "planMode": "Explore plan generation"
+        "docs": "Implementation plan docs",
+        "planMode": "Plan generation flow"
       },
-      "title": "Experience True Architectural Synthesis"
+      "title": "Review the merge pipeline in the docs"
     },
     "features": {
       "architecturalAnalysis": {
-        "description": "Not just concatenation. AI deeply analyzes each plan's architecture, identifying unique insights and approaches.",
-        "title": "Genuine Architectural Analysis"
+        "description": "Plans are parsed into a structured schema so steps can be aligned and compared before merging.",
+        "title": "Structured plan parsing"
       },
       "solidResolution": {
-        "description": "Conflicts resolved using software engineering best practices. Creates architecturally sound solutions.",
-        "title": "SOLID Principle Resolution"
+        "description": "Conflicts are resolved with explicit rules rather than leaving everything to a single model response.",
+        "title": "Conflict resolution rules"
       },
       "sourceTraceability": {
-        "description": "Every merged element includes inline attribution markers showing exactly which source plan it came from.",
-        "title": "Source Traceability [src:P1]"
+        "description": "Merged output retains links back to source plans so reviewers can trace decisions to specific inputs.",
+        "title": "Traceable merge output"
       }
     },
     "hero": {
-      "badge": "Architectural Synthesis with Source Traceability",
-      "description": "AI performs deep architectural analysis of multiple plans, resolves conflicts using SOLID principles, and synthesizes emergent solutions. Every decision includes source attribution [src:P1 step 2] for complete traceability.",
-      "title": "Beyond Simple Merging: Architectural Synthesis"
+      "badge": "Plan Merge Pipeline",
+      "description": "PlanToCode generates multiple implementation plans, then merges them into a single draft using structured prompts and explicit merge instructions.",
+      "title": "Merge instructions and plan consolidation"
+    },
+    "example": {
+      "heading": "Example merged output with source traceability:",
+      "steps": [
+        "Step 1: Set up database schema [src:P1 step 3]",
+        "Step 2: Implement authentication [src:P2 step 1, P3 step 2]",
+        "Step 3: Create API endpoints [src:P3 step 4 - cleaner approach]",
+        "Step 4: Add error handling [src:EMERGENT - combining P1, P2 patterns]",
+        "Step 5: Implement caching [src:P1 step 7, optimized with P2 insights]"
+      ]
     },
     "implementation": {
       "aiPrompt": {
-        "description": "Sophisticated prompt enforces quality and traceability.",
+        "description": "Structured prompt enforces merge rules and traceability.",
         "features": [
-          "Expert software architect persona",
-          "SOLID principle conflict resolution",
+          "Merge role prompt",
+          "Explicit conflict resolution criteria",
           "Mandatory source attribution",
-          "Emergent solution creation",
-          "Quality validation gates"
+          "Step alignment guidance",
+          "Validation checks"
         ],
-        "title": "AI System Prompt"
+        "title": "Merge prompt template"
       },
       "backend": {
-        "description": "ImplementationPlanMergeProcessor orchestrates the entire synthesis.",
+        "description": "ImplementationPlanMergeProcessor orchestrates the merge pipeline.",
         "features": [
           "Fetches raw XML from source plans",
           "Extracts relevant file contexts",
           "Generates project structure tree",
           "Builds comprehensive LLM prompt",
-          "Streams response with real-time updates"
+          "Streams response with progress updates"
         ],
         "title": "Backend Processing"
       },
@@ -247,7 +354,7 @@
         "features": [
           "MergePlansSection with collapsible UI",
           "FloatingMergeInstructions (draggable)",
-          "Real-time text enhancement support",
+          "Text enhancement support during editing",
           "Debounced state management",
           "Session persistence for instructions"
         ],
@@ -268,86 +375,98 @@
     },
     "process": {
       "deepAnalysis": {
-        "description": "AI performs comprehensive analysis before synthesis, not simple concatenation.",
+        "description": "Plans are compared step-by-step so overlapping work is merged and conflicting approaches are surfaced explicitly.",
         "features": [
           "Identifies unique insights from each plan",
-          "Resolves conflicts using SOLID principles",
-          "Preserves valuable architectural decisions",
-          "Creates emergent solutions beyond sources"
+          "Aligns steps by tags and semantics",
+          "Preserves important architectural decisions",
+          "Flags conflicts for explicit resolution"
         ],
-        "title": "Deep Architectural Analysis"
+        "title": "Plan alignment and comparison"
       },
       "instructions": {
-        "description": "Your instructions directly control the synthesis. AI understands complex architectural guidance.",
+        "description": "Merge instructions guide how the processor resolves conflicts or prioritizes specific plan elements.",
         "examples": [
           "Prioritization: \"Focus on security from Plan 2\"",
-          "Structure: \"Organize chronologically\"",
+          "Structure: \"Group by subsystem\"",
           "Approach: \"Use Plan 1's database strategy\"",
-          "Scope: \"Exclude testing, focus on core\""
+          "Scope: \"Exclude deployment steps\""
         ],
-        "title": "Intelligent Instruction Processing"
+        "title": "Merge Instruction Processing"
       },
       "multiModel": {
-        "description": "Run GPT-5.2 and Gemini multiple times. Each run tackles large context differently, surfacing complementary implementation details.",
+        "description": "ImplementationPlanProcessor can request multiple plans across models or prompts, keeping each draft isolated for later comparison.",
         "features": [
-          "Each plan stored with complete metadata",
-          "Relevant files automatically extracted",
-          "Project structure context included",
-          "Temperature variations for diversity"
+          "Each plan stored with metadata",
+          "Relevant files captured per plan",
+          "Project context included in prompts",
+          "Multiple drafts available for review"
         ],
-        "title": "Multi-Model Plan Generation"
+        "title": "Plan draft generation"
       },
       "synthesis": {
-        "description": "Creates comprehensive solution with complete source attribution for every decision.",
+        "description": "ImplementationPlanMergeProcessor composes a single draft and records references back to source plans.",
         "features": [
-          "Inline markers: [src:P1 step 2, P3 step 5]",
-          "External example integration support",
-          "Quality validation checkpoints",
-          "Architectural coherence maintained"
+          "Source references preserved",
+          "Merge guidance stored with output",
+          "Conflict resolution decisions logged",
+          "Single draft for review and editing"
         ],
-        "title": "Synthesis with Full Traceability"
+        "title": "Merged draft with traceability"
       },
-      "title": "The Architectural Synthesis Process"
+      "title": "The merge pipeline"
     },
     "value": {
       "architecturalSynthesis": {
-        "description": "Not concatenation. AI performs deep architectural analysis and creates emergent solutions that go beyond any single source plan.",
-        "title": "Architectural Synthesis"
+        "description": "Merging is performed with structured prompts so the final plan reconciles overlapping steps instead of concatenating drafts.",
+        "title": "Structured merge output"
       },
       "completeTraceability": {
-        "description": "Every decision includes [src:P1 step 2] markers. Know exactly where each architectural choice originated.",
-        "title": "Complete Traceability"
+        "description": "Merge notes capture which draft contributed each step so reviewers can trace decisions.",
+        "title": "Traceable merge output"
       },
       "solidPractices": {
-        "description": "Conflicts resolved using software engineering principles, not arbitrary choices. Architecturally sound results.",
-        "title": "SOLID Engineering Practices"
+        "description": "Conflicts are resolved using explicit criteria and review guidance rather than silent overwrites.",
+        "title": "Explicit conflict resolution"
       },
-      "title": "The Real Value: Beyond Simple Merging"
+      "title": "Why structured merging matters"
     }
   },
   "planMode": {
     "copyButtons": {
+      "examples": {
+        "serverConfigured": {
+          "button": "Button: \"Parallel agent workflows\"",
+          "hint": "+ Custom instructions...",
+          "template": "Template: \"{{IMPLEMENTATION_PLAN}}\""
+        },
+        "stepExtraction": {
+          "copyAll": "Copy All Steps",
+          "copyStep": "Copy Step 3",
+          "copyWithInstructions": "Copy with Instructions"
+        }
+      },
       "serverConfigured": {
         "description": "Dynamic copy buttons configured server-side with template placeholders.",
         "title": "Server-Configured Buttons"
       },
       "stepExtraction": {
-        "description": "Copy individual steps or full plans with automatic content extraction.",
-        "title": "Smart Step Extraction"
+        "description": "Copy individual steps or full plans using the structured plan format.",
+        "title": "Structured Step Extraction"
       },
       "title": "Configurable Copy Button System"
     },
     "cta": {
-      "description": "From AI-powered generation to human review to controlled execution. This is how corporate teams adopt AI coding agents confidently—with human-in-the-loop governance, file-by-file granularity, and full control at every step.",
+      "description": "Follow how plans are generated, reviewed, merged, and handed off to execution, with audit trails for each step.",
       "links": {
-        "mergePlans": "Learn about architectural synthesis",
-        "terminal": "See terminal integration"
+        "mergePlans": "Merge pipeline",
+        "terminal": "Terminal sessions"
       },
-      "title": "Experience Safe, Human-Controlled AI Development"
+      "title": "Trace the plan pipeline"
     },
     "editing": {
       "monaco": {
-        "description": "Full VS Code editor experience. Not a text area - a professional code editor with all features.",
+        "description": "Monaco-based editor for plan review with syntax highlighting and structured diffs.",
         "features": [
           "XML syntax highlighting",
           "Find & replace with regex",
@@ -357,7 +476,7 @@
         "title": "Monaco Editor Integration"
       },
       "terminal": {
-        "description": "Execute plans directly in persistent terminal sessions. Voice input, health monitoring, full control.",
+        "description": "Execute steps in persistent PTY sessions with logs recorded alongside the plan.",
         "features": [
           "Persistent terminal sessions",
           "Voice transcription input",
@@ -366,71 +485,71 @@
         ],
         "title": "Integrated Terminal Execution"
       },
-      "title": "Professional Editing & Execution"
+      "title": "Editing and execution surfaces"
     },
     "features": {
       "intelligentGeneration": {
-        "description": "Full file content loading (no truncation). Smart directory trees. Multi-model support with project configs.",
-        "title": "Intelligent Generation"
+        "description": "Loads file contents and directory context, then applies per-task model configuration before generating plans.",
+        "title": "Plan generation pipeline"
       },
       "monacoEditor": {
-        "description": "VS Code's editor with XML syntax highlighting. Real-time editing with auto-save to database.",
+        "description": "Monaco editor with XML syntax highlighting. Edits are auto-saved to the database.",
         "title": "Monaco Editor"
       },
       "terminalExecution": {
-        "description": "Execute plans directly in integrated terminal. Copy steps or full plans. Voice transcription support.",
-        "title": "Terminal Execution"
+        "description": "Execute plans in the integrated terminal or export steps to external tools.",
+        "title": "Execution handoff"
       }
     },
     "fileByFile": {
-      "description": "Plans break down development tasks with exact file paths corresponding to your project's repository structure. This granularity makes the impact of changes crystal clear and prevents regressions, bugs, and unintended modifications that can occur with autonomous coding agents.",
+      "description": "Plans are structured as file-by-file changes so scope and dependencies are visible before execution.",
       "exactPaths": {
-        "description": "Every step specifies exact file paths from your repository. No ambiguity about which files will be modified, created, or deleted.",
+        "description": "Each step includes explicit file paths, operations, and ordering.",
         "title": "Exact File Paths"
       },
       "preventRegressions": {
-        "description": "See exactly which legacy code will be touched. Identify potential breaking changes before they happen. Confident adoption of AI coding agents.",
+        "description": "Review scope and dependency impact before running commands.",
         "features": [
-          "Clear impact assessment",
-          "Breaking change detection",
-          "Legacy code protection"
+          "Impact assessment",
+          "Change review checkpoints",
+          "Legacy code safeguards"
         ],
-        "title": "Prevent Regressions"
+        "title": "Change impact review"
       },
-      "title": "File-by-File Granularity for Maximum Safety"
+      "title": "File-by-file plan structure"
     },
     "generation": {
       "fullContext": {
-        "description": "Unlike other systems, we load complete file contents. No preemptive truncation - just smart warnings.",
+        "description": "Full file contents are loaded with warnings when token budgets are exceeded.",
         "features": [
           "Complete file content, no truncation",
-          "Parallel file loading for speed",
+          "Parallel file loading",
           "Token warnings at >100k tokens",
-          "Smart directory tree generation"
+          "Directory tree generation"
         ],
         "title": "Full Context Loading"
       },
       "multiModel": {
-        "description": "Choose from multiple AI models with project-specific configurations and temperature settings.",
+        "description": "Multiple models can be configured per project with temperature and context limits.",
         "features": [
-          "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro",
+          "Configured model allowlist per project",
           "Project-specific model settings",
-          "Real-time token estimation",
+          "Token estimation before execution",
           "Context window validation"
         ],
-        "title": "Multi-Model Architecture"
+        "title": "Multi-model configuration"
       },
       "streaming": {
-        "description": "Watch plans generate in real-time with live progress bars and streaming content updates.",
+        "description": "Plan generation streams output with progress updates and job status tracking.",
         "features": [
-          "Live streaming with progress bars",
-          "Real-time syntax highlighting",
+          "Streaming output with progress bars",
+          "Syntax highlighting during streaming",
           "Token count updates during generation",
           "Background job status tracking"
         ],
-        "title": "Real-Time Streaming"
+        "title": "Streaming output"
       },
-      "title": "AI-Powered Plan Generation with Full Context",
+      "title": "Plan generation with full context",
       "xmlFormat": {
         "description": "Plans use structured XML with numbered steps, enabling programmatic manipulation and extraction.",
         "features": [
@@ -444,228 +563,245 @@
     },
     "guides": {
       "claudeCode": {
-        "description": "Enhance Claude Code's native Plan Mode with multi-model synthesis and file discovery.",
-        "link": "Open the Claude Code planning workflow guide",
-        "name": "Claude Code planning workflow"
+        "description": "Export plans into IDEs or external tools when you need a guided execution surface.",
+        "link": "Open IDE handoff notes",
+        "name": "IDE handoff"
       },
       "codex": {
-        "description": "Pre-plan Codex runs with file discovery, multi-model merges, and approval modes.",
-        "link": "Open the Codex CLI planning workflow guide",
-        "name": "Codex CLI planning workflow"
+        "description": "Use plan outputs to drive CLI agents or scripts with explicit scope and steps.",
+        "link": "Open CLI execution notes",
+        "name": "CLI execution"
       },
       "cursor": {
-        "description": "Give Cursor Composer full architectural awareness, including WSL-safe execution.",
-        "link": "Open the Cursor plan workflow guide",
-        "name": "Cursor plan workflow"
+        "description": "Combine integrated terminal execution with external tools for hybrid execution.",
+        "link": "Open hybrid execution notes",
+        "name": "Hybrid execution"
       },
-      "title": "Guides for your IDE plan mode"
+      "title": "Execution environments"
     },
     "hero": {
-      "badge": "Complete Implementation Planning System",
-      "description": "Human-in-the-loop governance with file-by-file granularity for safe AI-assisted development",
-      "title": "Implementation plans: generate - edit - execute"
+      "badge": "Implementation plan pipeline",
+      "description": "Plan generation and merging rely on external LLM providers configured with your API keys; review and execution remain local.",
+      "title": "Implementation planning pipeline"
     },
     "humanInLoop": {
       "approve": {
-        "description": "When satisfied, securely transmit the approved plan to your chosen coding agent or assigned developer. Full audit trail maintained.",
-        "title": "Approve & Transmit"
+        "description": "Approved plans can be exported or executed in the integrated terminal with logs attached.",
+        "title": "Approve and hand off"
       },
-      "description": "Team leads and stakeholders retain full control to review, edit, and approve every aspect of implementation plans before any code changes begin. This ensures all development efforts align with corporate product requirements, team workflows, and business objectives.",
+      "description": "Plans are reviewed, edited, and approved before execution so scope and dependencies are explicit.",
       "edit": {
-        "description": "Full editing capabilities with VS Code features. Adjust approaches, add constraints, remove risky steps. The plan is yours to perfect.",
-        "title": "Edit & Modify Plans"
+        "description": "Edit steps, reorder work, add constraints, and keep the plan aligned with repo structure.",
+        "title": "Edit and refine plans"
       },
       "review": {
-        "description": "Every AI-generated plan opens in Monaco editor for thorough review. No autonomous execution—you see and approve every proposed change.",
-        "title": "Review Before Execution"
+        "description": "Plans open in Monaco for review; execution is a separate, explicit action.",
+        "title": "Review before execution"
       },
-      "title": "Human-in-the-Loop Governance"
+      "title": "Human-in-the-loop review"
     },
     "technical": {
       "noTruncation": {
-        "description": "Full file content loaded. Warns at >100k tokens but doesn't truncate. You get complete context.",
-        "title": "No Truncation Policy"
+        "description": "Full file contents are loaded with warnings when token budgets are exceeded.",
+        "title": "Full-context loading"
       },
       "persistence": {
-        "description": "Plans stored with metadata, cost tracking, and full prompt history. Everything is auditable.",
-        "title": "Database Persistence"
+        "description": "Plans are stored with job metadata and prompt history for traceability.",
+        "title": "SQLite persistence"
       },
       "templates": {
-        "description": "Server-side prompts with project overrides. Unified prompt processor with smart placeholders.",
-        "title": "Template System"
+        "description": "Server-side prompts with project overrides and placeholders for context fields.",
+        "title": "Prompt templates"
       },
-      "title": "Under the Hood"
+      "title": "Implementation details"
     },
     "workflow": {
       "steps": [
         {
-          "title": "AI File Discovery",
-          "description": "Smart file finder identifies relevant files. Select root directories for focused context. No truncation."
+          "title": "File discovery stage",
+          "description": "File discovery identifies relevant paths and persists selections for later steps."
         },
         {
-          "title": "Multi-Model Generation",
-          "description": "Run models multiple times (3x GPT-5.2, 2x Gemini). Each run surfaces complementary implementation details. Real-time streaming with progress tracking."
+          "title": "Plan drafts (multiple models or prompts)",
+          "description": "Run multiple models or prompts and compare structured drafts."
         },
         {
-          "title": "Edit in Monaco",
-          "description": "Professional editing with VS Code features. Add steps, modify approaches, restructure plans."
+          "title": "Review and edit in Monaco",
+          "description": "Review and edit steps with Monaco, then save revisions."
         },
         {
-          "title": "Architectural Synthesis",
-          "description": "Merge multiple plans with custom instructions. SOLID principle resolution, source traceability."
+          "title": "Merge with instructions",
+          "description": "Merge drafts with guidance and preserve provenance for review."
         },
         {
-          "title": "Execute in Terminal",
-          "description": "Run your plan in integrated terminal. Voice commands, persistent sessions, real results."
+          "title": "Execute in terminal",
+          "description": "Execute steps in a persistent terminal session with logs recorded."
         }
       ],
-      "title": "The Complete Planning Workflow"
+      "title": "Planning pipeline"
+    },
+    "references": {
+      "architecture": {
+        "description": "System boundaries, IPC, and background jobs.",
+        "title": "Architecture overview"
+      },
+      "buildYourOwn": {
+        "description": "Design the pipeline stages in your own project.",
+        "title": "Build your own pipeline"
+      },
+      "implementationPlans": {
+        "description": "Plan format, storage, and review flow.",
+        "title": "Implementation plan format"
+      },
+      "link": "Open docs",
+      "title": "Related references"
     }
   },
   "textImprovement": {
     "capabilities": {
       "contextAware": {
-        "description": "AI understands your project structure, included files, and custom instructions when refining text.",
+        "description": "Prompt payloads can include file tree, selected files, and project settings.",
         "title": "Context-aware refinement"
       },
       "customizable": {
-        "description": "Define per-project prompts with placeholders for file contents, directory tree, and custom instructions.",
+        "description": "Per-project templates with placeholders and policy limits.",
         "title": "Customizable system prompts"
       },
       "instant": {
-        "description": "Non-streaming processing for speed. Results applied directly with conflict detection to protect your edits.",
-        "title": "Instant application"
+        "description": "Non-streaming responses applied inline with conflict detection.",
+        "title": "Inline application"
       },
       "mentalModel": {
-        "description": "Iterative refinement helps AI understand your intent. Select → refine → refine again until perfect.",
-        "title": "Mental model capture"
+        "description": "Iterative refinement lets you converge on exact requirements.",
+        "title": "Iterative refinement"
       },
-      "title": "Key capabilities"
+      "title": "Core mechanics"
     },
     "cta": {
-      "description": "Stop struggling with vague requirements. Capture ideas with voice, refine them with AI prompts, and create specifications that development teams can confidently implement.",
+      "description": "See the prompt templates, payload fields, and how outputs feed the planning pipeline.",
       "links": {
-        "demo": "Watch the demo",
-        "voice": "See voice features"
+        "docs": "Text improvement docs",
+        "architecture": "Architecture overview"
       },
-      "title": "Start capturing clear specifications with AI"
+      "title": "Continue in the docs"
     },
     "faq": {
       "codeEditor": {
-        "answer": "Yes. Works in task description fields and Monaco code editors. Select text → popover appears → choose action.",
-        "question": "Does it work in code editors?"
+        "answer": "Yes. The selection popover appears in task description fields and Monaco editors.",
+        "question": "Does it work inside the editors?"
       },
       "conflicts": {
-        "answer": "Conflict detection prevents overwriting your edits. If text changed during processing, the improvement is skipped with a warning.",
-        "question": "What if I edit text while improvement is running?"
+        "answer": "The job aborts to avoid overwriting; you can re-run after updating the text.",
+        "question": "What if the text changes mid-run?"
       },
       "customize": {
-        "answer": "Yes. Define per-project system prompts with placeholders for file contents, directory tree, custom instructions, and more.",
-        "question": "Can I customize the improvement prompts?"
+        "answer": "Yes. Templates are stored per project with placeholders for file context and instructions.",
+        "question": "Can I customize the prompts?"
       },
       "model": {
-        "answer": "Default: Claude Sonnet 3.5 via OpenRouter. You can configure different models per project in settings.",
-        "question": "Which AI model does text improvement use?"
+        "answer": "The model is configurable per project; defaults are documented in the settings panel.",
+        "question": "Which model does it use?"
       }
     },
     "hero": {
-      "badge": "Specification Capture Mode • Two AI Prompt Types",
-      "credits": "$5 free credits • Pay-as-you-go • Works on macOS and Windows",
-      "description": "Specification Capture Mode provides TWO DISTINCT AI prompt types designed to help corporate teams capture and refine requirements that development teams can confidently implement.",
-      "installButton": "Install PlanToCode",
-      "subtitle": "Text Enhancement improves clarity and grammar. Task Refinement expands completeness and implementation readiness. Both are essential tools for corporate teams managing complex development workflows and detailed requirements gathering.",
-      "title": "Specification Capture Mode"
+      "badge": "Stage 1: Text enhancement and task refinement",
+      "credits": "Prompt templates and job metadata are documented for traceability.",
+      "description": "Two prompt types turn raw task notes into structured, implementation-ready requirements. Text Enhancement cleans language; Task Refinement expands constraints and edge cases using project context.",
+      "installButton": "Read the docs",
+      "subtitle": "Outputs are stored with the task and feed directly into file discovery and plan generation.",
+      "title": "Specification Capture: Text Enhancement and Task Refinement"
     },
     "howItWorks": {
       "steps": [
         {
-          "step": "Select text in task description",
-          "description": "Highlight any text in your task description or code editor. A popover appears instantly."
+          "step": "Select text or task description",
+          "description": "Highlight text in a task description or plan note to open the refinement popover."
         },
         {
-          "step": "Choose \"Improve\" or \"Refine Task\"",
-          "description": "Improve: Quick style/clarity fixes. Refine Task: Deep contextual enhancement with project files."
+          "step": "Choose a prompt type",
+          "description": "Run Text Enhancement for clarity or Task Refinement for completeness and constraints."
         },
         {
-          "step": "AI processes with full context",
-          "description": "Claude Sonnet 3.5 analyzes with project files, directory structure, and customizable prompts."
+          "step": "Capture context",
+          "description": "The job bundles task text, project settings, and optional file context for the prompt."
         },
         {
-          "step": "Refined text applied inline",
-          "description": "Improved text replaces selection automatically. Preserves formatting and cursor position."
+          "step": "Apply and store results",
+          "description": "Refined text replaces the selection and is stored with job metadata for traceability."
         }
       ],
-      "title": "How it works"
+      "title": "Pipeline steps"
     },
     "painPoints": {
       "mentalModels": {
-        "description": "What you envision doesn't match what gets written down, leading to implementation drift.",
-        "title": "Mental models get lost in translation"
+        "description": "Design intent, edge cases, and non-functional requirements need to be explicit before planning.",
+        "title": "Constraints must be explicit"
       },
       "rewriting": {
-        "description": "Manual refinement of ambiguous descriptions slows down planning and creates misalignment.",
-        "title": "Rewriting task descriptions wastes time"
+        "description": "Manual cleanup often changes intent and loses details that matter in downstream plans.",
+        "title": "Manual cleanup can drift intent"
       },
-      "title": "Why corporate teams use Specification Capture Mode",
+      "title": "Why this stage exists",
       "vague": {
-        "description": "AI generates code based on unclear task descriptions, missing critical constraints and edge cases.",
-        "title": "Vague requirements lead to wrong implementations"
+        "description": "Loose task text yields brittle plans because constraints and acceptance criteria are missing.",
+        "title": "Unstructured notes produce ambiguous prompts"
       }
     },
     "promptTypes": {
-      "note": "Both prompt types leverage large language models to enhance content while preserving the original intent and core meaning of user input. This ensures your specifications remain true to your vision while becoming clearer and more complete.",
+      "note": "Both prompts write results back to the task and store job metadata for traceability.",
       "taskRefinement": {
-        "description": "Expands task descriptions by identifying implied requirements, filling in overlooked gaps, clarifying expected behavior and edge cases, and adding technical considerations to make tasks more complete and implementation-ready.",
+        "description": "Expands requirements with constraints, edge cases, and acceptance criteria using project context.",
         "features": [
-          "Identifies implied requirements",
-          "Clarifies edge cases and constraints",
-          "Adds technical implementation details",
-          "Makes tasks actionable for developers"
+          "Surfaces implicit requirements",
+          "Adds validation and rollback notes",
+          "Highlights affected components",
+          "Prepares inputs for file discovery"
         ],
-        "title": "Task Refinement"
+        "title": "Task Refinement (task_refinement job)"
       },
       "textEnhancement": {
-        "description": "Improves grammar, sentence structure, clarity, and conciseness while maintaining the user's original intent, tone, and technical detail level. Perfect for polishing rough drafts and voice transcriptions.",
+        "description": "Lightweight prompt for grammar, clarity, and structure without changing meaning.",
         "features": [
-          "Preserves original meaning and intent",
-          "Fixes grammar and punctuation",
-          "Improves sentence flow and readability",
-          "Maintains technical accuracy"
+          "Keeps original intent and terminology",
+          "Normalizes style for review",
+          "Preserves code identifiers",
+          "Returns a single replacement block"
         ],
-        "title": "Text Enhancement"
+        "title": "Text Enhancement (text_improvement job)"
       },
-      "title": "Two Distinct AI Prompt Types"
+      "title": "Two prompt types in the pipeline"
     },
     "useCases": {
       "clarify": {
-        "description": "Turn \"fix the auth bug\" into specific steps with edge cases, affected services, and validation checks.",
-        "title": "Clarify vague requirements before planning"
+        "description": "Turn a vague note into a structured spec with constraints and acceptance criteria.",
+        "title": "Clarify ambiguous requirements"
       },
       "expand": {
-        "description": "Convert shorthand like \"refactor user svc\" into detailed task with constraints, dependencies, and rollback plan.",
-        "title": "Expand abbreviated notes into full context"
+        "description": "Expand shorthand into full requirements with dependencies and validation steps.",
+        "title": "Expand shorthand notes"
       },
       "refine": {
-        "description": "Ensure task descriptions are clear for reviewers and downstream implementation.",
-        "title": "Refine task descriptions for team alignment"
+        "description": "Normalize and polish text before review and file discovery.",
+        "title": "Refine for review"
       },
-      "title": "Common use cases"
+      "title": "Example outcomes"
     }
   },
   "voiceTranscription": {
     "accuracy": {
-      "bottomLine": "Bottom line: Fewer errors mean fewer ambiguous tickets and less rework. gpt-4o-transcribe helps teams capture precise, implementation-ready specifications on the first try.",
+      "bottomLine": "Summary: Accuracy and latency directly affect how much cleanup is needed before refinement jobs.",
+      "about": "About the evaluation context",
       "models": {
-        "aws": "AWS Transcribe — managed speech recognition by Amazon Web Services.",
-        "google": "Google Speech-to-Text v2 — cloud speech recognition by Google.",
-        "gpt": "OpenAI gpt-4o-transcribe — advanced multilingual speech model optimized for accuracy and latency.",
-        "whisper": "Whisper large-v2 — open-source large-model baseline for comparison."
+        "aws": "Language coverage and diarization settings stored with job metadata.",
+        "google": "Latency and word-error-rate tracked per run.",
+        "gpt": "Primary speech-to-text provider configured per project.",
+        "whisper": "Optional baseline model used for comparison when enabled."
       },
       "title": "Accuracy Benchmarks"
     },
     "capabilities": {
       "multiLanguage": {
-        "description": "OpenAI transcription supports multiple languages. Respects per-project settings configured in your workspace.",
+        "description": "The configured transcription provider supports multiple languages. Project settings select the default language.",
         "title": "Multiple Language Support"
       },
       "perProject": {
@@ -673,43 +809,48 @@
         "title": "Per-Project Configuration"
       },
       "terminalDictation": {
-        "description": "Dictate commands directly to your terminal session (Stage 5). Keep your eyes on code while controlling the terminal with your voice.",
+        "description": "Dictate commands into the active PTY session; the transcript is inserted into the terminal input buffer.",
         "title": "Terminal Dictation (Stage 5)"
       },
       "title": "Key Capabilities"
     },
     "cta": {
-      "description": "Stage 1 specification capture with voice, then refine with AI. Stage 5 terminal control while reviewing code. Voice transcription bridges thinking and execution across the workflow.",
+      "description": "Stage 1 captures requirements by voice; Stage 5 lets you dictate commands into PTY sessions. The docs walk through the job flow and storage model.",
       "links": {
-        "terminal": "See Stage 5 terminal integration",
-        "textImprovement": "Explore text enhancement prompts"
+        "docs": "Voice transcription docs",
+        "textImprovement": "Text enhancement and refinement"
       },
-      "title": "Start Capturing Specifications with Voice"
+      "title": "Voice transcription in the pipeline"
     },
     "example": {
       "competitor": {
-        "label": "Competitor Model",
+        "label": "Baseline transcription",
         "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
       },
+      "comparisonTitle": "Token-level comparison",
+      "errorSummary": "Errors \u2014 Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
+      "impact": "Impact: Mishearing \"read-replica\" as \"replica\", dropping region suffix \"-1\", or changing \"wal_level=logical\" can lead to incorrect deployments or data flows.",
+      "primaryBadge": "reference-aligned",
+      "primaryLabel": "Primary transcription model",
       "gpt": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
       "reference": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
-      "title": "Illustrative Example: Capturing Specifications"
+      "title": "Transcription comparison"
     },
     "faq": {
       "customize": {
-        "answer": "Yes. You can configure language and model settings for each project. Settings are stored in the project configuration and shared across team members.",
+        "answer": "Yes. You can configure language and model settings per project. Settings persist across sessions and are reused by transcription jobs.",
         "question": "Can I customize transcription settings per project?"
       },
       "languages": {
-        "answer": "OpenAI transcription supports multiple languages. You can set a default language per project.",
+        "answer": "Supported languages depend on the configured transcription provider. You can set a default language per project.",
         "question": "Which languages are supported for voice transcription?"
       },
       "model": {
-        "answer": "We use OpenAI transcription for accurate results.",
-        "question": "Which AI model is used for transcription?"
+        "answer": "The transcription model is configured per project from the provider allowlist.",
+        "question": "Which model is used for transcription?"
       },
       "offline": {
-        "answer": "No, voice transcription requires an internet connection to send audio to OpenAI Whisper API. The transcription happens in real-time with minimal latency.",
+        "answer": "No. Voice transcription requires an internet connection to send audio to the configured provider.",
         "question": "Does voice transcription work offline?"
       },
       "whereToUse": {
@@ -719,59 +860,16 @@
     },
     "hero": {
       "badge": "Stage 1 & Stage 5 Voice Input",
-      "description": "Dictate tasks while thinking aloud → clean structured requirements. Dictate terminal commands while keeping eyes on code. Voice transcription respects per-project settings and integrates with text_improvement + task_refinement prompts.",
+      "description": "Dictate tasks and commands; audio is sent to the configured transcription provider and stored as task artifacts or PTY input. Voice transcription respects per-project settings and feeds text_improvement and task_refinement jobs.",
       "title": "Voice transcription for specification capture and terminal control"
     },
     "workflow": {
-      "title": "Voice in the 5-Stage Workflow",
       "stage1": {
-        "title": "Stage 1: Dictating Tasks",
-        "description": "Capture requirements by speaking naturally. Voice transcription converts your thoughts to text, which flows through text_improvement (grammar polish) and task_refinement (expand completeness, surface edge cases). The result is a clear specification ready for Stage 2 file discovery."
-      },
-      "stage5": {
-        "title": "Stage 5: Terminal Voice Control",
-        "description": "Dictate commands directly into the integrated terminal while your hands are on the keyboard reviewing code. Say 'run npm test' or 'git status' and watch commands appear in your PTY session. Keep eyes on code, voice on control."
-      },
-      "integration": {
-        "title": "Integration with text_improvement + task_refinement",
-        "description": "Voice transcripts automatically feed into the text_improvement and task_refinement prompts. This two-phase refinement ensures rough verbal descriptions become precise, implementation-ready specifications before FileFinderWorkflow begins."
-      }
-    },
-    "nextSteps": {
-      "description": "Voice transcription is Stage 1 input in Intelligence-Driven Development. After capturing raw thoughts, text_improvement cleans grammar and task_refinement expands completeness - preparing specs for Stage 2 file discovery.",
-      "link": "Learn about text_improvement and task_refinement",
-      "taskRefinement": {
-        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations. Prepares specs for FileFinderWorkflow.",
-        "title": "Task Refinement (Stage 1 → 2)"
-      },
-      "textEnhancement": {
-        "description": "Polish grammar, improve clarity, and enhance readability while preserving your original intent. Makes voice transcripts professional.",
-        "title": "Text Enhancement (Stage 1)"
-      },
-      "title": "Refine Voice Transcripts Before File Discovery"
-    },
-    "painPoints": {
-      "captureIdeas": {
-        "description": "Stakeholders think faster than they type. Requirements and context get lost while fingers catch up. Voice lets you capture the complete specification before critical details fade.",
-        "title": "Capture ideas before they fade"
-      },
-      "contextSwitching": {
-        "description": "Stop what you are doing to open a note app, type, then return. Every switch breaks concentration. Voice stays in the same workspace.",
-        "title": "Context switching kills momentum"
-      },
-      "handsBusy": {
-        "description": "Reviewing code? Debugging? Drawing architecture diagrams? Your hands are occupied but you need to log the task. Voice transcription keeps you in flow.",
-        "title": "Hard to describe while hands are busy"
-      },
-      "title": "Why Voice Accelerates Specification Capture"
-    },
-    "workflow": {
-      "stage1": {
-        "description": "Dictate tasks while thinking aloud. Raw voice input captures complete requirements - mental models, constraints, context - without the cognitive load of typing.",
+        "description": "Dictate tasks to capture constraints, context, and intent; transcripts become inputs for refinement jobs.",
         "title": "Stage 1: Dictating Tasks"
       },
       "stage5": {
-        "description": "Dictate terminal commands while reviewing code, monitoring logs, or analyzing diffs. Keep your eyes on what matters while controlling execution.",
+        "description": "Dictate terminal commands while reviewing output or diffs; the command is inserted into the PTY input.",
         "title": "Stage 5: Terminal Voice Control"
       },
       "integration": {
@@ -780,281 +878,290 @@
       },
       "title": "Voice Transcription Across Stages"
     },
+    "nextSteps": {
+      "description": "Voice transcription is Stage 1 input in the planning pipeline. After capturing raw thoughts, text_improvement cleans grammar and task_refinement expands completeness, preparing specs for Stage 2 file discovery.",
+      "link": "Learn about text_improvement and task_refinement",
+      "taskRefinement": {
+        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations. Prepares specs for FileFinderWorkflow.",
+        "title": "Task Refinement (Stage 1 \u2192 2)"
+      },
+      "textEnhancement": {
+        "description": "Polish grammar, improve clarity, and preserve intent for review.",
+        "title": "Text Enhancement (Stage 1)"
+      },
+      "title": "Refine Voice Transcripts Before File Discovery"
+    },
+    "painPoints": {
+      "captureIdeas": {
+        "description": "Dictation preserves context at discovery time and creates transcript artifacts for refinement jobs.",
+        "title": "Capture context at discovery time"
+      },
+      "contextSwitching": {
+        "description": "Dictation writes directly into the active task or terminal field so the session context stays intact.",
+        "title": "Keep input in the active surface"
+      },
+      "handsBusy": {
+        "description": "Voice capture keeps input flowing during code review, debugging, or sketching; transcripts stay linked to the task or session.",
+        "title": "Hands-free input during active review"
+      },
+      "title": "Why voice capture exists in intake"
+    },
     "useCases": {
       "codeReview": {
-        "outcome": "Task created with full context, zero typing, no context switch. Ready for text_improvement polish.",
-        "scenario": "Code review reveals a refactoring opportunity. Your hands are on the diff, eyes on the screen. Voice captures the task description.",
-        "title": "Dictate while reviewing code (Stage 1)"
+        "outcome": "Transcript artifacts are ready for text_improvement and task_refinement.",
+        "scenario": "While reviewing a diff, dictate refactor requirements into the task panel; the transcript is stored with the task.",
+        "title": "Dictate refactor notes during review (Stage 1)"
       },
       "fasterEntry": {
-        "outcome": "10x faster task entry. QA feedback processed in minutes instead of hours. Refine with task_refinement before file discovery.",
-        "scenario": "You have 10 similar bugs to log after QA testing. Typing each one takes 2 minutes. Voice transcription takes 20 seconds.",
-        "title": "Faster task entry for repetitive work"
+        "outcome": "Notes are queued for task_refinement to normalize into specs.",
+        "scenario": "After QA, dictate multiple bug reports; each transcript is stored as a task note.",
+        "title": "Batch capture for repeated reports"
       },
       "handsFree": {
-        "outcome": "Ideas logged instantly. Return to debugging without breaking flow. Polish transcripts with text_improvement.",
-        "scenario": "You are deep in a debugging session. You spot three related issues that need fixing. Speak them into the voice recorder without leaving your terminal.",
-        "title": "Capture ideas hands-free (Stage 1)"
+        "outcome": "Captured text is stored as task input and can be refined later.",
+        "scenario": "During a debugging session, dictate related issues without leaving the terminal or editor.",
+        "title": "Capture issues during debug (Stage 1)"
       },
       "terminalCommands": {
-        "outcome": "Commands entered correctly while eyes stay on logs. Stage 5 terminal control without context switching.",
-        "scenario": "Monitoring build output when you need a complex docker command. Dictate it while watching the logs - terminal inserts it correctly.",
-        "title": "Terminal commands without looking away (Stage 5)"
+        "outcome": "The command and output are logged to the session history.",
+        "scenario": "While monitoring output, dictate a command into the active PTY input buffer.",
+        "title": "Dictated commands in PTY (Stage 5)"
       },
-      "title": "Real Use Cases"
+      "title": "Pipeline examples"
     }
   },
   "integratedTerminal": {
     "cta": {
-      "description": "A terminal built for planning and execution—integrated, persistent, and fast.",
+      "description": "A terminal surface tied to planning artifacts, with persistent PTY sessions and SQLite-backed history.",
       "links": {
         "docs": "Read technical docs",
         "voice": "Explore voice commands"
       },
-      "title": "Experience the Terminal That Never Loses Context"
+      "title": "Trace the terminal pipeline"
     },
     "features": {
       "integratedPlanning": {
-        "description": "Execute implementation plans and copy steps directly to the terminal without leaving the application.",
+        "description": "Execute implementation plans and copy steps into the terminal with plan/job IDs preserved in the session log.",
         "title": "Integrated with Planning"
       },
       "persistent": {
-        "description": "Your terminal sessions stay with your work, preserving context between tasks and restarts.",
+        "description": "Sessions persist in SQLite so terminal context can be rehydrated across restarts.",
         "title": "Persistent Sessions"
       },
-      "title": "A Terminal Built for Your Workflow",
+      "title": "Terminal surface capabilities",
       "voiceSupport": {
-        "description": "Use one-click copy-paste for commands or dictate them directly using voice input to move faster.",
+        "description": "Copy buttons and voice dictation insert commands into PTY sessions while keeping the plan view intact.",
         "title": "Voice and Copy Support"
       }
     },
     "hero": {
       "badge": "Integrated PTY Terminal",
-      "description": "Run your plan in a persistent terminal. Built for fast, focused execution.",
+      "description": "Execute plan steps in persistent PTY sessions; output streams to the UI and persists in SQLite session logs.",
       "title": "Job-centric terminal that keeps context"
     }
   },
   "videoAnalysis": {
+    "meta": {
+      "title": "Video Analysis Pipeline - PlanToCode",
+      "description": "Multimodal ingestion pipeline for recordings: frame extraction, transcript analysis, and structured task artifacts."
+    },
     "capabilities": {
       "fileUpload": {
-        "description": "Upload existing Teams/Zoom recordings, customer demos, or screen captures. Supports all common video formats.",
+        "description": "Upload existing recordings and normalize formats for analysis.",
         "features": [
-          "MP4, WebM, MOV, AVI formats",
-          "Drag-and-drop interface",
-          "Teams/Zoom recording compatibility"
+          "MP4, WebM, MOV, AVI support",
+          "Drag-and-drop upload",
+          "Chunked processing"
         ],
-        "title": "Meeting Recording Upload"
+        "title": "Recording upload"
       },
       "fpsControl": {
-        "description": "Adjust frame extraction rate to balance analysis detail with cost. Higher FPS captures rapid UI changes, lower for cost optimization.",
+        "description": "Tune FPS to balance detail, cost, and latency; settings can be stored per project.",
         "features": [
-          "1-2 FPS: Cost-effective meeting overview",
-          "3-5 FPS: Balanced screen share analysis",
-          "6-10 FPS: Detailed UI demo capture"
+          "1-2 FPS for long recordings",
+          "3-5 FPS for most recordings",
+          "6-10 FPS for rapid UI changes"
         ],
-        "title": "FPS Control (1-10 FPS)"
+        "title": "Frame extraction control"
       },
       "gemini": {
-        "description": "Powered by Google Gemini 3 Pro or Flash for multimodal analysis. Extracts decisions, action items, and visual context from meetings.",
+        "description": "Select model for cost vs depth; usage is tracked with the job metadata.",
         "features": [
-          "Audio transcription + frame analysis",
-          "Decision point extraction",
-          "Action item identification with timestamps"
+          "Model selection per run",
+          "Usage and cost tracking",
+          "Consistent structured outputs"
         ],
-        "title": "Gemini Multimodal Analysis"
+        "title": "Model selection"
       },
       "screenRecording": {
-        "description": "Capture live meetings, presentations, or demo flows directly in the app. Record while presenting tasks from Jira or corporate tools.",
+        "description": "Local capture with synchronized audio and video stored alongside the task.",
         "features": [
-          "One-click screen + audio capture",
-          "Record full screen or specific windows",
-          "Automatic format optimization for Gemini"
+          "Full screen or window capture",
+          "Audio and video sync",
+          "Stored with the task id"
         ],
-        "title": "Screen Recording Built-In"
+        "title": "Screen recording"
       },
-      "title": "Powerful Analysis Capabilities"
+      "title": "Pipeline controls"
     },
     "cta": {
-      "description": "Advanced Stage 1 input: Feed Teams/Zoom meetings or screen recordings. Multimodal AI analyzes audio AND frames to extract requirements, decisions, action items. Results feed into task_refinement and FileFinderWorkflow.",
+      "description": "Connect video artifacts to the rest of the planning pipeline: deep research and file discovery.",
       "links": {
-        "fileDiscovery": "Explore Stage 2 file discovery",
-        "research": "See optional research helper"
+        "fileDiscovery": "File discovery pipeline",
+        "research": "Deep research stage"
       },
-      "title": "Transform Meeting Recordings into Stage 1 Requirements"
+      "title": "Continue in the pipeline"
     },
-    "faq": {
-      "formats": {
-        "answer": "PlanToCode supports MP4, WebM, MOV, and AVI video formats. Videos are processed locally and frames are extracted based on your FPS settings before being sent to Gemini Vision for analysis. Most screen recording tools output compatible formats by default.",
-        "question": "Which video formats are supported?"
-      },
-      "fps": {
-        "answer": "FPS recommendations based on use case: 1-2 FPS for general bug reports, long recordings, and cost optimization - captures key moments without excessive frames. 3-5 FPS for balanced analysis for most use cases - good for UI walkthroughs and standard bug captures. 6-10 FPS for detailed UI interactions, animation issues, and rapid state changes - higher cost but more comprehensive.",
-        "question": "What FPS settings should I use?"
-      },
-      "model": {
-        "answer": "Use Gemini 3 Flash for straightforward bug captures, quick UI demos, and documentation where speed and cost matter. Choose Gemini 3 Pro for complex UI issues, detailed pattern analysis, and when you need deeper contextual understanding. Pro provides more nuanced insights but costs more per frame.",
-        "question": "Which AI model should I choose?"
-      },
+      "faq": {
+        "formats": {
+          "answer": "MP4, WebM, MOV, and AVI are supported. Frames are extracted locally based on your FPS setting before analysis.",
+          "question": "Which video formats are supported?"
+        },
+        "fps": {
+          "answer": "1-2 FPS for long recordings, 3-5 FPS for most recordings, 6-10 FPS for rapid UI changes. Higher FPS increases cost and detail.",
+          "question": "What FPS settings should I use?"
+        },
+        "model": {
+          "answer": "Fast models trade depth for cost and latency; deep models capture more context for complex flows. Choose per run based on the task.",
+          "question": "Which model should I choose?"
+        },
       "optimization": {
-        "answer": "Cost optimization strategies: Use lower FPS settings (1-2 FPS) for longer videos or simple analysis. Choose Gemini Flash over Pro when detailed analysis isn't critical. Trim videos to relevant sections only before uploading. Use screen recording to capture only necessary interactions rather than uploading long recordings.",
+        "answer": "Lower FPS, trim to relevant segments, and choose fast analysis when deep context is not required.",
         "question": "How can I optimize analysis costs?"
       }
     },
     "hero": {
-      "badge": "Advanced Stage 1 Input - Multimodal Analysis",
-      "description": "Feed Teams/Zoom or screen recordings. AI extracts requirements, decisions, action items from audio AND frames (UI states, error messages). Resulting notes feed into task_refinement and later stages.",
-      "title": "Meeting & Recording Analysis for Requirements Extraction"
+      "badge": "Stage 1 input: Video and audio ingestion",
+      "description": "Ingest screen recordings or meeting videos, extract frames and transcripts, run multimodal analysis through configured providers, and store structured task artifacts for planning.",
+      "title": "Multimodal video analysis for requirements capture"
     },
     "howItWorks": {
       "steps": [
         {
-          "title": "Record or Upload Meeting/Demo",
-          "description": "Capture Microsoft Teams meetings, Zoom calls, or screen presentations while presenting tasks from Jira or similar corporate tools. Upload existing recordings. Supports MP4, WebM, MOV, and AVI for compatibility with corporate tools."
+          "title": "Capture or upload video",
+          "description": "Record in-app or upload MP4/WebM/MOV/AVI files. Videos are stored locally before analysis."
         },
         {
-          "title": "Gemini Multimodal Analysis (Audio + Visual)",
-          "description": "Video is processed at your chosen FPS (1-10). Gemini 3 Pro or Flash analyzes audio transcripts AND frames - capturing spoken decisions, visual UI states, error messages, and interaction patterns simultaneously."
+          "title": "Extract frames and transcript",
+          "description": "Frame extraction runs at the configured FPS and audio is transcribed with timestamps."
         },
         {
-          "title": "Extract Requirements, Decisions, Action Items",
-          "description": "AI extracts key decisions with speaker attribution, concrete action items with owners, discussion points with context, and visual elements like error messages or UI states from screen shares."
+          "title": "Run multimodal analysis",
+          "description": "The analysis prompt combines transcript + frames to produce structured outputs."
         },
         {
-          "title": "Feed into Task Refinement & FileFinderWorkflow",
-          "description": "Complete analysis auto-attaches to your task description. Use task_refinement to expand completeness, then FileFinderWorkflow (Stage 2) to discover impacted files. Video analysis enriches Stage 1 input."
+          "title": "Attach to the task pipeline",
+          "description": "Artifacts are attached to the task and feed task_refinement and file discovery."
         }
       ],
-      "title": "How Multimodal Meeting Analysis Works"
+      "title": "How the pipeline runs"
     },
     "insights": {
       "actionItems": {
-        "description": "Concrete action items with owners and implicit dependencies identified",
-        "title": "Action Items"
+        "description": "Action items with owners, dependencies, and links to timestamps and frames.",
+        "title": "Action items"
       },
       "decisions": {
-        "description": "Key decisions extracted with context and attributed to specific speakers",
-        "title": "Summarized Decisions"
+        "description": "Decisions captured with context and source timestamps.",
+        "title": "Decisions"
       },
-      "description": "After processing your meeting recording, the system analyzes both audio transcripts and visual content (shared screens, documents, key moments) to extract actionable insights. The extracted insights - summarized decisions, action items, and key discussion points - are presented in an intuitive interface where team leads can review, select, and incorporate them into actionable implementation plans.",
+      "description": "Analysis results are stored as structured artifacts with references to timestamps and frames so reviewers can promote them into plan inputs.",
       "discussionPoints": {
-        "description": "Important context, concerns raised, and alternative approaches discussed",
-        "title": "Discussion Points"
+        "description": "Open questions and alternatives linked to the original segment.",
+        "title": "Discussion points"
       },
-      "title": "Extracting Actionable Insights"
+      "title": "Structured outputs"
     },
     "models": {
       "flash": {
-        "description": "Fast, cost-effective analysis for straightforward bug captures and documentation. Ideal for high-volume usage.",
+        "description": "Lower cost and latency for straightforward UI flows and documentation.",
         "features": [
+          "Fast turnaround",
           "Lower cost per frame",
-          "Faster processing time",
-          "Good for simple UI analysis"
+          "Good for simple flows"
         ],
-        "title": "Gemini 3 Flash"
+        "title": "Fast analysis model"
       },
       "pro": {
-        "description": "Comprehensive analysis with deeper insights. Best for complex UI issues, detailed pattern recognition, and advanced debugging.",
+        "description": "Deeper context for complex UI issues and nuanced workflows.",
         "features": [
-          "Advanced pattern recognition",
-          "Deeper contextual understanding",
-          "Better for complex UI flows"
+          "Richer reasoning",
+          "Better for complex flows",
+          "Higher cost per frame"
         ],
-        "title": "Gemini 3 Pro"
+        "title": "Deep analysis model"
       },
-      "title": "Choose Your Analysis Model"
+      "title": "Model tradeoffs"
     },
     "multimodal": {
       "audioTranscript": {
-        "description": "Complete audio transcription of meeting discussions. Extract key requirements, decisions, and action items from meeting audio.",
+        "description": "Transcribe audio with timestamps and speaker cues, then feed the transcript into analysis prompts.",
         "features": [
-          "Complete audio transcription",
-          "Decision point extraction",
-          "Action item identification"
+          "Timestamped transcript",
+          "Speaker markers when available",
+          "Links to frame ranges"
         ],
-        "title": "Audio Transcript Analysis"
+        "title": "Audio transcript extraction"
       },
-      "title": "Multimodal Analysis of Meetings",
+      "title": "Audio and visual extraction",
       "visualContent": {
-        "description": "AI analyzes shared screens, presented documents, and key visual moments. Captures UI mockups, architecture diagrams, and other visual context critical for requirements.",
+        "description": "Sample frames at configurable FPS and extract on-screen text, UI states, and key moments.",
         "features": [
-          "Screen share content extraction",
-          "Document and diagram analysis",
-          "Key moment identification"
+          "Frame sampling and keyframe selection",
+          "OCR and UI state capture",
+          "Frame ids linked to insights"
         ],
-        "title": "Visual Content Analysis"
+        "title": "Visual frame analysis"
       }
     },
     "painPoints": {
       "incompleteNotes": {
-        "description": "Note-takers can't capture everything—who said what, what was shown on screen, subtle requirement changes. Important context gets lost between meetings and implementation.",
-        "title": "Manual Meeting Notes Are Incomplete"
+        "description": "Screenshare changes, error dialogs, and diagrams rarely make it into structured artifacts without frame references.",
+        "title": "Manual notes omit frame references"
       },
       "requirementsLost": {
-        "description": "Critical decisions and requirements discussed in meetings are forgotten or misinterpreted. Manual note-taking misses context, speaker intent, and visual references.",
-        "title": "Requirements Get Lost in Meetings"
+        "description": "Text notes miss on-screen context, timing, and the exact UI state; frame extraction preserves that context.",
+        "title": "UI state lives in recordings"
       },
       "reviewTime": {
-        "description": "Teams spend hours reviewing meeting recordings manually to extract key decisions. Requirements buried in hour-long calls are hard to find and document.",
-        "title": "Review Time Wastes Team Resources"
+        "description": "Long recordings are condensed into timestamped artifacts with frame references.",
+        "title": "Raw recordings are expensive to review"
       },
-      "title": "Why Meeting Analysis Matters for Corporate Teams"
+      "title": "Why multimodal ingestion exists"
     },
     "useCases": {
       "bugCapture": {
-        "description": "Record the bug as it happens. AI extracts error messages, identifies UI states before and after the issue, and captures interaction patterns leading to the bug.",
-        "title": "Bug Capture with Full Context"
+        "description": "Extract error states, UI transitions, and reproduction steps with timestamps.",
+        "title": "Bug timeline artifacts"
       },
       "onboarding": {
-        "description": "Record feature walkthroughs and generate automatic documentation. AI creates step-by-step guides with screenshots and descriptions from your recordings.",
-        "title": "Onboarding Documentation"
+        "description": "Generate structured walkthrough notes with referenced frames.",
+        "title": "Walkthrough summaries"
       },
-      "title": "Real-World Use Cases",
+      "title": "Example outputs",
       "uiDemo": {
-        "description": "Analyze customer demos, user session recordings, or design walkthroughs. Extract UI patterns, user behavior insights, and improvement opportunities.",
-        "title": "UI Demo Analysis"
+        "description": "Capture UI patterns and states with linked timestamps and frames.",
+        "title": "UI state capture"
       }
     }
   },
   "copyButtons": {
     "meta": {
-      "title": "Copy Buttons - Bridge Planning and Execution",
-      "description": "Copy buttons encapsulate best-practice prompts with placeholders like {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, paths. Ensures consistent, governance-compliant instructions across sessions."
-    },
-    "comparison": {
-      "plantocode": {
-        "items": [
-          "One-click governance-compliant workflows",
-          "{{IMPLEMENTATION_PLAN}} substitution",
-          "Best-practice prompt templates",
-          "Context-aware XML plan injection",
-          "Persistent team workflows"
-        ],
-        "title": "PlanToCode Copy Buttons"
-      },
-      "title": "What Makes This Different",
-      "traditional": {
-        "items": [
-          "Manual copy-paste of plan XML",
-          "Inconsistent instructions across sessions",
-          "Forgotten governance constraints",
-          "Error-prone manual template edits",
-          "Lost best-practice workflows"
-        ],
-        "title": "Traditional Copy-Paste"
-      }
+      "title": "Copy Buttons - Template Handoff",
+      "description": "Copy buttons apply prompt templates with placeholders like {{IMPLEMENTATION_PLAN}} and {{TASK_DESCRIPTION}} to standardize execution handoff."
     },
     "concept": {
       "dragDrop": {
-        "description": "Visual workflow management with drag-drop reordering. Organize buttons by execution priority or workflow stage.",
-        "title": "Drag-Drop Reordering"
+        "description": "Drag-and-drop ordering for button sets. Organize buttons by execution stage or priority.",
+        "title": "Drag-and-drop ordering"
       },
       "serverConfigured": {
-        "description": "Best-practice templates with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{PROJECT_CONTEXT}}. Server-side defaults with project-specific overrides.",
+        "description": "Template prompts with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{PROJECT_CONTEXT}}. Server-side defaults with project-specific overrides.",
         "title": "Template Placeholders"
       },
       "terminal": {
-        "description": "One-click execution in persistent terminal sessions (Stage 5). Chunked sending for large XML plans.",
-        "title": "Terminal Integration (Stage 5)"
+        "description": "Send templated commands to persistent terminal sessions (Stage 5). Chunked sending for large XML plans.",
+        "title": "Terminal integration (Stage 5)"
       }
     },
     "configuration": {
@@ -1064,47 +1171,78 @@
           "SQLite database persistence",
           "Server-managed default configurations",
           "Project directory scoping",
-          "Real-time configuration updates"
+          "Configuration updates"
         ],
         "title": "Project-Specific Settings"
       },
       "title": "Configuration & Management",
       "visualUI": {
-        "description": "Intuitive editor with drag-drop reordering, debounced input handling, and real-time preview.",
+        "description": "Configuration editor with drag-drop reordering, debounced input handling, and preview.",
         "features": [
           "Drag handles for visual reordering",
           "300ms debounced input processing",
           "Read-only mode for system buttons",
-          "Customization workflow support"
+          "Template ordering support"
         ],
         "title": "Visual Configuration UI"
       }
     },
     "cta": {
-      "description": "Bridge between planning and execution. Copy buttons ensure governance-compliant instructions with {{IMPLEMENTATION_PLAN}} substitution. Example: 'Apply this merged plan with Claude Code Plan Mode' - inserts template + XML plan.",
+      "description": "Copy buttons insert structured plan content into templated prompts for consistent execution handoff.",
       "links": {
         "planMode": "See Stage 3 planning & Stage 4 merge",
         "terminal": "Explore Stage 5 terminal integration"
       },
-      "title": "Best-Practice Workflows, One Click"
+      "title": "Template-driven execution handoff"
+    },
+    "exampleConfig": {
+      "title": "Example button configuration:",
+      "footer": "\u2192 Button runs the configured template",
+      "templateBody": "{{IMPLEMENTATION_PLAN}}\n\nReview the plan. Read the files mentioned, understand them and launch parallel coding agents that run at the same time..."
+    },
+    "exampleLabels": {
+      "button": "Button:",
+      "dynamic": "Dynamic:",
+      "label": "Label:",
+      "purpose": "Purpose:",
+      "result": "Result:",
+      "template": "Template:"
+    },
+    "exampleValues": {
+      "investigationButton": "\"Investigate Results\"",
+      "investigationPurpose": "Thorough validation workflows",
+      "parallelButton": "\"Parallel agent template\"",
+      "parallelPurpose": "Complex multi-agent setup instructions",
+      "projectContextTemplate": "{{PROJECT_CONTEXT}}",
+      "projectDynamic": "Project-aware instructions",
+      "stepResult": "Focused step execution",
+      "stepTemplate": "{{STEP_CONTENT}}"
     },
     "hero": {
-      "badge": "Bridge Planning and Execution - Template System",
-      "description": "Copy buttons encapsulate best-practice prompts with {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, paths. Example button: 'Apply this merged plan with Claude Code Plan Mode' - inserts template + XML plan.",
-      "title": "Best-practice prompts with plan substitution"
+      "badge": "Template handoff",
+      "description": "Copy buttons insert {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and path context into predefined templates.",
+      "title": "Template prompts with plan substitution"
     },
     "technical": {
       "architecture": {
-        "execution": "Button click triggers template processing → Placeholder substitution with plan content → Terminal session validation → Chunked content transmission",
-        "processing": "Regex-based placeholder matching → Dynamic content substitution → Context-aware data extraction → Error handling for undefined values",
-        "storage": "CopyButtonConfig[] in task settings → Project-specific database storage → Server-side default configurations → Real-time synchronization",
-        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
+        "heading": "# Copy button system architecture",
+        "note": "[Extend with new placeholders and templates as needed]",
+        "sections": {
+          "execution": "## 4. Execution flow",
+          "processing": "## 2. Template processing",
+          "storage": "## 1. Configuration storage",
+          "ui": "## 3. UI integration"
+        },
+        "execution": "Button click triggers template processing \u2192 Placeholder substitution with plan content \u2192 Terminal session validation \u2192 Chunked content transmission",
+        "processing": "Regex-based placeholder matching \u2192 Dynamic content substitution \u2192 Context-aware data extraction \u2192 Error handling for undefined values",
+        "storage": "CopyButtonConfig[] in task settings \u2192 Project-specific database storage \u2192 Server-side default configurations \u2192 Configuration synchronization",
+        "ui": "Implementation plan cards \u2192 Content viewing modals \u2192 Terminal interface headers \u2192 Drag-drop configuration editor"
       },
       "title": "Technical Implementation"
     },
     "templateSystem": {
       "placeholders": {
-        "description": "Best-practice templates with {{PLACEHOLDER}} substitution. Context-aware processing with implementation plans from Stage 3/4.",
+        "description": "Template prompts with {{PLACEHOLDER}} substitution. Context-aware processing with implementation plans from Stage 3/4.",
         "examples": [
           "{{IMPLEMENTATION_PLAN}} - Full merged plan XML",
           "{{STEP_CONTENT}} - Selected step content",
@@ -1114,7 +1252,7 @@
         "title": "Placeholder Substitution"
       },
       "processor": {
-        "description": "Advanced template engine injects XML plans, task descriptions, and governance constraints into pre-configured prompts.",
+        "description": "Template processor injects XML plans, task descriptions, and governance constraints into predefined prompts.",
         "features": [
           "Regex-based placeholder matching",
           "XML plan formatting and escaping",
@@ -1123,119 +1261,119 @@
         ],
         "title": "Unified Prompt Processing"
       },
-      "title": "Best-Practice Template System"
+      "title": "Template system"
     },
     "terminalIntegration": {
       "oneClick": {
-        "description": "Copy buttons integrate with Stage 5 terminal sessions. One click = full governance-compliant workflow execution with plan context.",
+        "description": "Copy buttons integrate with Stage 5 terminal sessions and insert plan context into the active PTY with logging.",
         "features": [
           "Automatic paste to active terminal session",
           "Chunked sending for large XML plans",
           "Session health monitoring",
           "Clipboard fallback for safety"
         ],
-        "title": "One-Click Stage 5 Execution"
+        "title": "Stage 5 execution handoff"
       },
       "title": "Stage 5 Terminal Execution"
     },
     "useCases": {
       "customTeam": {
-        "description": "Team-specific governance constraints with {{PROJECT_CONTEXT}} and coding standards. Ensures consistent compliance.",
-        "title": "Custom Team Governance Workflows"
+        "description": "Team-specific governance constraints with {{PROJECT_CONTEXT}} and coding standards.",
+        "title": "Team governance templates"
       },
       "investigation": {
-        "description": "Standardized review processes for Stage 3 implementation plan results. Example button: 'Investigate Results' with thorough validation workflow.",
-        "title": "Investigation & Review"
+        "description": "Standardized review prompts for Stage 3 implementation plan results.",
+        "title": "Investigation and review"
       },
       "parallel": {
-        "description": "Example button: 'Apply this merged plan with Claude Code Plan Mode' - inserts template + {{IMPLEMENTATION_PLAN}} XML. Launches agents with governance instructions.",
-        "title": "Parallel Agent Workflows with Plan Context"
+        "description": "Example button: \"Parallel agent template\" inserts the plan XML and governance instructions.",
+        "title": "Parallel agent templates"
       },
       "stepByStep": {
         "description": "Extract individual implementation steps with {{STEP_CONTENT}}. Execute step-by-step with full plan context.",
-        "title": "Step-by-Step Execution"
+        "title": "Step-by-step execution"
       },
-      "title": "Real-World Use Cases"
+      "title": "Example configurations"
     }
   },
   "deepResearch": {
     "meta": {
-      "title": "Deep Research - Optional Helper Stage for Migration & Upgrades",
-      "description": "Background research jobs fetch framework migration guides, best practices, API docs. Attach summarized findings back to tasks/plans. Use cases: Next.js major version upgrade, Stripe API migration."
+      "title": "Deep Research - Web Search Pipeline",
+      "description": "Background research jobs fetch migration guides and API docs, then attach summaries to tasks and plans when additional context is needed."
     },
     "advanced": {
       "features": [
         {
-          "title": "Framework Migration Intelligence",
-          "description": "AI fetches official migration guides, breaking changes, and best practices for major framework version upgrades like Next.js 14 → 15 or React 17 → 18."
+          "title": "Migration guide retrieval",
+          "description": "Fetches official migration guides and breaking changes for framework upgrades (e.g., Next.js 14 \u2192 15 or React 17 \u2192 18)."
         },
         {
-          "title": "API Documentation Research",
-          "description": "Background jobs pull latest API documentation, SDK changes, and version compatibility notes for services like Stripe, AWS, or Twilio."
+          "title": "API documentation retrieval",
+          "description": "Background jobs pull API documentation, SDK changes, and version compatibility notes for external services."
         },
         {
           "title": "Background Processing",
-          "description": "Long-running research tasks execute in the background with real-time progress updates. No blocking the main workflow."
+          "description": "Long-running research tasks execute in the background with progress updates."
         },
         {
           "title": "Plan Context Integration",
-          "description": "Research findings automatically attach to task descriptions or implementation plans. Influences implementation_plan prompt with authoritative sources."
+          "description": "Research findings attach to task descriptions or implementation plans and feed into plan prompts."
         },
         {
-          "title": "Best Practice Extraction",
-          "description": "AI identifies and summarizes recommended patterns, anti-patterns, and gotchas from official documentation and community sources."
+          "title": "Pattern extraction",
+          "description": "Summarizes recommended patterns, anti-patterns, and gotchas from official documentation and community sources."
         },
         {
-          "title": "Cost-Optimized Research",
-          "description": "Intelligent model selection and query optimization. Research only when needed - not every task requires it."
+          "title": "On-demand research",
+          "description": "Runs research only when needed, with query gating and provider limits."
         }
       ],
-      "title": "Optional Research Helper Capabilities"
+      "title": "Research helper capabilities"
     },
     "aiCapabilities": {
       "multiModel": {
-        "description": "Leverages multiple AI models to execute research tasks with different perspectives and expertise areas.",
+        "description": "Supports multiple configured models for research tasks with different prompts or scopes.",
         "models": [
-          "OpenAI GPT Models",
-          "Anthropic Claude",
-          "Google Gemini",
-          "Specialized Research Models"
+          "Configured provider models",
+          "Research-specific prompt variants",
+          "Per-task allowlists",
+          "Context window limits"
         ],
-        "title": "Multi-Model Research"
+        "title": "Multi-model routing"
       },
       "parallel": {
-        "description": "Execute multiple research tasks simultaneously with intelligent result aggregation and synthesis.",
+        "description": "Execute multiple research tasks simultaneously with result aggregation and synthesis.",
         "features": [
-          "Concurrent Execution",
-          "Progress Tracking",
-          "Error Recovery",
-          "Result Synthesis"
+          "Concurrent execution",
+          "Progress tracking",
+          "Error handling",
+          "Result synthesis"
         ],
-        "title": "Parallel Processing"
+        "title": "Parallel execution"
       },
       "projectContext": {
-        "description": "AI analyzes your project structure, technology stack, and codebase to generate highly relevant research.",
+        "description": "Uses project structure, technology stack, and dependencies to contextualize research prompts.",
         "features": [
-          "File Structure Analysis",
-          "Technology Stack Detection",
-          "Dependency Mapping",
-          "Context-Aware Insights"
+          "File structure signals",
+          "Technology stack detection",
+          "Dependency mapping",
+          "Context tokens in prompts"
         ],
-        "title": "Project Context Analysis"
+        "title": "Project context integration"
       },
-      "title": "AI Research Capabilities"
+      "title": "Research job controls"
     },
     "cta": {
-      "description": "Optional helper stage for complex migrations and upgrades. Background jobs fetch authoritative sources, summarize findings, attach to plans. Research influences implementation_plan prompt when you need it.",
+      "description": "Use this stage for migrations or complex upgrades. Background jobs fetch sources, summarize findings, and attach notes to tasks and plans.",
       "links": {
         "planMode": "See Stage 3 implementation planning",
         "textImprovement": "Explore Stage 1 text enhancement"
       },
-      "title": "Accelerate Migrations with Background Research"
+      "title": "Research pipeline for migrations and upgrades"
     },
     "developmentFocus": {
       "contextFiltering": {
-        "description": "Research scope tailored to your migration scenario - only relevant framework versions, API changes, and compatible patterns.",
+        "description": "Research scope tailored to the migration scenario: relevant framework versions, API changes, and compatibility notes.",
         "features": [
           "Framework version compatibility checking",
           "Breaking change identification",
@@ -1245,7 +1383,7 @@
         "title": "Migration-Focused Filtering"
       },
       "implementationReady": {
-        "description": "Research results formatted for implementation plans. Code examples, migration scripts, and step-by-step upgrade paths.",
+        "description": "Research results formatted for implementation plans, including code examples, migration scripts, and upgrade steps.",
         "features": [
           "Migration code snippet extraction",
           "Upgrade script templates",
@@ -1254,146 +1392,146 @@
         ],
         "title": "Implementation-Ready Migration Insights"
       },
-      "title": "Development-Focused Research"
+      "title": "Migration-focused research"
     },
     "features": {
       "parallelExecution": {
-        "description": "Execute multiple research tasks concurrently - fetch Next.js migration guide, React upgrade docs, and TypeScript compatibility notes simultaneously.",
-        "title": "Parallel Background Research"
+        "description": "Execute multiple provider queries concurrently (migration guides, upgrade docs, compatibility notes).",
+        "title": "Parallel search execution"
       },
       "projectIntegration": {
-        "description": "Research findings attach to task descriptions or implementation plans. Influences implementation_plan prompt with authoritative sources and best practices.",
-        "title": "Plan & Task Integration"
+        "description": "Research findings attach to task descriptions or implementation plans and inform plan prompts with sources and constraints.",
+        "title": "Task and plan integration"
       },
       "queryGeneration": {
-        "description": "AI generates context-aware research queries for framework migrations, API upgrades, and library version changes. Multi-angle exploration for complete coverage.",
-        "title": "Migration-Focused Query Generation"
+        "description": "Queries are generated from migration context, API upgrades, and library version changes, with multiple angles when needed.",
+        "title": "Query planning"
       }
     },
     "hero": {
-      "badge": "Optional Helper Stage - Background Research",
-      "description": "Background jobs fetch framework migration guides, best practices, API docs. Use cases: Next.js major version upgrade, Stripe API version upgrade. Research influences implementation_plan prompt.",
-      "title": "Deep research for migrations and upgrades"
+      "badge": "Background research stage",
+      "description": "Background jobs generate search queries, fetch migration guides and API docs, then attach summaries and citations to tasks and plans.",
+      "title": "Deep research pipeline for migrations and upgrades"
     },
     "intelligence": {
       "contextIntegration": {
-        "description": "Research results are automatically integrated with your task description, enriching it with relevant findings and recommendations.",
+        "description": "Findings attach to the task description and feed plan prompts with sources and constraints.",
         "features": [
-          "Automatic task enhancement",
-          "Structured result formatting",
-          "Implementation plan integration",
-          "Development workflow alignment"
+          "Structured research notes",
+          "Constraints and compatibility flags",
+          "Links back to sources",
+          "Plan prompt attachment"
         ],
-        "title": "Context Integration"
+        "title": "Task and plan integration"
       },
       "execution": {
-        "description": "Sophisticated AI models execute research tasks in parallel, providing comprehensive analysis and insights.",
+        "description": "Research jobs run queries across providers, normalize responses, and track usage per job.",
         "features": [
-          "Parallel research task execution",
-          "Streaming results with progress tracking",
-          "Context-aware analysis and synthesis",
-          "Development-focused insights"
+          "Parallel execution with progress updates",
+          "Provider routing and retry handling",
+          "Result normalization and deduplication",
+          "Usage and cost metadata per job"
         ],
-        "title": "AI Research Execution"
+        "title": "Search execution"
       },
       "queryExpansion": {
-        "description": "AI analyzes your initial query and generates strategic variations for comprehensive research coverage.",
+        "description": "Expands the initial task into provider-specific search queries based on versions, APIs, and constraints.",
         "features": [
-          "Context-aware query variations",
-          "Semantic synonym expansion",
-          "Domain-specific terminology",
-          "Multi-perspective research angles"
+          "Version- and dependency-aware queries",
+          "Multiple query variants for coverage",
+          "Provider-specific syntax tuning",
+          "Rate-limit aware batching"
         ],
-        "title": "Smart Query Expansion"
+        "title": "Query planning"
       },
       "synthesis": {
-        "description": "Advanced AI models analyze your project context and generate targeted research insights tailored to your development needs.",
+        "description": "Summarizes results into structured notes with citations and version context.",
         "features": [
-          "Project-aware research generation",
-          "Context-sensitive analysis",
-          "Development-focused insights",
-          "Implementation-ready recommendations"
+          "Citation-linked summaries",
+          "Version-specific recommendations",
+          "Task-context tags",
+          "Plan-ready excerpts"
         ],
-        "title": "AI Research Synthesis"
+        "title": "Result synthesis"
       },
-      "title": "Research Intelligence Engine"
+      "title": "Research pipeline stages"
     },
     "process": {
       "stage1": {
-        "description": "AI analyzes your task description and project context to generate sophisticated research queries. Creates multiple strategic research angles for comprehensive coverage.",
-        "title": "Research Query Generation"
+        "description": "Generate queries from task context, version targets, and constraints. The query set is stored with the job for traceability.",
+        "title": "Query generation stage"
       },
       "stage2": {
-        "description": "Multiple AI models execute research tasks concurrently, each focusing on different aspects of your requirements. Results are synthesized into actionable development insights.",
-        "title": "Parallel Research Execution"
+        "description": "Execute provider searches, extract results, and store summaries with citations and metadata.",
+        "title": "Search execution stage"
       },
-      "title": "Two-Stage AI Research Process"
+      "title": "Two-stage research process"
     }
   },
   "features": {
     "copyButtons": {
-      "description": "Transform any prompt into a reusable button with smart placeholders and drag-drop",
-      "slug": "/features/copy-buttons",
+      "description": "Template-based prompt buttons that inject plan snippets, file lists, and task inputs.",
+      "slug": "/docs/copy-buttons",
       "title": "Copy Buttons"
     },
     "deepResearch": {
-      "description": "AI-powered research with sophisticated queries and parallel research tasks",
-      "slug": "/features/deep-research",
+      "description": "Parallel research stages that gather external context and attach notes before planning.",
+      "slug": "/docs/deep-research",
       "title": "Deep Research"
     },
     "fileDiscovery": {
-      "description": "Intelligent multi-stage workflow that discovers and selects relevant files from your codebase",
-      "slug": "/features/file-discovery",
-      "title": "AI File Discovery",
+      "description": "Multi-stage file discovery pipeline that scores and persists relevant files before planning.",
+      "slug": "/docs/file-discovery",
+      "title": "File Discovery",
       "meta": {
-        "title": "AI file discovery - find impacted files",
-        "description": "Multi-stage AI workflow that discovers and selects relevant files. Cost-effective at $0.10-0.15 per workflow with real-time progress tracking."
+        "title": "File Discovery Pipeline - PlanToCode",
+        "description": "Multi-stage workflow that indexes, filters, and scores files before LLM planning."
       }
     },
     "integratedTerminal": {
-      "description": "Persistent terminal sessions with health monitoring and command review",
-      "slug": "/features/integrated-terminal",
+      "description": "PTY-backed terminal sessions with persistent logs and job binding.",
+      "slug": "/docs/terminal-sessions",
       "title": "Integrated Terminal"
     },
     "mergeInstructions": {
-      "description": "AI analyzes multiple implementation plans, resolves conflicts, creates emergent solutions",
-      "slug": "/features/merge-instructions",
-      "title": "Architectural Plan Synthesis",
+      "description": "Plan merge processor that reconciles multiple plan drafts into one structured sequence.",
+      "slug": "/docs/merge-instructions",
+      "title": "Plan Merge Instructions",
       "meta": {
-        "title": "Plan Synthesis - Multi-Model Merging",
-        "description": "Architectural synthesis beyond simple merging. AI analyzes plans, resolves conflicts with SOLID principles, and creates emergent solutions with traceability."
+        "title": "Plan Merge Processor - Structured Merge",
+        "description": "Structured merge of multiple plans with explicit instructions and traceable step alignment."
       }
     },
     "planMode": {
-      "description": "Generate file-by-file implementation plans with AI. Review and approve every change before execution",
-      "slug": "/features/plan-mode",
+      "description": "Structured implementation plans with reviewable steps and links back to jobs.",
+      "slug": "/docs/implementation-plans",
       "title": "Implementation Plans",
       "meta": {
-        "title": "AI Implementation Plans - Human-in-Loop",
-        "description": "Generate file-by-file AI plans. Review every change before execution. Prevent regressions in legacy code. Safe AI development."
+        "title": "Implementation Planning Pipeline - PlanToCode",
+        "description": "Generate structured, reviewable implementation plans before execution."
       }
     },
     "textImprovement": {
-      "description": "Refine specifications with AI text enhancement and task refinement prompts",
-      "slug": "/features/text-improvement",
-      "title": "Specification Capture Mode",
+      "description": "Text improvement and task refinement prompts that normalize requirements.",
+      "slug": "/docs/text-improvement",
+      "title": "Task Refinement & Text Improvement",
       "meta": {
-        "title": "Spec Capture Mode - AI Text Enhancement",
-        "description": "Refine specifications with two AI prompts: Text Enhancement for clarity, Task Refinement for completeness. Create actionable specs for development teams."
+        "title": "Task Refinement & Text Improvement",
+        "description": "Normalize task descriptions and expand missing constraints before planning."
       }
     },
     "videoAnalysis": {
-      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements",
-      "slug": "/features/video-analysis",
-      "title": "Meeting & Recording Analysis"
+      "description": "Multimodal ingestion of recordings with frame extraction, transcripts, and structured task artifacts.",
+      "slug": "/docs/video-analysis",
+      "title": "Video Analysis Pipeline"
     },
     "voiceTranscription": {
-      "description": "Capture specifications hands-free with voice transcription in multiple languages",
-      "slug": "/features/voice-transcription",
+      "description": "Speech-to-text capture for requirements and terminal commands.",
+      "slug": "/docs/voice-transcription",
       "title": "Voice to Text",
       "meta": {
-        "title": "Voice to text for rapid specification capture",
-        "description": "Hands-free specification capture with voice. Accurate transcription inserts text where you work. Configure per project, supports multiple languages."
+        "title": "Voice Transcription Pipeline",
+        "description": "Capture spoken requirements with transcript insertion and session context."
       }
     }
   }

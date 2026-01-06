@@ -1,9 +1,11 @@
 'use client';
 
+import { useState } from 'react';
 import { Link } from '@/i18n/navigation';
 import { ArrowLeft, Calendar, Clock, Share2, Copy, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { GlassCard } from '@/components/ui/GlassCard';
+import { useMessages } from '@/components/i18n/useMessages';
 // Removed Reveal to fix initial content visibility issues
 
 interface DocsArticleProps {
@@ -26,6 +28,18 @@ export function DocsArticle({
   showFooter = true,
 }: DocsArticleProps) {
   const [copied, setCopied] = useState(false);
+  const { t, locale } = useMessages();
+  const backToDocsLabel = t('docs.article.backToDocs');
+  const shareLabel = t('docs.article.share');
+  const copyLinkLabel = t('docs.article.copyLink');
+  const copiedLabel = t('docs.article.copied');
+  const viewAllDocsLabel = t('docs.article.viewAllDocs');
+  const readSuffix = t('docs.article.readSuffix');
+  const dateFormatter = new Intl.DateTimeFormat(locale, {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -58,95 +72,76 @@ export function DocsArticle({
   return (
     <article className="relative pt-4 pb-16 sm:pb-20 lg:pb-24 animate-fade-in">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl">
-        {/* Back to Docs */}
-        <Link 
-            href="/docs" 
-            className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-2 group"
-          >
-            <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-            <span>Back to Docs</span>
-          </Link>
+        <Link
+          href="/docs"
+          className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-4 group"
+        >
+          <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
+          <span>{backToDocsLabel}</span>
+        </Link>
 
-        {/* Article Header */}
-        <header className="mb-12">
+        <GlassCard className="p-8 sm:p-10 lg:p-12">
+          <header className="mb-10">
             <div className="flex items-center gap-3 mb-4">
               <span className="py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                 {category}
               </span>
             </div>
-            
+
             <h1 className="text-3xl sm:text-4xl font-bold mb-4 leading-tight bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-400 dark:via-cyan-400 dark:to-blue-400 bg-clip-text text-transparent">
               {title}
             </h1>
-            
+
             <p className="text-lg text-muted-foreground mb-6 leading-relaxed">
               {description}
             </p>
-            
+
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
               <div className="flex items-center gap-1">
                 <Calendar className="w-4 h-4" />
                 <time dateTime={date}>
-                  {new Date(date).toLocaleDateString('en-US', { 
-                    month: 'long', 
-                    day: 'numeric', 
-                    year: 'numeric' 
-                  })}
+                  {dateFormatter.format(new Date(date))}
                 </time>
               </div>
               <span>•</span>
               <div className="flex items-center gap-1">
                 <Clock className="w-4 h-4" />
-                <span>{readTime} read</span>
+                <span>{readTime} {readSuffix}</span>
               </div>
               <span>•</span>
               <Button variant="ghost" size="sm" onClick={handleShare} className="gap-2">
-                <Share2 className="h-4 w-4" /> Share
+                <Share2 className="h-4 w-4" /> {shareLabel}
               </Button>
               <Button variant="ghost" size="sm" onClick={handleCopyLink} className="gap-2">
                 {copied ? (
                   <>
                     <CheckCircle className="h-4 w-4" />
-                    <span>Copied!</span>
+                    <span>{copiedLabel}</span>
                   </>
                 ) : (
                   <>
                     <Copy className="h-4 w-4" />
-                    <span>Copy Link</span>
+                    <span>{copyLinkLabel}</span>
                   </>
                 )}
               </Button>
             </div>
           </header>
 
-        {/* Article Content */}
-        <div className="prose dark:prose-invert prose-pre:text-slate-100 max-w-none 
-            prose-headings:font-bold prose-headings:text-foreground
-            prose-h2:text-2xl prose-h2:mt-12 prose-h2:mb-4
-            prose-h3:text-xl prose-h3:mt-8 prose-h3:mb-4
-            prose-h4:text-lg prose-h4:mt-6 prose-h4:mb-3
-            prose-p:text-base prose-p:text-foreground/90 prose-p:leading-relaxed prose-p:mb-6
-            prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-            prose-strong:text-foreground prose-strong:font-semibold
-            prose-code:text-primary prose-code:bg-primary/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:font-medium
-            prose-pre:bg-slate-900 dark:prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-700 dark:prose-pre:border-slate-800
-            prose-ul:my-6 prose-ul:space-y-4
-            prose-li:text-base prose-li:text-foreground/90 prose-li:leading-relaxed
-            prose-blockquote:border-l-4 prose-blockquote:border-primary/50 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground
-          ">
+          <div className="prose dark:prose-invert docs-prose mx-auto">
             {children}
           </div>
 
-        {/* Article Footer */}
-        {showFooter && (
-          <footer className="mt-12 pt-8 border-t border-border/50">
-            <div className="flex justify-center">
-              <Button asChild variant="outline" size="sm">
-                <Link href="/docs">View All Docs</Link>
-              </Button>
-            </div>
-          </footer>
-        )}
+          {showFooter && (
+            <footer className="mt-12 pt-8 border-t border-border/50">
+              <div className="flex justify-center">
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/docs">{viewAllDocsLabel}</Link>
+                </Button>
+              </div>
+            </footer>
+          )}
+        </GlassCard>
       </div>
     </article>
   );

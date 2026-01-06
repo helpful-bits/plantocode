@@ -1,74 +1,54 @@
-:root {
-  /* Code block variables (light) */
-  --doc-pre-bg-light: #0f172a;     /* slate-900 */
-  --doc-pre-text-light: #e5e7eb;   /* slate-200 */
-  --doc-pre-border-light: #334155; /* slate-700 */
-
-  /* Inline code (light) */
-  --doc-inline-code-bg-light: #f1f5f9;  /* slate-100/50-ish */
-  --doc-inline-code-text-light: #0f172a; /* slate-900 */
-}
-
-.dark {
-  /* Code block variables (dark) */
-  --doc-pre-bg-dark: #020617;      /* slate-950 */
-  --doc-pre-text-dark: #e5e7eb;    /* slate-200 */
-  --doc-pre-border-dark: #1f2937;  /* slate-800 */
-
-  /* Inline code (dark) */
-  --doc-inline-code-bg-dark: #111827;  /* gray-900 */
-  --doc-inline-code-text-dark: #e5e7eb; /* slate-200 */
-}
-
 /* Scope to docs prose content */
-.prose pre {
-  background-color: var(--doc-pre-bg-light);
-  color: var(--doc-pre-text-light) !important; /* Add !important to override any inline colors */
-  border: 1px solid var(--doc-pre-border-light);
+.prose.docs-prose pre {
+  background-color: var(--prose-pre-bg);
+  color: var(--prose-pre-text) !important; /* Add !important to override any inline colors */
+  border: 1px solid var(--prose-pre-border);
   border-radius: 0.5rem;
   padding: 0.75rem 1rem;
   line-height: 1.6;
   overflow-x: auto;
   tab-size: 2;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--color-primary) 30%, transparent) transparent;
 }
 
-.dark .prose pre {
-  background-color: var(--doc-pre-bg-dark);
-  color: var(--doc-pre-text-dark) !important;
-  border-color: var(--doc-pre-border-dark);
+.prose.docs-prose pre::-webkit-scrollbar {
+  height: 8px;
 }
 
-.prose pre code {
+.prose.docs-prose pre::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.prose.docs-prose pre::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--color-primary) 30%, transparent);
+  border-radius: 4px;
+}
+
+.prose.docs-prose pre::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--color-primary) 40%, transparent);
+}
+
+.prose.docs-prose pre code {
   color: inherit !important;
 }
 
 /* Inline code (not inside pre) */
-.prose :not(pre) > code {
-  background-color: var(--doc-inline-code-bg-light);
-  color: var(--doc-inline-code-text-light);
+.prose.docs-prose :not(pre) > code {
+  background-color: var(--prose-inline-code-bg);
+  color: var(--prose-inline-code-text);
   padding: 0.1rem 0.35rem;
   border-radius: 0.25rem;
   font-weight: 500;
 }
 
-.dark .prose :not(pre) > code {
-  background-color: var(--doc-inline-code-bg-dark);
-  color: var(--doc-inline-code-text-dark);
-}
-
 /* Terminal-style blocks */
 .terminal-block {
-  background-color: #0f172a; /* slate-900 */
-  color: #e5e7eb !important; /* slate-200 */
-  border: 1px solid #334155; /* slate-700 */
+  background-color: var(--prose-pre-bg);
+  color: var(--prose-pre-text) !important;
+  border: 1px solid var(--prose-pre-border);
   border-radius: 0.5rem;
   padding: 1rem;
-}
-
-.dark .terminal-block {
-  background-color: #020617; /* slate-950 */
-  color: #e5e7eb !important; /* slate-200 */
-  border-color: #1f2937; /* slate-800 */
 }
 
 /* Ensure all text inside terminal blocks is visible */
@@ -84,6 +64,137 @@
 }
 
 /* Paragraph/list baseline comfort */
-.prose p, .prose li {
+.prose.docs-prose p,
+.prose.docs-prose li {
   line-height: 1.7;
+}
+
+.prose.docs-prose {
+  max-width: none;
+}
+
+.prose.docs-prose :where(h2) {
+  font-size: 1.5rem;
+  margin-top: 3rem;
+  margin-bottom: 1rem;
+}
+
+.prose.docs-prose :where(h3) {
+  font-size: 1.25rem;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+
+.prose.docs-prose :where(h4) {
+  font-size: 1.125rem;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose.docs-prose :where(h2, h3, h4) {
+  font-weight: 700;
+  color: var(--color-foreground);
+}
+
+.prose.docs-prose :where(p) {
+  font-size: 1rem;
+  color: color-mix(in oklch, var(--color-foreground) 90%, transparent);
+  margin-bottom: 1.5rem;
+}
+
+.prose.docs-prose :where(a) {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.prose.docs-prose :where(a:hover) {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.prose.docs-prose :where(strong) {
+  color: var(--color-foreground);
+  font-weight: 600;
+}
+
+.prose.docs-prose :where(ul, ol) {
+  margin: 1.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.prose.docs-prose :where(li) {
+  font-size: 1rem;
+  color: color-mix(in oklch, var(--color-foreground) 90%, transparent);
+}
+
+.prose.docs-prose :where(li + li) {
+  margin-top: 1rem;
+}
+
+.prose.docs-prose :where(blockquote) {
+  border-left: 4px solid color-mix(in oklch, var(--color-primary) 50%, transparent);
+  padding: 1rem 1.25rem;
+  font-style: italic;
+  color: var(--color-muted-foreground);
+  margin: 1.5rem 0;
+  background: color-mix(in oklch, var(--color-primary) 4%, transparent);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.prose.docs-prose :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  margin: 2rem 0;
+}
+
+.prose.docs-prose .overflow-x-auto {
+  overflow-x: auto;
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+
+.prose.docs-prose :where(thead) {
+  border-bottom: 2px solid var(--color-border);
+}
+
+.prose.docs-prose :where(th, td) {
+  padding: 0.75rem 1rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose.docs-prose :where(tbody tr) {
+  border-bottom: 1px solid color-mix(in oklch, var(--color-border) 35%, transparent);
+}
+
+.prose.docs-prose :where(tbody tr:last-child) {
+  border-bottom: 0;
+}
+
+.prose.docs-prose :where(tbody tr:hover) {
+  background: color-mix(in oklch, var(--color-primary) 4%, transparent);
+}
+
+.prose.docs-prose :where(img) {
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 20px rgb(15 23 42 / 0.12);
+  margin: 2rem 0;
+}
+
+.prose.docs-prose :where(hr) {
+  border-color: color-mix(in oklch, var(--color-border) 50%, transparent);
+  margin: 2.5rem 0;
+}
+
+/* Flatten nested GlassCards inside docs articles so the article card is the only surface. */
+.prose.docs-prose .glass,
+.prose.docs-prose .glass-highlighted {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 !important;
+  backdrop-filter: none;
 }

@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { DocsArticle } from '@/components/docs/DocsArticle';
+import { DocsMediaBlock } from '@/components/docs/DocsMediaBlock';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
+import { Button } from '@/components/ui/button';
+import { Link } from '@/i18n/navigation';
 import { locales } from '@/i18n/config';
 import { generatePageMetadata } from '@/content/metadata';
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
@@ -24,15 +26,23 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
   const t = await loadMessages(locale);
   return (
     <DocsArticle
-      title={t['fileDiscovery.title'] ?? ''}
-      description={t['fileDiscovery.description'] ?? ''}
-      date={t['fileDiscovery.date'] ?? ''}
-      readTime={t['fileDiscovery.readTime'] ?? ''}
-      category={t['fileDiscovery.category'] ?? ''}
+      title={t['fileDiscovery.title']}
+      description={t['fileDiscovery.description']}
+      date={t['fileDiscovery.date']}
+      readTime={t['fileDiscovery.readTime']}
+      category={t['fileDiscovery.category']}
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
         {t['fileDiscovery.intro']}
       </p>
+      <DocsMediaBlock
+        className="mb-12"
+        title={t['fileDiscovery.visuals.pipeline.title']}
+        description={t['fileDiscovery.visuals.pipeline.description']}
+        imageSrc={t['fileDiscovery.visuals.pipeline.imageSrc']}
+        imageAlt={t['fileDiscovery.visuals.pipeline.imageAlt']}
+        caption={t['fileDiscovery.visuals.pipeline.caption']}
+      />
       <section className="space-y-6 mb-12">
         <h2 className="text-2xl font-bold">{t['fileDiscovery.architecture.heading']}</h2>
         <GlassCard className="p-6">
@@ -62,8 +72,11 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
             <p className="text-muted-foreground leading-relaxed mb-3">
               {t['fileDiscovery.stages.stage1.description']}
             </p>
-            <div className="bg-muted/30 rounded-lg p-3 text-sm">
+            <div className="bg-muted/30 rounded-lg p-3 text-sm mb-3">
               {t['fileDiscovery.stages.stage1.technical']}
+            </div>
+            <div className="bg-muted/30 rounded-lg p-3 text-sm">
+              {t['fileDiscovery.stages.stage1.inputOutput']}
             </div>
           </GlassCard>
           <GlassCard className="p-6">
@@ -71,6 +84,9 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
             <p className="text-muted-foreground leading-relaxed mb-3">
               {t['fileDiscovery.stages.stage2.description']}
             </p>
+            <div className="bg-muted/30 rounded-lg p-3 text-sm mb-3">
+              {t['fileDiscovery.stages.stage2.technical']}
+            </div>
             <div className="bg-muted/30 rounded-lg p-3 text-sm mb-3">
               {t['fileDiscovery.stages.stage2.gitIntegration']}
             </div>
@@ -83,6 +99,9 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
             <p className="text-muted-foreground leading-relaxed mb-3">
               {t['fileDiscovery.stages.stage3.description']}
             </p>
+            <div className="bg-muted/30 rounded-lg p-3 text-sm mb-3">
+              {t['fileDiscovery.stages.stage3.technical']}
+            </div>
             <div className="bg-muted/30 rounded-lg p-3 text-sm">
               {t['fileDiscovery.stages.stage3.aiProcessing']}
             </div>
@@ -92,6 +111,9 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
             <p className="text-muted-foreground leading-relaxed mb-3">
               {t['fileDiscovery.stages.stage4.description']}
             </p>
+            <div className="bg-muted/30 rounded-lg p-3 text-sm mb-3">
+              {t['fileDiscovery.stages.stage4.technical']}
+            </div>
             <div className="bg-muted/30 rounded-lg p-3 text-sm">
               {t['fileDiscovery.stages.stage4.relationship']}
             </div>
@@ -119,15 +141,6 @@ export default async function FileDiscoveryDocPage({ params }: { params: Promise
               </p>
               <code className="text-xs bg-muted/50 px-2 py-1 rounded">
                 excludedPaths: ["node_modules", ".git", "dist", "build"]
-              </code>
-            </div>
-            <div className="bg-muted/30 rounded-lg p-4">
-              <h4 className="text-sm font-semibold mb-2">{t['fileDiscovery.configuration.retry.heading']}</h4>
-              <p className="text-sm text-muted-foreground mb-2">
-                {t['fileDiscovery.configuration.retry.description']}
-              </p>
-              <code className="text-xs bg-muted/50 px-2 py-1 rounded">
-                maxRetries: 3 // Per stage retry limit
               </code>
             </div>
           </div>
@@ -261,13 +274,28 @@ const totalCost = results.totalActualCost;`}
           </p>
         </GlassCard>
       </section>
+      <section className="space-y-6 mb-12">
+        <h2 className="text-2xl font-bold">{t['fileDiscovery.sqliteStorage.heading']}</h2>
+        <GlassCard className="p-6">
+          <p className="text-muted-foreground leading-relaxed">
+            {t['fileDiscovery.sqliteStorage.description']}
+          </p>
+        </GlassCard>
+      </section>
       <div className="mt-16">
         <GlassCard className="p-6" highlighted>
           <h2 className="text-xl font-semibold mb-3">{t['fileDiscovery.cta.heading']}</h2>
           <p className="text-muted-foreground leading-relaxed mb-4">
             {t['fileDiscovery.cta.description']}
           </p>
-          <PlatformDownloadSection location="docs_file_discovery" />
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button asChild size="lg">
+              <Link href="/docs/architecture">{t['fileDiscovery.cta.links.architecture']}</Link>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <Link href="/docs/build-your-own">{t['fileDiscovery.cta.links.buildYourOwn']}</Link>
+            </Button>
+          </div>
         </GlassCard>
       </div>
     </DocsArticle>

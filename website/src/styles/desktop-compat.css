@@ -1,87 +1,34 @@
 @layer utilities {
-  /* Desktop compatibility utilities - ONLY used classes, prefixed to avoid conflicts */
+  /* Desktop compatibility utilities - used classes only */
 
-  /* Desktop glass morphism effects - prefixed to avoid conflict with website .glass */
-  .desktop-glass {
-    background: color-mix(in srgb, hsl(var(--primary)) 5%, transparent);
-    backdrop-filter: blur(10px);
-    border: 1px solid color-mix(in srgb, hsl(var(--primary)) 10%, transparent);
-  }
-
-  .desktop-glass-card {
-    /* Light mode - Optimized for performance while maintaining visual appeal */
-    background: oklch(0.995 0.008 195 / 0.7);
-    
-    /* Simplified blur for better performance */
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    
-    border: 1px solid oklch(0.90 0.04 195 / 0.5);
-    box-shadow: 0 8px 32px oklch(0.48 0.15 195 / 0.06);
-    
-    position: relative;
-    overflow: hidden;
-  }
-  
-  .desktop-glass-card:hover {
-    /* Optimized hover state - no blur change for performance */
-    border: 1px solid oklch(0.48 0.15 195 / 0.3);
-    box-shadow: 0 8px 24px oklch(0.48 0.15 195 / 0.1);
-  }
-  
-  .dark .desktop-glass-card {
-    background: oklch(0.20 0.022 206 / 0.8);
-    
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    
-    border: 1px solid oklch(0.68 0.085 195 / 0.34);
-    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.20);
-  }
-  
-  .dark .desktop-glass-card:hover {
-    /* Enhanced shadow for dark mode */
-    border: 1px solid oklch(0.68 0.085 195 / 0.5);
-    box-shadow: 0 16px 48px oklch(0.68 0.085 195 / 0.35);
-  }
-
-  /* Shadow variants from desktop */
+  /* Shadow variant used in legal layout */
   .shadow-soft {
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03);
   }
 
-  .shadow-soft-md {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  }
-
-  /* Focus ring from desktop */
-  .focus-ring:focus {
-    outline: none;
-  }
-
-  /* Background and color utilities actually used */
+  /* Background and color utilities */
   .bg-popover {
-    background-color: hsl(var(--popover));
+    background-color: var(--color-popover);
   }
 
   .text-popover-foreground {
-    color: hsl(var(--popover-foreground));
+    color: var(--color-popover-foreground);
   }
 
   .bg-card {
-    background-color: hsl(var(--card, 0 0% 100%));
+    background-color: var(--color-card);
   }
 
   .text-card-foreground {
-    color: hsl(var(--card-foreground, 224 71% 4%));
+    color: var(--color-card-foreground);
   }
 
   .border-border {
-    border-color: hsl(var(--border, 220 13% 91%));
+    border-color: var(--color-border);
   }
 
   .text-primary-foreground {
-    color: hsl(var(--primary-foreground, 210 40% 98%));
+    color: var(--color-primary-foreground);
   }
 
   /* Simplified Custom Checkbox Styling - Direct CSS to avoid @apply build conflicts */
@@ -103,8 +50,8 @@
     height: 1rem;
     border-radius: 3px;
     border-width: 2px;
-    border-color: oklch(var(--color-border) / 1);
-    background-color: oklch(var(--color-background) / 1);
+    border-color: var(--color-border);
+    background-color: var(--color-background);
     transition: all 120ms ease-in-out;
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
     transform: scale(0.95);
@@ -112,43 +59,43 @@
   }
 
   .custom-checkbox:hover:not(:disabled) {
-    border-color: oklch(var(--color-primary) / 0.7);
+    border-color: color-mix(in oklch, var(--color-primary) 70%, transparent);
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     transform: scale(1);
   }
 
   .custom-checkbox:focus-visible {
-    outline: 2px solid oklch(var(--color-ring) / 0.5);
+    outline: 2px solid color-mix(in oklch, var(--color-ring) 50%, transparent);
     outline-offset: 2px;
-    border-color: oklch(var(--color-primary) / 1);
+    border-color: var(--color-primary);
   }
 
   .custom-checkbox:checked {
-    background-color: oklch(var(--color-primary) / 1);
-    border-color: oklch(var(--color-primary) / 1);
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
     transform: scale(1);
   }
 
   .custom-checkbox.destructive:checked {
-    background-color: oklch(var(--color-destructive) / 1);
-    border-color: oklch(var(--color-destructive) / 1);
+    background-color: var(--color-destructive);
+    border-color: var(--color-destructive);
   }
 
   .custom-checkbox:disabled {
-    border-color: oklch(var(--color-border) / 0.4);
-    background-color: oklch(var(--color-muted) / 0.5);
+    border-color: color-mix(in oklch, var(--color-border) 40%, transparent);
+    background-color: color-mix(in oklch, var(--color-muted) 50%, transparent);
     cursor: not-allowed;
     opacity: 0.6;
   }
 
   .custom-checkbox:checked:disabled {
-    background-color: oklch(var(--color-primary) / 0.4);
-    border-color: oklch(var(--color-primary) / 0.4);
+    background-color: color-mix(in oklch, var(--color-primary) 40%, transparent);
+    border-color: color-mix(in oklch, var(--color-primary) 40%, transparent);
   }
 
   .custom-checkbox.destructive:checked:disabled {
-    background-color: oklch(var(--color-destructive) / 0.4);
-    border-color: oklch(var(--color-destructive) / 0.4);
+    background-color: color-mix(in oklch, var(--color-destructive) 40%, transparent);
+    border-color: color-mix(in oklch, var(--color-destructive) 40%, transparent);
   }
 
   .custom-checkbox-checkmark {
@@ -172,11 +119,11 @@
   }
 
   .custom-checkbox:checked + .custom-checkbox-checkmark svg {
-    color: oklch(var(--color-primary-foreground) / 1);
+    color: var(--color-primary-foreground);
   }
 
   .custom-checkbox.destructive:checked + .custom-checkbox-checkmark svg {
-    color: oklch(var(--color-destructive-foreground) / 1);
+    color: var(--color-destructive-foreground);
   }
 
   /* Dark mode improvements for regular checkboxes */
@@ -186,7 +133,7 @@
   }
 
   .dark .custom-checkbox:hover:not(:disabled) {
-    border-color: oklch(var(--color-primary) / 0.8);
+    border-color: color-mix(in oklch, var(--color-primary) 80%, transparent);
     background-color: rgb(39 39 42 / 0.7);
   }
 

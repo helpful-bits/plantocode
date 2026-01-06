@@ -21,7 +21,7 @@ export function Breadcrumbs({ items, includeHome = true }: BreadcrumbsProps) {
 
   // Build the breadcrumb list starting with Home if requested
   const breadcrumbs: BreadcrumbItem[] = includeHome
-    ? [{ label: t('breadcrumb.home', 'Home'), href: '/' }, ...items]
+    ? [{ label: t('breadcrumb.home'), href: '/' }, ...items]
     : items;
 
   // Don't render if there's only one breadcrumb (just Home)

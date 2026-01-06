@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X } from 'lucide-react';
 import { cdnUrl } from '@/lib/cdn';
+import { useMessages } from '@/components/i18n/useMessages';
 
 interface VideoModalProps {
   isOpen: boolean;
@@ -17,6 +18,7 @@ export function VideoModal({
   onClose,
   videoPath = '/assets/videos/hero-section-16by9.mp4'
 }: VideoModalProps) {
+  const { t } = useMessages();
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function VideoModal({
         <button
           onClick={onClose}
           className="absolute top-4 right-4 z-[110] p-3 rounded-full bg-black/50 hover:bg-black/70 text-white transition-all duration-200"
-          aria-label="Close video"
+          aria-label={t('videoModal.closeLabel')}
         >
           <X className="w-6 h-6" />
         </button>
@@ -70,7 +72,7 @@ export function VideoModal({
           onClick={(e) => e.stopPropagation()}
         >
           <source src={cdnUrl(videoPath)} type="video/mp4" />
-          Your browser does not support the video tag.
+          {t('videoModal.unsupported')}
         </video>
       </motion.div>
     </AnimatePresence>,

@@ -120,23 +120,22 @@ function createDotNotationProxy(obj: Record<string, any>): Record<string, any> {
 
 /**
  * Dynamically loads and merges message dictionaries for the given locale
- * Imports all 8 message files: common, seo, home, features, solutions, docs, pages, legal
+ * Imports message files: common, seo, home, features, docs, pages, legal
  * Returns a Proxy that supports dot-notation key access (e.g., t['planMode.hero.badge'])
  */
 export async function loadMessages(locale: Locale): Promise<Record<string, any>> {
-  const [common, seo, home, features, solutions, docs, pages, legal] = await Promise.all([
+  const [common, seo, home, features, docs, pages, legal] = await Promise.all([
     import(`@/messages/${locale}/common.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/seo.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/home.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/features.json`).then(m => m.default).catch(() => ({})),
-    import(`@/messages/${locale}/solutions.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/docs.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/pages.json`).then(m => m.default).catch(() => ({})),
     import(`@/messages/${locale}/legal.json`).then(m => m.default).catch(() => ({})),
   ]);
 
   // Deep merge all namespaces and wrap in a Proxy for dot-notation access
-  const merged = deepMerge(common, seo, home, features, solutions, docs, pages, legal);
+  const merged = deepMerge(common, seo, home, features, docs, pages, legal);
   return createDotNotationProxy(merged);
 }
 
@@ -144,7 +143,6 @@ type Namespace =
   | 'common'
   | 'home'
   | 'features'
-  | 'solutions'
   | 'docs'
   | 'pages'
   | 'legal'
@@ -156,7 +154,6 @@ const JSON_IMPORTS: Record<string, () => Promise<any>> = {
   'en/common': () => import('@/messages/en/common.json'),
   'en/home': () => import('@/messages/en/home.json'),
   'en/features': () => import('@/messages/en/features.json'),
-  'en/solutions': () => import('@/messages/en/solutions.json'),
   'en/docs': () => import('@/messages/en/docs.json'),
   'en/pages': () => import('@/messages/en/pages.json'),
   'en/legal': () => import('@/messages/en/legal.json'),
@@ -165,7 +162,6 @@ const JSON_IMPORTS: Record<string, () => Promise<any>> = {
   'de/common': () => import('@/messages/de/common.json'),
   'de/home': () => import('@/messages/de/home.json'),
   'de/features': () => import('@/messages/de/features.json'),
-  'de/solutions': () => import('@/messages/de/solutions.json'),
   'de/docs': () => import('@/messages/de/docs.json'),
   'de/pages': () => import('@/messages/de/pages.json'),
   'de/legal': () => import('@/messages/de/legal.json'),
@@ -174,7 +170,6 @@ const JSON_IMPORTS: Record<string, () => Promise<any>> = {
   'fr/common': () => import('@/messages/fr/common.json'),
   'fr/home': () => import('@/messages/fr/home.json'),
   'fr/features': () => import('@/messages/fr/features.json'),
-  'fr/solutions': () => import('@/messages/fr/solutions.json'),
   'fr/docs': () => import('@/messages/fr/docs.json'),
   'fr/pages': () => import('@/messages/fr/pages.json'),
   'fr/legal': () => import('@/messages/fr/legal.json'),
@@ -183,7 +178,6 @@ const JSON_IMPORTS: Record<string, () => Promise<any>> = {
   'es/common': () => import('@/messages/es/common.json'),
   'es/home': () => import('@/messages/es/home.json'),
   'es/features': () => import('@/messages/es/features.json'),
-  'es/solutions': () => import('@/messages/es/solutions.json'),
   'es/docs': () => import('@/messages/es/docs.json'),
   'es/pages': () => import('@/messages/es/pages.json'),
   'es/legal': () => import('@/messages/es/legal.json'),

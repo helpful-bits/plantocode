@@ -49,19 +49,35 @@ export interface TranscriptPairProps {
   reference?: string;
   gpt?: string;
   competitor?: { label: string; text: string };
+  title?: string;
+  primaryLabel?: string;
+  primaryBadge?: string;
+  errorSummaryTemplate?: string;
+  impactSummary?: string;
 }
 
 const DEFAULT_REF = "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.";
 const DEFAULT_GPT = "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.";
 const DEFAULT_COMP = {
-  label: "Competitor Model",
+  label: "Baseline transcription",
   text: "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
 };
+const DEFAULT_TITLE = "Illustrative Example: Capturing Specifications";
+const DEFAULT_PRIMARY_LABEL = "Primary transcription model";
+const DEFAULT_PRIMARY_BADGE = "reference-aligned";
+const DEFAULT_ERROR_SUMMARY = "Errors — Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.";
+const DEFAULT_IMPACT_SUMMARY =
+  'Impact: Mishearing "read-replica" as "replica", dropping region suffix "-1", or changing "wal_level=logical" can lead to incorrect deployments or data flows.';
 
 export function TranscriptionComparison({
   reference = DEFAULT_REF,
   gpt = DEFAULT_GPT,
-  competitor = DEFAULT_COMP
+  competitor = DEFAULT_COMP,
+  title = DEFAULT_TITLE,
+  primaryLabel = DEFAULT_PRIMARY_LABEL,
+  primaryBadge = DEFAULT_PRIMARY_BADGE,
+  errorSummaryTemplate = DEFAULT_ERROR_SUMMARY,
+  impactSummary = DEFAULT_IMPACT_SUMMARY,
 }: TranscriptPairProps) {
   const refToks = useMemo(() => tokenize(reference), [reference]);
   const gptToks = useMemo(() => tokenize(gpt), [gpt]);
@@ -78,15 +94,19 @@ export function TranscriptionComparison({
     }),
     [compOps]
   );
+  const errorSummaryText = errorSummaryTemplate
+    .replace('{sub}', String(compCounts.sub))
+    .replace('{del}', String(compCounts.del))
+    .replace('{ins}', String(compCounts.ins));
 
   return (
     <section aria-labelledby="comparison-title" className="space-y-4">
       <h3 id="comparison-title" className="text-lg font-semibold">
-        Illustrative Example: Capturing Specifications
+        {title}
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div className="p-4 rounded-lg border bg-card">
-          <h4 className="font-medium mb-2">OpenAI gpt-4o-transcribe</h4>
+          <h4 className="font-medium mb-2">{primaryLabel}</h4>
           <p className="text-sm leading-6">
             {gptOps.map((o, idx) => {
               const t = o.hyp ?? o.ref ?? '';
@@ -100,7 +120,7 @@ export function TranscriptionComparison({
           </p>
           <div className="mt-2 inline-flex items-center gap-2 text-xs text-emerald-600">
             <span className="i-lucide-badge-check" aria-hidden />
-            accurate
+            {primaryBadge}
           </div>
         </div>
         <div className="p-4 rounded-lg border bg-card" aria-live="polite">
@@ -128,14 +148,12 @@ export function TranscriptionComparison({
             })}
           </p>
           <p className="mt-2 text-xs text-foreground/70">
-            Errors — Substitutions: {compCounts.sub}, Deletions: {compCounts.del}, Insertions:{' '}
-            {compCounts.ins}. Even a few errors can invert flags or units.
+            {errorSummaryText}
           </p>
         </div>
       </div>
       <p className="text-sm text-foreground/80">
-        Impact: Mishearing "read-replica" as "replica", dropping region suffix "-1", or changing
-        "wal_level=logical" can lead to incorrect deployments or data flows.
+        {impactSummary}
       </p>
     </section>
   );

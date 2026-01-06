@@ -27,10 +27,10 @@ export function FAQ() {
       <div className="container mx-auto max-w-3xl relative z-10">
         <div className="text-center mb-12 sm:mb-16">
           <Reveal as="h2" className="text-3xl sm:text-4xl lg:text-5xl mb-4 text-primary-emphasis">
-            {t('faq.title', 'Frequently Asked Questions')}
+            {t('faq.title')}
           </Reveal>
           <Reveal as="p" className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed font-medium text-foreground/80" delay={0.05}>
-            {t('faq.subtitle', 'Everything you need to know about PlanToCode')}
+            {t('faq.subtitle')}
           </Reveal>
         </div>
 
@@ -45,7 +45,9 @@ export function FAQ() {
                 <motion.div
                   initial={{ backgroundColor: 'rgba(0, 0, 0, 0)' }}
                   animate={{
-                    backgroundColor: openIndices.includes(index) ? 'rgba(var(--primary-rgb), 0.02)' : 'rgba(0, 0, 0, 0)',
+                    backgroundColor: openIndices.includes(index)
+                      ? 'color-mix(in oklch, var(--color-primary) 2%, transparent)'
+                      : 'transparent',
                   }}
                   transition={{ duration: 0.3, ease: 'easeInOut' }}
                 >

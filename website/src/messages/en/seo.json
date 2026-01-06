@@ -1,7 +1,7 @@
 {
   "seo": {
-    "defaultDescription": "Transform your software development with AI-powered code generation, architectural planning, and enterprise-grade solutions.",
-    "defaultTitle": "PlanToCode - Enterprise Software Development Platform",
+    "defaultDescription": "Technical documentation and architecture walkthrough for PlanToCode: file discovery, plan generation, terminal execution, and LLM routing.",
+    "defaultTitle": "PlanToCode \u2014 Technical Documentation",
     "siteName": "PlanToCode"
   }
 }

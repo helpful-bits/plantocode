@@ -5,7 +5,6 @@ import { useTranslations } from 'next-intl';
 import { Link } from '@/i18n/navigation';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/button';
-import { PlatformDownloadSection } from '@/components/ui/PlatformDownloadSection';
 import { SearchDialog } from '@/components/docs/SearchDialog';
 import { docsManifest, type DocItem, type DocGroup } from '@/docs/docs-manifest';
 import { ArrowRight, FileCode, Zap, Brain, Search } from 'lucide-react';
@@ -126,12 +125,11 @@ export default function DocsPage() {
               {td('hub.ctaDescription')}
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <PlatformDownloadSection
-                location="docs_main"
-                redirectToDownloadPage={true}
-              />
+              <Button asChild size="lg">
+                <Link href="/docs/overview">{td('hub.ctaLinks.overview')}</Link>
+              </Button>
               <Button asChild variant="outline" size="lg">
-                <Link href="/">{td('hub.learnMore')}</Link>
+                <Link href="/docs/runtime-walkthrough">{td('hub.ctaLinks.runtime')}</Link>
               </Button>
             </div>
           </GlassCard>

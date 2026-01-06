@@ -5,9 +5,9 @@ export async function GET() {
   
   // Download tracking is handled client-side to preserve user context
 
-  // For now, redirect to coming soon page or waitlist
-  // When Windows version is ready, update this to redirect to actual download
-  const comingSoonUrl = 'https://www.plantocode.com/#pricing';
+  // For now, redirect to the downloads page
+  // When Windows version is ready, update this to redirect to the actual download
+  const comingSoonUrl = 'https://www.plantocode.com/downloads';
   
   // Create response with redirect
   const response = NextResponse.redirect(comingSoonUrl, 302);

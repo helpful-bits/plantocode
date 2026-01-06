@@ -24,10 +24,10 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://www.plantocode.com'),
   title: {
     template: '%s | PlanToCode',
-    default: 'PlanToCode - plan and ship code changes',
+    default: 'PlanToCode - Architecture Walkthrough',
   },
-  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
-  keywords: ['plan to code', 'ai planning workspace', 'implementation planning tool', 'find files before coding', 'merge ai plans', 'persistent terminal sessions', 'claude code install', 'install claude code', 'claudecode', 'claude code planning', 'claude code agents', 'claude code mcp', 'claude code cli', 'claude code vs cursor', 'claude code github', 'claude code vscode', 'claude code windows', 'claude code router', 'claude code subagents', 'claude code sdk', 'claude code hooks', 'claude code docs', 'AI coding assistant', 'multi-model planning', 'implementation plan', 'file discovery'],
+  description: 'Technical walkthroughs of the PlanToCode system: Tauri shell, Rust workflow orchestration, SQLite persistence, and multi-model LLM planning.',
+  keywords: ['plan to code', 'ai planning workspace', 'implementation planning tool', 'tauri architecture', 'rust workflow orchestrator', 'sqlite persistence', 'pty terminal sessions', 'llm orchestration pipeline', 'multi-model planning', 'implementation plan', 'file discovery'],
   authors: [{ name: 'PlanToCode Team' }],
   creator: 'PlanToCode',
   publisher: 'PlanToCode',
@@ -51,8 +51,8 @@ export const metadata: Metadata = {
     }
   },
   openGraph: {
-    title: 'PlanToCode - plan and ship code changes',
-    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+    title: 'PlanToCode - Technical Architecture Walkthrough',
+    description: 'Understand the PlanToCode system: Tauri shell, Rust jobs, SQLite persistence, and multi-model LLM planning.',
     url: 'https://www.plantocode.com',
     siteName: 'PlanToCode',
     images: [{
@@ -68,11 +68,11 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'PlanToCode - plan and ship code changes',
-    description: 'Find impacted files, generate and merge AI plans, run in a persistent terminal.',
+    title: 'PlanToCode - Technical Architecture Walkthrough',
+    description: 'Understand the PlanToCode system: Tauri shell, Rust jobs, SQLite persistence, and multi-model LLM planning.',
     images: [{
       url: cdnUrl('/images/og-image.png'),
-      alt: 'PlanToCode - AI Planning for Code',
+      alt: 'PlanToCode - Architecture walkthrough',
       width: 1200,
       height: 630,
     }],
@@ -127,7 +127,7 @@ export const metadata: Metadata = {
     'apple-mobile-web-app-title': 'PlanToCode',
     'application-name': 'PlanToCode',
     'msapplication-TileColor': 'oklch(0.18 0.02 206)',
-    'msapplication-tooltip': 'PlanToCode - plan and ship code changes',
+    'msapplication-tooltip': 'PlanToCode - Architecture walkthrough',
     'mobile-web-app-capable': 'yes',
   },
 };
@@ -149,7 +149,7 @@ const websiteJsonLd: WebSite = {
   name: 'PlanToCode',
   alternateName: 'PlanToCode',
   url: 'https://www.plantocode.com',
-  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
+  description: 'Technical walkthroughs of the PlanToCode architecture, workflows, and implementation tradeoffs.',
   // SearchAction removed - we use client-side search only (SearchDialog component)
   // This prevents Google from crawling non-existent /search?q= URLs
 };
@@ -168,7 +168,7 @@ const organizationJsonLd: Organization = {
     'https://x.com/helpfulbits_com',
     'https://github.com/plantocode'
   ],
-  description: 'PlanToCode helps you plan and ship code changes - find the right files, generate and merge AI plans, then run them in a persistent terminal.',
+  description: 'AI-assisted development workspace focused on planning, review, and execution handoff.',
   contactPoint: {
     '@type': 'ContactPoint',
     contactType: 'Customer Support',

@@ -3,68 +3,60 @@ import { Link } from '@/i18n/navigation';
 import { Header } from '@/components/landing/Header';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Breadcrumbs } from '@/components/Breadcrumbs';
-import { getPublishedPages, getPagesByCategory } from '@/data/pseo';
 import {
-  FileText, GitMerge, Terminal, Code2, Layers, Zap,
-  BookOpen, HelpCircle, Settings
+  FileText,
+  BookOpen
 } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Sitemap - All Pages',
-  description: 'Complete sitemap of all PlanToCode pages including documentation, workflows, integrations, comparisons, and technology stacks.',
+  description: 'Sitemap of PlanToCode pages including documentation and technical guides.',
   alternates: {
     canonical: 'https://www.plantocode.com/sitemap-html',
   },
 };
 
 export default function HtmlSitemapPage() {
-  const pseoPages = getPublishedPages();
-
-  const workflows = getPagesByCategory('workflows').filter(p => p.publish);
-  const integrations = getPagesByCategory('integrations').filter(p => p.publish);
-  const comparisons = getPagesByCategory('comparisons').filter(p => p.publish);
-  const stacks = getPagesByCategory('stacks').filter(p => p.publish);
-  const useCases = getPagesByCategory('use-cases').filter(p => p.publish);
-
   const mainPages = [
-    { href: '/', label: 'Home', description: 'AI-powered implementation planning' },
-    { href: '/about', label: 'About', description: 'Learn about PlanToCode' },
-    { href: '/downloads', label: 'Downloads', description: 'Download for macOS and Windows' },
-    { href: '/how-it-works', label: 'How It Works', description: 'See the planning workflow in action' },
-    { href: '/screenshots', label: 'Screenshots', description: 'Visual tour of features' },
-    { href: '/support', label: 'Support', description: 'Get help and book sessions' },
+    { href: '/', label: 'Home', description: 'Technical walkthrough and examples' },
+    { href: '/architecture', label: 'Architecture', description: 'System overview and component map' },
+    { href: '/evolution', label: 'Evolution', description: 'History and tradeoffs log' },
+    { href: '/about', label: 'About', description: 'Purpose and scope' },
+    { href: '/downloads', label: 'Downloads', description: 'Desktop builds and system requirements' },
+    { href: '/support', label: 'Support', description: 'Troubleshooting and help' },
   ];
 
   const docPages = [
     { href: '/docs', label: 'Documentation Home' },
+    { href: '/docs/overview', label: 'System Overview' },
     { href: '/docs/architecture', label: 'Architecture' },
+    { href: '/docs/runtime-walkthrough', label: 'Runtime Walkthrough' },
+    { href: '/docs/desktop-app', label: 'Desktop App Internals' },
+    { href: '/docs/server-api', label: 'Server API & LLM Proxy' },
+    { href: '/docs/mobile-ios', label: 'iOS Client Architecture' },
+    { href: '/docs/background-jobs', label: 'Background Jobs' },
+    { href: '/docs/data-model', label: 'Data Model & Storage' },
+    { href: '/docs/decisions-tradeoffs', label: 'Technical Decisions' },
+    { href: '/docs/build-your-own', label: 'Build Your Own Pipeline' },
+    { href: '/docs/server-setup', label: 'Dedicated Server Setup' },
+    { href: '/docs/tauri-v2', label: 'Tauri v2 Development' },
+    { href: '/docs/distribution-macos', label: 'macOS Distribution' },
+    { href: '/docs/distribution-windows', label: 'Windows Distribution & Store' },
+    { href: '/docs/meeting-ingestion', label: 'Meeting Ingestion' },
+    { href: '/docs/video-analysis', label: 'Video Analysis' },
     { href: '/docs/file-discovery', label: 'File Discovery' },
     { href: '/docs/implementation-plans', label: 'Implementation Plans' },
+    { href: '/docs/merge-instructions', label: 'Merge Instructions' },
+    { href: '/docs/prompt-types', label: 'Prompt Types & Templates' },
+    { href: '/docs/copy-buttons', label: 'Copy Buttons' },
     { href: '/docs/deep-research', label: 'Deep Research' },
     { href: '/docs/model-configuration', label: 'Model Configuration' },
+    { href: '/docs/provider-routing', label: 'Provider Routing' },
     { href: '/docs/terminal-sessions', label: 'Terminal Sessions' },
     { href: '/docs/voice-transcription', label: 'Voice Transcription' },
     { href: '/docs/text-improvement', label: 'Text Improvement' },
   ];
 
-  const solutionPages = [
-    { href: '/solutions/hard-bugs', label: 'Hard Bugs', description: 'Debug with preserved context' },
-    { href: '/solutions/large-features', label: 'Large Features', description: 'Plan complex implementations' },
-    { href: '/solutions/library-upgrades', label: 'Library Upgrades', description: 'Safe dependency updates' },
-    { href: '/solutions/maintenance-enhancements', label: 'Maintenance & Enhancements', description: 'Systematic improvements' },
-  ];
-
-  const featurePages = [
-    { href: '/features/file-discovery', label: 'File Discovery' },
-    { href: '/features/deep-research', label: 'Deep Research' },
-    { href: '/features/plan-mode', label: 'Plan Mode' },
-    { href: '/features/merge-instructions', label: 'Merge Instructions' },
-    { href: '/features/integrated-terminal', label: 'Integrated Terminal' },
-    { href: '/features/voice-transcription', label: 'Voice Transcription' },
-    { href: '/features/text-improvement', label: 'Text Improvement' },
-    { href: '/features/video-analysis', label: 'Video Analysis' },
-    { href: '/features/copy-buttons', label: 'Copy Buttons' },
-  ];
 
   return (
     <>
@@ -86,7 +78,7 @@ export default function HtmlSitemapPage() {
                   Complete Sitemap
                 </h1>
                 <p className="text-lg text-foreground/80 max-w-3xl mx-auto leading-relaxed">
-                  Browse all pages, documentation, workflows, integrations, and resources.
+                  Browse all pages, documentation, and technical resources.
                 </p>
               </header>
 
@@ -132,169 +124,11 @@ export default function HtmlSitemapPage() {
                   </GlassCard>
                 </section>
 
-                {/* Solutions */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <HelpCircle className="w-6 h-6 text-primary" />
-                    Solutions ({solutionPages.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <ul className="grid md:grid-cols-2 gap-4">
-                      {solutionPages.map(page => (
-                        <li key={page.href}>
-                          <Link href={page.href} className="block hover:text-primary transition-colors">
-                            <span className="font-medium">{page.label}</span>
-                            {page.description && (
-                              <p className="text-sm text-foreground/60">{page.description}</p>
-                            )}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Features */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Zap className="w-6 h-6 text-primary" />
-                    Features ({featurePages.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <ul className="grid md:grid-cols-3 gap-4">
-                      {featurePages.map(page => (
-                        <li key={page.href}>
-                          <Link href={page.href} className="hover:text-primary transition-colors">
-                            {page.label}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Workflows */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <GitMerge className="w-6 h-6 text-primary" />
-                    Workflows ({workflows.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <div className="mb-4">
-                      <Link href="/workflows" className="text-primary hover:underline font-medium">
-                        View all workflows →
-                      </Link>
-                    </div>
-                    <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                      {workflows.map(page => (
-                        <li key={page.slug}>
-                          <Link href={`/${page.slug}`} className="hover:text-primary transition-colors line-clamp-1">
-                            {page.headline}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Integrations */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Terminal className="w-6 h-6 text-primary" />
-                    Integrations ({integrations.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <div className="mb-4">
-                      <Link href="/integrations" className="text-primary hover:underline font-medium">
-                        View all integrations →
-                      </Link>
-                    </div>
-                    <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                      {integrations.map(page => (
-                        <li key={page.slug}>
-                          <Link href={`/${page.slug}`} className="hover:text-primary transition-colors line-clamp-1">
-                            {page.headline}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Technology Stacks */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Code2 className="w-6 h-6 text-primary" />
-                    Technology Stacks ({stacks.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <div className="mb-4">
-                      <Link href="/stacks" className="text-primary hover:underline font-medium">
-                        View all stacks →
-                      </Link>
-                    </div>
-                    <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                      {stacks.map(page => (
-                        <li key={page.slug}>
-                          <Link href={`/${page.slug}`} className="hover:text-primary transition-colors line-clamp-1">
-                            {page.headline}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Comparisons */}
-                <section>
-                  <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                    <Layers className="w-6 h-6 text-primary" />
-                    Comparisons ({comparisons.length})
-                  </h2>
-                  <GlassCard className="p-6">
-                    <div className="mb-4">
-                      <Link href="/comparisons" className="text-primary hover:underline font-medium">
-                        View all comparisons →
-                      </Link>
-                    </div>
-                    <ul className="grid md:grid-cols-2 gap-3 text-sm">
-                      {comparisons.map(page => (
-                        <li key={page.slug}>
-                          <Link href={`/${page.slug}`} className="hover:text-primary transition-colors line-clamp-1">
-                            {page.headline}
-                          </Link>
-                        </li>
-                      ))}
-                    </ul>
-                  </GlassCard>
-                </section>
-
-                {/* Use Cases (if any) */}
-                {useCases.length > 0 && (
-                  <section>
-                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
-                      <Settings className="w-6 h-6 text-primary" />
-                      Use Cases ({useCases.length})
-                    </h2>
-                    <GlassCard className="p-6">
-                      <ul className="grid md:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-                        {useCases.map(page => (
-                          <li key={page.slug}>
-                            <Link href={`/${page.slug}`} className="hover:text-primary transition-colors line-clamp-1">
-                              {page.headline}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </GlassCard>
-                  </section>
-                )}
-
                 {/* Bottom Summary */}
                 <GlassCard className="p-8 text-center" highlighted>
-                  <h2 className="text-xl font-bold mb-2">Total Pages: {pseoPages.length + mainPages.length + docPages.length + solutionPages.length + featurePages.length}</h2>
+                  <h2 className="text-xl font-bold mb-2">Total Pages: {mainPages.length + docPages.length}</h2>
                   <p className="text-foreground/70 mb-6">
-                    Comprehensive documentation, workflows, and integrations for AI-powered development
+                    Documentation-first guide to PlanToCode architecture and data flows
                   </p>
                   <Link href="/" className="text-primary hover:underline">
                     Back to Home

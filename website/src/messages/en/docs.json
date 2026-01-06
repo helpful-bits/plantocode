@@ -350,6 +350,10 @@
   "hub": {
     "ctaDescription": "Download PlanToCode to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.",
     "ctaHeading": "Ready to try these workflows?",
+    "ctaLinks": {
+      "overview": "Start with Overview",
+      "runtime": "Runtime Walkthrough"
+    },
     "description": "Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice.",
     "exploreHeading": "Explore Documentation",
     "learnMore": "Learn More",
@@ -365,48 +369,133 @@
     "title": "Documentation"
   },
   "sections": {
+    "architecture": {
+      "title": "Architecture & Internals"
+    },
+    "inputs": {
+      "title": "Inputs & Capture"
+    },
     "planning": {
-      "title": "Planning & Context"
+      "title": "Planning Pipeline"
     },
     "execution": {
-      "title": "Execution Surface"
+      "title": "Execution & Automation"
     },
-    "architecture": {
-      "title": "Architecture"
+    "research": {
+      "title": "Research & Models"
+    },
+    "platform": {
+      "title": "Build & Deployment"
     }
   },
   "items": {
-    "text-improvement": {
-      "title": "Text Improvement",
-      "description": "Selection popover, job queue, and integrations for prompt cleanup."
+    "overview": {
+      "title": "System Overview",
+      "description": "Start here: what the system does, how the core loop works, and where each component lives."
     },
-    "implementation-plans": {
-      "title": "Implementation Plans",
-      "description": "How plans stream into the Monaco viewer and stay linked to plan history."
+    "runtime-walkthrough": {
+      "title": "Runtime Walkthrough",
+      "description": "End-to-end timeline of what happens from task input to execution."
     },
-    "file-discovery": {
-      "title": "File Discovery Workflow",
-      "description": "Background workflow that gathers relevant paths for each task."
+    "architecture": {
+      "title": "System Architecture",
+      "description": "How the desktop shell, Rust services, server APIs, and persistence layers fit together."
     },
-    "deep-research": {
-      "title": "Deep Research & Web Search",
-      "description": "Web search workflow, API integration, query optimization, and development workflow integration."
+    "desktop-app": {
+      "title": "Desktop App Internals",
+      "description": "Tauri v2 shell, Rust command layer, PTY sessions, and UI state management."
     },
-    "model-configuration": {
-      "title": "Model Configuration",
-      "description": "Allowed models per task and token guardrails in the selector toggle."
+    "server-api": {
+      "title": "Server API & LLM Proxy",
+      "description": "Auth, provider routing, model configuration, and WebSocket endpoints."
     },
-    "terminal-sessions": {
-      "title": "Terminal Sessions",
-      "description": "Persistent PTY sessions, CLI detection, and recovery behaviour."
+    "mobile-ios": {
+      "title": "iOS Client Architecture",
+      "description": "Swift workflows, Auth0 login flow, and device-link session management."
+    },
+    "background-jobs": {
+      "title": "Background Jobs & Orchestration",
+      "description": "Job records, workflow orchestration, processors, and event streaming."
+    },
+    "data-model": {
+      "title": "Data Model & Storage",
+      "description": "SQLite entities, relationships, and how state is rehydrated."
+    },
+    "decisions-tradeoffs": {
+      "title": "Technical Decisions & Tradeoffs",
+      "description": "Why Tauri, SQLite, and a dedicated LLM proxy were chosen and what they cost."
+    },
+    "build-your-own": {
+      "title": "Build Your Own Pipeline",
+      "description": "Conceptual guide for designing file discovery and plan generation workflows."
+    },
+    "meeting-ingestion": {
+      "title": "Meeting & Recording Ingestion",
+      "description": "How recordings become structured task inputs and artifacts."
+    },
+    "video-analysis": {
+      "title": "Video Analysis",
+      "description": "Frame sampling, prompts, and analysis artifacts from recordings."
     },
     "voice-transcription": {
       "title": "Voice Transcription",
       "description": "Recording lifecycle, project-aware settings, and device management."
     },
-    "architecture": {
-      "title": "Architecture Overview",
-      "description": "How the React front end, Tauri commands, and persistence fit together."
+    "text-improvement": {
+      "title": "Text Improvement",
+      "description": "Selection popover, job queue, and integrations for prompt cleanup."
+    },
+    "file-discovery": {
+      "title": "File Discovery Workflow",
+      "description": "Background workflow that gathers relevant paths for each task."
+    },
+    "implementation-plans": {
+      "title": "Implementation Plans",
+      "description": "How plans stream into the Monaco viewer and stay linked to plan history."
+    },
+    "merge-instructions": {
+      "title": "Merge Instructions",
+      "description": "How multiple plan drafts are merged using XML-tagged source plans and user guidance."
+    },
+    "prompt-types": {
+      "title": "Prompt Types & Templates",
+      "description": "Catalog of prompt-driven job types and template assembly."
+    },
+    "terminal-sessions": {
+      "title": "Terminal Sessions",
+      "description": "Persistent PTY sessions, CLI detection, and recovery behaviour."
+    },
+    "copy-buttons": {
+      "title": "Copy Buttons",
+      "description": "Template handoff from plans into terminals and external tools."
+    },
+    "deep-research": {
+      "title": "Deep Research & Web Search",
+      "description": "Web search workflow, API integration, query optimization, and development workflow integration."
+    },
+    "provider-routing": {
+      "title": "Provider Routing & Streaming",
+      "description": "How provider requests are normalized, streamed, and tracked."
+    },
+    "model-configuration": {
+      "title": "Model Configuration",
+      "description": "Allowed models per task and token guardrails in the selector toggle."
+    },
+    "server-setup": {
+      "title": "Dedicated Server Setup",
+      "description": "Ansible-based infrastructure: base hardening, app deployment, and vault-managed secrets."
+    },
+    "tauri-v2": {
+      "title": "Tauri v2 Development Guide",
+      "description": "Project layout, commands, and capability-based permissions for Tauri v2."
+    },
+    "distribution-macos": {
+      "title": "macOS Distribution",
+      "description": "Signing, notarization, DMG packaging, and updater artifacts."
+    },
+    "distribution-windows": {
+      "title": "Windows Distribution & Store",
+      "description": "NSIS builds, MSIX packaging, and Microsoft Store submission."
     }
   },
   "implementationPlans": {
@@ -543,6 +632,266 @@
       "voice": "Inside the terminal modal, voice transcription can capture speech and paste it into the terminal input area. The recording hook looks up project-level transcription settings, keeps track of recording state, and streams recognised text into the active plan session."
     }
   },
+  "copyButtons": {
+    "meta": {
+      "title": "Copy Buttons - PlanToCode",
+      "description": "How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution."
+    },
+    "category": "Execution",
+    "date": "2025-09-23",
+    "readTime": "10 min",
+    "title": "Copy Buttons",
+    "description": "Template-driven handoff from implementation plans to PTY terminals and external tools.",
+    "intro": "Copy buttons bridge planning and execution by resolving template placeholders against the active plan, then delivering the result to PTY sessions or the system clipboard. Each action is tied to job metadata for complete audit trails, enabling teams to trace exactly what was sent to agents.",
+    "metaTitle": "Copy buttons - PlanToCode",
+    "metaDescription": "How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution.",
+    "ogTitle": "Copy buttons - PlanToCode",
+    "ogDescription": "Technical guide to copy button templates, placeholder resolution, and terminal handoff.",
+    "visuals": {
+      "templateFlow": {
+        "title": "Template resolution flow",
+        "description": "This diagram shows the copy button execution pipeline. Stage 1 'Button Click': User clicks a copy button in the plan viewer or terminal header. The button configuration contains a label, template string, and target (terminal or clipboard). Stage 2 'Placeholder Extraction': The template processor scans for double-brace patterns like {{IMPLEMENTATION_PLAN}}, {{STEP_CONTENT}}, {{TASK_DESCRIPTION}}. Stage 3 'Context Resolution': The resolver queries job metadata for plan content, then session state for task description and selected files. Missing placeholders are preserved in output for debugging. Stage 4 'Target Delivery': For terminal targets, content is written to the PTY input buffer via master.take_writer(). For clipboard targets, content is copied via Tauri clipboard API. A toast notification confirms the action with content preview.",
+        "imageSrc": "/images/docs/copy-buttons/template-flow.png",
+        "imageAlt": "Flow showing copy button template resolution",
+        "caption": "Placeholder for a template resolution flow diagram."
+      }
+    },
+    "templateConfiguration": {
+      "heading": "Template Configuration Sources",
+      "description": "Copy button templates follow a layered configuration model. Server defaults provide baseline templates, project-level overrides customize for team workflows, and task-specific configurations handle one-off scenarios.",
+      "serverDefaults": {
+        "heading": "Server Defaults",
+        "description": "Shared templates from /api/config/desktop-runtime-config. Includes button labels, template strings, target (terminal or clipboard), and visibility conditions."
+      },
+      "projectOverrides": {
+        "heading": "Project Overrides",
+        "description": "Templates stored in SQLite project_settings table. Merged at runtime with server defaults to customize for team standards."
+      },
+      "taskSpecific": {
+        "heading": "Task-Specific",
+        "description": "Per-task_model_config templates for specialized workflows. Enables custom handoff patterns without modifying global settings."
+      }
+    },
+    "placeholderResolution": {
+      "heading": "Placeholder Resolution",
+      "description": "Templates use double-brace placeholders that are resolved against the active plan and session context at click time. The resolution engine supports nested context access and conditional sections.",
+      "placeholdersHeading": "Available Placeholders",
+      "placeholders": [
+        {
+          "placeholder": "{{IMPLEMENTATION_PLAN}}",
+          "description": "Full merged plan XML content"
+        },
+        {
+          "placeholder": "{{STEP_CONTENT}}",
+          "description": "Content of a specific plan step by index"
+        },
+        {
+          "placeholder": "{{TASK_DESCRIPTION}}",
+          "description": "The refined task specification"
+        },
+        {
+          "placeholder": "{{PROJECT_CONTEXT}}",
+          "description": "File paths, directory structure, and repo summary"
+        },
+        {
+          "placeholder": "{{SELECTED_FILES}}",
+          "description": "List of files included in the plan"
+        },
+        {
+          "placeholder": "{{MODEL_NAME}}",
+          "description": "Currently selected model identifier"
+        },
+        {
+          "placeholder": "{{SESSION_ID}}",
+          "description": "Active session UUID for traceability"
+        },
+        {
+          "placeholder": "{{COMMANDS}}",
+          "description": "Extracted shell commands from plan steps"
+        },
+        {
+          "placeholder": "{{STEPS_SECTION}}",
+          "description": "Plan steps without agent instructions"
+        },
+        {
+          "placeholder": "{{REQUIREMENTS}}",
+          "description": "Task requirements and constraints"
+        }
+      ],
+      "resolutionOrder": "Resolution order: Job metadata first, then plan content, then session context. Undefined placeholders are preserved in the output for debugging.",
+      "exampleTemplate": "Example template:\n\nYou are an AI coding assistant. Execute the following plan:\n\n{{IMPLEMENTATION_PLAN}}\n\nWorking on task: {{TASK_DESCRIPTION}}\n\nSelected files for context:\n{{SELECTED_FILES}}\n\nModel: {{MODEL_NAME}}\nSession: {{SESSION_ID}}"
+    },
+    "processingPipeline": {
+      "heading": "Template Processing Pipeline",
+      "description": "When a button is clicked, the template processor executes a multi-step pipeline: placeholder extraction, context lookup, value substitution, and output formatting.",
+      "steps": [
+        {
+          "number": 1,
+          "title": "Extract Placeholders",
+          "description": "Regex scan for {{...}} patterns in the template string"
+        },
+        {
+          "number": 2,
+          "title": "Lookup Context",
+          "description": "Query job metadata, plan content, and session state for values"
+        },
+        {
+          "number": 3,
+          "title": "Substitute Values",
+          "description": "Replace placeholders with resolved values, preserving formatting"
+        },
+        {
+          "number": 4,
+          "title": "Format Output",
+          "description": "Apply target-specific escaping (shell for terminal, plain for clipboard)"
+        }
+      ],
+      "chunking": {
+        "heading": "Large Plan Chunking",
+        "description": "Plans exceeding 100KB are automatically chunked into sequential segments with clear boundaries to avoid overloading terminal buffers or clipboard limits. Each chunk is prefixed with its position (e.g., '[Part 1/3]')."
+      }
+    },
+    "terminalHandoff": {
+      "heading": "PTY Terminal Handoff",
+      "description": "Buttons configured for terminal handoff write directly to the PTY session input buffer. The resolved template appears as if typed by the user, triggering agent execution immediately.",
+      "detailsHeading": "Handoff Details",
+      "details": [
+        "Content written via master.take_writer() to the PTY input buffer",
+        "Supports multi-line input and escape sequences",
+        "Large content chunked into 4KB segments to avoid buffer overflow",
+        "UI displays first 100 characters as confirmation preview"
+      ],
+      "codeExample": "// Terminal handoff implementation\nasync fn handoff_to_terminal(\n    session_id: &str,\n    content: &str,\n    template_id: &str,\n) -> Result<HandoffResult> {\n    // Get PTY writer for session\n    let writer = terminal_manager.get_writer(session_id)?;\n\n    // Write content to PTY input buffer\n    writer.write_all(content.as_bytes()).await?;\n\n    // Log the action for audit\n    copy_button_actions.insert(CopyButtonAction {\n        session_id: session_id.to_string(),\n        template_id: template_id.to_string(),\n        content_hash: sha256(content),\n        created_at: Utc::now(),\n    })?;\n\n    Ok(HandoffResult::Terminal { session_id })\n}"
+    },
+    "clipboardHandoff": {
+      "heading": "Clipboard Handoff",
+      "description": "Buttons configured for clipboard copy the resolved template to the system clipboard using the Tauri clipboard API. This enables handoff to external tools like IDE terminals or web-based agents.",
+      "crossPlatform": {
+        "heading": "Cross-Platform API",
+        "description": "Uses tauri::api::clipboard::set_text() for consistent clipboard access across macOS, Windows, and Linux."
+      },
+      "feedback": {
+        "heading": "User Feedback",
+        "description": "Toast notification confirms the copy with a preview of the content and token count estimate for the target model."
+      }
+    },
+    "defaultButtons": {
+      "heading": "Default Copy Buttons",
+      "description": "PlanToCode ships with several default copy buttons that cover common workflows. These can be customized or extended through project settings.",
+      "buttonsHeading": "Built-in Buttons",
+      "buttons": [
+        {
+          "id": "use-full-plan",
+          "label": "Use Full Plan",
+          "description": "Copies the entire implementation plan XML content. Best for agents that accept structured plan input."
+        },
+        {
+          "id": "use-step",
+          "label": "Use This Step",
+          "description": "Copies only the currently selected step content. Useful for incremental execution or reviewing specific changes."
+        },
+        {
+          "id": "use-commands",
+          "label": "Use Commands",
+          "description": "Extracts and copies only the shell commands from the plan steps. Ideal for quick terminal execution."
+        },
+        {
+          "id": "use-steps-only",
+          "label": "Use Steps Only",
+          "description": "Copies the plan steps without agent instructions or metadata. Cleaner output for human review."
+        }
+      ]
+    },
+    "customization": {
+      "heading": "Customizing Copy Buttons",
+      "description": "Copy buttons can be customized at multiple levels: global defaults, project-level overrides, and per-task configurations.",
+      "globalDefaults": {
+        "heading": "Global Defaults",
+        "description": "Server-side configuration in /api/config/desktop-runtime-config defines the base set of copy buttons. These are loaded when the desktop app starts and cached for offline use."
+      },
+      "projectSettings": {
+        "heading": "Project-Level Customization",
+        "description": "Each project can override the default buttons through the Settings panel. Project-specific buttons are stored in SQLite and merged with server defaults at runtime."
+      },
+      "taskSettings": {
+        "heading": "Task-Level Configuration",
+        "description": "Individual tasks can have their own copy button configurations. This allows different button sets for implementation plans, code reviews, or documentation tasks."
+      },
+      "editorDescription": "The copy button editor in Settings allows drag-and-drop reordering, inline label editing, and template content modification. Changes are debounced and persisted automatically."
+    },
+    "uiIntegration": {
+      "heading": "UI Integration and Safety",
+      "description": "Copy buttons appear in plan viewers and terminal headers. Each button shows a preview popover with the resolved content and token estimate before execution.",
+      "tokenEstimation": {
+        "heading": "Token Estimation",
+        "description": "Token estimates help reviewers validate that the prompt fits within the target model's context window before handoff. Displayed alongside the preview."
+      },
+      "previewModal": {
+        "heading": "Full Preview Modal",
+        "description": "Clicking the preview icon opens a modal with the full resolved template, syntax highlighting, and diff view if the template has changed since last use."
+      },
+      "disabledState": {
+        "heading": "Disabled State",
+        "description": "Buttons are disabled when required context is missing (e.g., no active plan, missing session). Tooltips explain what context is needed to enable the button."
+      }
+    },
+    "auditTrail": {
+      "heading": "Job Metadata and Audit Trail",
+      "description": "Every copy button action is linked to job metadata for complete traceability. The audit record includes the source plan, target session, resolved content hash, and user context.",
+      "schemaHeading": "Audit Schema",
+      "schema": "-- copy_button_actions table schema\nCREATE TABLE copy_button_actions (\n    action_id    TEXT PRIMARY KEY,\n    plan_id      TEXT NOT NULL REFERENCES implementation_plans(id),\n    job_id       TEXT REFERENCES background_jobs(id),\n    session_id   TEXT REFERENCES terminal_sessions(session_id),\n    template_id  TEXT NOT NULL,\n    content_hash TEXT NOT NULL,  -- SHA-256 for integrity verification\n    created_at   TEXT NOT NULL\n);\n\n-- Query to trace plan handoffs\nSELECT * FROM copy_button_actions\nWHERE plan_id = ?\nORDER BY created_at DESC;",
+      "fieldsHeading": "Audit Record Fields",
+      "fields": [
+        {
+          "field": "action_id",
+          "description": "Unique identifier for this handoff action"
+        },
+        {
+          "field": "plan_id",
+          "description": "Source implementation plan reference"
+        },
+        {
+          "field": "job_id",
+          "description": "Associated background job if applicable"
+        },
+        {
+          "field": "session_id",
+          "description": "Target terminal session or null for clipboard"
+        },
+        {
+          "field": "template_id",
+          "description": "Template configuration that was used"
+        },
+        {
+          "field": "content_hash",
+          "description": "SHA-256 of resolved content for integrity"
+        },
+        {
+          "field": "created_at",
+          "description": "Timestamp of the action"
+        }
+      ],
+      "retention": "Retention: Audit records are retained for 90 days by default, configurable in project settings."
+    },
+    "mobileIntegration": {
+      "heading": "Mobile Integration",
+      "description": "Copy buttons work across desktop and mobile clients with consistent behavior. The iOS client uses the same placeholder resolution logic and can send content to linked terminals.",
+      "deviceLink": {
+        "heading": "Device Link Support",
+        "description": "When a mobile device is linked to a desktop session, copy buttons can target the desktop terminal directly. The resolved content is sent through the device link WebSocket connection."
+      },
+      "mobileButtons": {
+        "heading": "Mobile-Specific Buttons",
+        "description": "Mobile clients support the same button customization as desktop. Button configurations sync through the server to maintain consistency across devices."
+      }
+    },
+    "cta": {
+      "heading": "Trace handoff to execution",
+      "description": "Terminal sessions show where copy button output lands and how it is logged.",
+      "terminalLink": "Terminal sessions",
+      "plansLink": "Implementation plans"
+    }
+  },
   "textImprovement": {
     "meta": {
       "title": "Text improvement - PlanToCode",
@@ -619,5 +968,2131 @@
       "description": "Common voice transcription workflows: Sprint planning (meeting recording → transcription → task_refinement → task descriptions), Terminal commands (dictation → transcription → terminal input → execution), Bug reports (verbal description → task editor → text_improvement → task_refinement), Architecture discussions (video + audio → vision analysis + transcription → combined text_improvement)."
     },
     "title": "Voice Transcription"
+  },
+  "overview": {
+    "meta": {
+      "title": "System overview - PlanToCode",
+      "description": "Start here: what PlanToCode does, how the core loop works, and where each component lives in the repo."
+    },
+    "category": "Overview",
+    "date": "2025-09-25",
+    "readTime": "15 min",
+    "title": "System Overview",
+    "description": "A concise map of the system, the core loop, and the required dependencies.",
+    "intro": "PlanToCode is a desktop workspace that plans and validates code changes before execution. It coordinates a local Rust job engine, a React UI, and a server proxy for LLM calls. The system follows an offline-first architecture where the desktop app operates independently using SQLite for local state, while the server handles authentication, LLM provider routing, and billing. Without external LLM providers configured with your API keys, the planning and analysis pipelines will not run.",
+    "visuals": {
+      "systemMap": {
+        "title": "System map",
+        "description": "Map of the desktop app, the Rust core, local SQLite storage, and the server proxy.",
+        "imageSrc": "/images/docs/overview/system-map.png",
+        "imageAlt": "PlanToCode system map diagram",
+        "caption": "Placeholder for a system map diagram."
+      }
+    },
+    "systemLayers": {
+      "heading": "System layers",
+      "description": "The system is organized into four distinct layers that communicate through well-defined interfaces:",
+      "items": [
+        "Presentation Layer: React UI with Monaco editors, terminal panels, and workflow controls (desktop/src/)",
+        "Command Layer: Tauri commands that bridge React and Rust, handling IPC and state management (desktop/src-tauri/src/commands/)",
+        "Processing Layer: Job processors, workflow orchestrator, and business logic in Rust (desktop/src-tauri/src/jobs/)",
+        "Persistence Layer: SQLite repositories for local state and server PostgreSQL for auth/billing (desktop/src-tauri/src/db_utils/)"
+      ]
+    },
+    "coreLoop": {
+      "heading": "Core loop in practice",
+      "description": "Every task flows through a well-defined lifecycle from capture to execution:",
+      "steps": [
+        "Capture the task from text, voice transcription (via useVoiceTranscription hook), or video recording analysis.",
+        "Refine the task description and objectives with text_improvement jobs through TextImprovementProcessor.",
+        "Run the file discovery workflow: RootFolderSelectionProcessor selects directories, RegexFileFilterProcessor applies patterns, FileRelevanceAssessmentProcessor scores contents, ExtendedPathFinderProcessor expands context.",
+        "Generate implementation plans via ImplementationPlanProcessor, which streams XML-formatted plans to the Monaco viewer.",
+        "Optionally merge multiple plan drafts with ImplementationPlanMergeProcessor using XML-tagged source plans.",
+        "Execute or export the approved plan through PTY terminal sessions or copy-button templates for external agents.",
+        "Persist every job, artifact, and terminal log to SQLite (background_jobs, terminal_sessions tables) for auditability."
+      ]
+    },
+    "components": {
+      "heading": "Major components",
+      "description": "Each component has a specific responsibility and communicates through typed interfaces:",
+      "items": [
+        "Desktop UI (React) in desktop/src/ with Monaco plan views, terminal panels, and providers (SessionProvider, TextImprovementProvider).",
+        "Rust core (Tauri v2) in desktop/src-tauri/ handling commands, jobs, and persistence with capability-based permissions.",
+        "Local SQLite schema in desktop/src-tauri/migrations/consolidated_schema.sql with WAL mode for concurrent access.",
+        "Server proxy (Actix-Web) in server/src/ for auth, provider routing, streaming responses, and billing via Stripe.",
+        "Mobile iOS client in mobile/ios/Core/ with SwiftUI interface, Auth0 PKCE, and WebSocket device linking.",
+        "Infrastructure automation in infrastructure/ansible/ for Hetzner (EU) and InterServer (US) dedicated servers."
+      ]
+    },
+    "dependencies": {
+      "heading": "Required dependencies",
+      "description": "The system requires these external services and resources:",
+      "items": [
+        "External LLM providers (OpenAI, Anthropic, Google, X.AI, OpenRouter) for plan generation, transcription, and analysis.",
+        "Auth0-based authentication with PKCE flow for desktop and mobile sessions.",
+        "PostgreSQL 17 and Redis 7+ for server-side user accounts, billing state, and job queues (self-hosted deployments).",
+        "Local filesystem access via git ls-files or directory traversal for file discovery workflows.",
+        "Whisper-compatible transcription endpoint for voice input processing."
+      ]
+    },
+    "codeMap": {
+      "heading": "Where the behavior lives in the repo",
+      "description": "Quick reference to key directories and files:",
+      "items": [
+        "Tauri commands: desktop/src-tauri/src/commands/ (35+ command modules: job_commands.rs, workflow_commands.rs, terminal_commands.rs, session_commands.rs, auth0_commands.rs)",
+        "Workflow orchestration: desktop/src-tauri/src/jobs/workflow_orchestrator/ (definition_loader.rs, stage_scheduler.rs, event_emitter.rs, payload_builder.rs)",
+        "Job processors: desktop/src-tauri/src/jobs/processors/ (implementation_plan_processor.rs, text_improvement_processor.rs, root_folder_selection_processor.rs)",
+        "SQLite repositories: desktop/src-tauri/src/db_utils/ (background_job_repository/, session_repository.rs, terminal_repository.rs)",
+        "Server routes: server/src/routes.rs (configure_routes, configure_public_auth_routes, configure_webhook_routes)",
+        "LLM proxy handlers: server/src/handlers/proxy_handlers.rs and server/src/handlers/proxy/ (router.rs, providers/)",
+        "Provider transformers: server/src/handlers/provider_transformers/ (openai.rs, google.rs, anthropic.rs, xai.rs)",
+        "iOS workflows: mobile/ios/Core/Sources/Workflows/WorkflowManager.swift with MobileSessionManager and APIClient",
+        "Infrastructure playbooks: infrastructure/ansible/site-base.yml (hardening, PostgreSQL, Redis) and site-app.yml (deployment)"
+      ]
+    },
+    "keyAbstractions": {
+      "heading": "Key abstractions",
+      "description": "Understanding these core concepts helps navigate the codebase:",
+      "items": [
+        "Session: Project context stored in sessions table with task_description, included_files, and model preferences. Identified by UUID.",
+        "Background Job: LLM-backed operation stored in background_jobs table with task_type, prompt, response, token tracking, and cost.",
+        "Workflow: Multi-stage orchestrated process (e.g., file_finder_workflow) coordinated by WorkflowOrchestrator with IntermediateData passing between stages.",
+        "Terminal Session: PTY process stored in terminal_sessions with output_log, status, and optional job_id linking for audit.",
+        "Provider: LLM service abstraction in server/src/handlers/proxy/providers/ with request transformation and response normalization."
+      ]
+    },
+    "dataFlowSummary": {
+      "heading": "Data flow summary",
+      "description": "How data moves through the system for a typical planning task:",
+      "items": [
+        "User input enters through React components and flows to Tauri commands via @tauri-apps/api/core invoke().",
+        "Commands create background_jobs records and dispatch to job processors via the job queue.",
+        "Processors build prompts, send requests through the server LLM proxy, and stream responses via Tauri events.",
+        "Responses are stored in SQLite and emitted to React providers that update the UI state.",
+        "Terminal execution streams PTY output to the UI and persists logs for session recovery."
+      ]
+    }
+  },
+  "runtimeWalkthrough": {
+    "meta": {
+      "title": "Runtime walkthrough - PlanToCode",
+      "description": "End-to-end timeline of a task from input to plan output, with job types and artifact flows."
+    },
+    "category": "Architecture",
+    "date": "2025-09-25",
+    "readTime": "12 min",
+    "title": "Runtime Walkthrough",
+    "description": "End-to-end runtime timeline from task input to plan output.",
+    "intro": "This walkthrough traces a single task from initial capture through file discovery, plan generation, and terminal execution. Each stage maps to specific job types and produces artifacts stored in SQLite.",
+    "visuals": {
+      "timeline": {
+        "title": "Runtime timeline",
+        "description": "Visual timeline showing task input, workflow stages, and plan output.",
+        "imageSrc": "/images/docs/runtime-walkthrough/timeline.png",
+        "imageAlt": "Runtime timeline diagram",
+        "caption": "Placeholder for a runtime timeline diagram."
+      },
+      "walkthroughVideo": {
+        "title": "Runtime walkthrough video",
+        "description": "Video demonstration of a complete task execution from input to plan output.",
+        "videoSrc": "",
+        "posterSrc": "",
+        "caption": "Video walkthrough placeholder - record a demonstration of the full planning workflow."
+      }
+    },
+    "timeline": {
+      "heading": "High-level runtime sequence",
+      "description": "A complete task execution follows this sequence of operations:",
+      "steps": [
+        "User enters or dictates a task description in the desktop UI via TaskDescriptionEditor component.",
+        "Optional: text_improvement job refines the raw input through TextImprovementProcessor.",
+        "User triggers file discovery workflow via the Implementation Plans panel start_file_finder_workflow command.",
+        "WorkflowOrchestrator in desktop/src-tauri/src/jobs/workflow_orchestrator/ creates a workflow record and schedules stage 1.",
+        "Stage 1 (root_folder_selection): RootFolderSelectionProcessor sends directory tree to LLM, stores selected roots in IntermediateData.selectedRoots.",
+        "Stage 2 (regex_file_filter): RegexFileFilterProcessor generates patterns, runs git ls-files, stores matches in IntermediateData.locallyFilteredFiles.",
+        "Stage 3 (file_relevance_assessment): FileRelevanceAssessmentProcessor chunks file contents, scores relevance, stores in IntermediateData.aiFilteredFiles.",
+        "Stage 4 (extended_path_finder): ExtendedPathFinderProcessor expands context with imports and dependencies, stores in IntermediateData.verifiedPaths.",
+        "UI receives workflow-completed event via event_emitter.rs, updates file selection display.",
+        "User triggers plan generation with selected files via generate_implementation_plan command.",
+        "ImplementationPlanProcessor in desktop/src-tauri/src/jobs/processors/implementation_plan_processor.rs streams XML plan content to Monaco viewer via job:stream-progress events.",
+        "User reviews plan in VirtualizedCodeViewer component, can edit directly or request merge.",
+        "Approved plan is copied to terminal via copy-button templates or exported for external agents.",
+        "Terminal session in terminal_commands.rs captures PTY output, detects agent attention states.",
+        "All artifacts persist in SQLite background_jobs and terminal_sessions tables for audit and session recovery."
+      ]
+    },
+    "jobTypes": {
+      "heading": "Job types in the runtime",
+      "description": "Each task_type maps to a specific processor and produces distinct artifacts:",
+      "items": [
+        "text_improvement: TextImprovementProcessor wraps text in XML, sends to LLM, returns refined text. Stored in background_jobs.response.",
+        "root_folder_selection: RootFolderSelectionProcessor receives directory tree, returns JSON array of selected directories.",
+        "regex_file_filter: RegexFileFilterProcessor generates patterns from task description, applies to git file list.",
+        "file_relevance_assessment: FileRelevanceAssessmentProcessor loads file contents, chunks by token limit, scores relevance.",
+        "extended_path_finder: ExtendedPathFinderProcessor analyzes imports/dependencies, expands context with related files.",
+        "implementation_plan: ImplementationPlanProcessor streams XML-formatted plans with plan_step elements.",
+        "implementation_plan_merge: ImplementationPlanMergeProcessor combines plans using source_plans XML tags and user instructions.",
+        "video_analysis: Processes screen recordings via /api/llm/video/analyze endpoint with frame sampling.",
+        "web_search_prompts_generation: Generates research_task XML blocks for deep research workflow.",
+        "web_search_execution: Executes research prompts in parallel, aggregates findings."
+      ]
+    },
+    "inputCapture": {
+      "heading": "Task input capture",
+      "description": "Tasks enter the system through multiple input surfaces:",
+      "text": "Task descriptions are typed or pasted into TaskDescriptionEditor which persists to sessions.task_description and creates history entries in task_description_history table with device_id for multi-device sync.",
+      "voice": "Voice input uses useVoiceTranscription hook which records via MediaRecorder API, sends to /api/audio/transcriptions, and inserts at cursor position.",
+      "video": "Video analysis uses VideoAnalysisDialog to capture screen recordings, upload to /api/llm/video/analyze, and extract UI state observations."
+    },
+    "workflowExecution": {
+      "heading": "Workflow execution details",
+      "description": "The WorkflowOrchestrator coordinates multi-stage workflows:",
+      "scheduling": "workflow_lifecycle_manager.rs creates workflow records and stage_scheduler.rs dispatches stages sequentially based on workflow JSON definitions.",
+      "data": "IntermediateData structures in workflow_types.rs pass outputs between stages: selectedRoots, rawRegexPatterns, locallyFilteredFiles, aiFilteredFiles, verifiedPaths.",
+      "events": "event_emitter.rs publishes workflow-status and workflow-stage Tauri events consumed by WorkflowTracker in the React UI."
+    },
+    "persistence": {
+      "heading": "State persistence",
+      "description": "All artifacts are persisted for audit and recovery:",
+      "jobs": "background_job_repository/ stores job records with session_id, task_type, status, prompt, response, tokens_sent/received, actual_cost.",
+      "sessions": "session_repository.rs manages sessions table with task_description, included_files, model_used, history versions.",
+      "terminals": "terminal_repository.rs persists terminal_sessions with output_log, status, exit_code, working_directory for session recovery.",
+      "rehydration": "On app restart, the Rust core rehydrates session state from SQLite, marks stale running jobs as failed, and restores terminal output logs."
+    },
+    "inputs": {
+      "heading": "Task input capture",
+      "capture": "Tasks enter the system through multiple input surfaces: typed text in TaskDescriptionEditor, voice dictation via useVoiceTranscription hook, or video analysis through VideoAnalysisDialog.",
+      "artifacts": "Each input type produces artifacts stored in SQLite - task_description in sessions table, transcription results in background_jobs, and video frames in associated job metadata."
+    },
+    "refinement": {
+      "heading": "Input refinement",
+      "jobs": "The text_improvement job type refines raw input through TextImprovementProcessor, wrapping text in XML and sending to the LLM for grammar, clarity, and structure improvements.",
+      "storage": "Refined text is stored in background_jobs.response and can update sessions.task_description via the React provider."
+    },
+    "discovery": {
+      "heading": "File discovery workflow",
+      "workflow": "FileFinderWorkflow runs four sequential stages: root_folder_selection narrows directories, regex_file_filter applies patterns, file_relevance_assessment scores content, and extended_path_finder expands with dependencies.",
+      "outputs": "Each stage stores results in IntermediateData structures passed between processors, with final file selections persisted to sessions.included_files."
+    },
+    "planGeneration": {
+      "heading": "Plan generation",
+      "jobs": "The implementation_plan job type uses ImplementationPlanProcessor to generate XML-formatted plans with plan_step elements containing file paths, operation types, and code changes.",
+      "streaming": "Plan content streams to the UI via job:stream-progress Tauri events, displayed in the VirtualizedCodeViewer Monaco component with syntax highlighting."
+    },
+    "merge": {
+      "heading": "Plan merging",
+      "instructions": "The implementation_plan_merge job combines multiple plans using source_plans XML tags and user-provided merge instructions to resolve conflicts and consolidate changes.",
+      "outputs": "Merged plans maintain traceability to source plans and include merged_from metadata in the final background_jobs record."
+    },
+    "review": {
+      "heading": "Plan review",
+      "editor": "Plans open in the Monaco-based VirtualizedCodeViewer for review. Users can edit plan text directly, request modifications, or approve for execution.",
+      "audit": "All review actions are logged with timestamps and user context, providing an audit trail of plan evolution."
+    },
+    "execution": {
+      "heading": "Execution handoff",
+      "terminal": "Approved plans are copied to the integrated terminal via copy-button templates, or exported for external agents like Claude Code, Cursor, or Codex.",
+      "logging": "Terminal sessions in terminal_commands.rs capture PTY output, detect agent attention states, and log all execution activity to terminal_sessions table."
+    },
+    "state": {
+      "heading": "State persistence",
+      "jobs": "All job artifacts persist in background_jobs table with session_id, task_type, status, prompt, response, token counts, and cost tracking.",
+      "rehydration": "On app restart, the Rust core rehydrates session state from SQLite, marks stale running jobs as failed, and restores terminal output logs."
+    },
+    "jobMap": {
+      "heading": "Job type mapping",
+      "items": [
+        "text_improvement → TextImprovementProcessor → refined task descriptions",
+        "root_folder_selection → RootFolderSelectionProcessor → selected directories",
+        "regex_file_filter → RegexFileFilterProcessor → pattern-matched files",
+        "file_relevance_assessment → FileRelevanceAssessmentProcessor → scored files",
+        "extended_path_finder → ExtendedPathFinderProcessor → expanded context",
+        "implementation_plan → ImplementationPlanProcessor → XML plan documents",
+        "implementation_plan_merge → ImplementationPlanMergeProcessor → merged plans"
+      ]
+    },
+    "cta": {
+      "heading": "Explore the architecture",
+      "description": "Understand how the components fit together in detail.",
+      "links": {
+        "architecture": "Architecture overview",
+        "jobs": "Background jobs",
+        "desktop": "Desktop app internals",
+        "dataModel": "Data model",
+        "plans": "Implementation plans"
+      }
+    }
+  },
+  "desktopApp": {
+    "meta": {
+      "title": "Desktop app internals - PlanToCode",
+      "description": "How the Tauri desktop shell, Rust command layer, SQLite persistence, and PTY sessions work together."
+    },
+    "category": "Desktop",
+    "date": "2025-09-25",
+    "readTime": "14 min",
+    "title": "Desktop App Internals",
+    "description": "Tauri v2 shell, Rust command layer, PTY sessions, and UI state management.",
+    "intro": "The desktop app is a Tauri v2 shell (version 2.9.1) running a React UI. Rust services expose commands for workflows, terminal sessions, and configuration while persisting state locally in SQLite. The capability-based permission model provides fine-grained security controls for filesystem access, HTTP requests, shell execution, and system notifications.",
+    "visuals": {
+      "shell": {
+        "title": "Desktop shell overview",
+        "description": "Screenshot showing the plan editor, terminal tabs, and job status sidebar.",
+        "imageSrc": "/images/docs/desktop-app/desktop-shell.png",
+        "imageAlt": "PlanToCode desktop shell",
+        "caption": "Placeholder for the desktop shell UI."
+      }
+    },
+    "projectLayout": {
+      "heading": "Project layout",
+      "description": "The desktop application follows the standard Tauri v2 structure:",
+      "items": [
+        "desktop/src/: React UI components, hooks, providers, and desktop-specific adapters.",
+        "desktop/src-tauri/: Rust core including commands, jobs, repositories, and services.",
+        "desktop/src-tauri/src/lib.rs: Application entry point with plugin registration and AppState management.",
+        "desktop/src-tauri/src/commands/: 35+ Tauri command handler modules organized by domain.",
+        "desktop/src-tauri/src/jobs/: Background job processors, workflow orchestration, and queue management.",
+        "desktop/src-tauri/capabilities/: JSON capability definitions for security permissions (default.json, desktop-default.json, plantocode-api.json).",
+        "desktop/src-tauri/migrations/: SQLite schema migrations in consolidated_schema.sql."
+      ]
+    },
+    "ui": {
+      "heading": "React UI and surface area",
+      "description": "The React UI renders the task description editor, plan viewer, and terminal panels:",
+      "components": [
+        "TaskDescriptionEditor: Multi-line input with voice transcription integration and text improvement popover.",
+        "VirtualizedCodeViewer: Monaco-based plan display with syntax highlighting and copy actions.",
+        "TerminalSurface: PTY output buffer with connection status, agent attention indicators, and voice input.",
+        "SessionProvider: Global state management for active session, file selections, and model preferences.",
+        "TextImprovementProvider: Selection listener and popover positioning for inline rewrites.",
+        "WorkflowTracker: Real-time progress display for multi-stage workflows."
+      ]
+    },
+    "commands": {
+      "heading": "Tauri commands",
+      "description": "Commands in desktop/src-tauri/src/commands/ expose Rust functionality to the React UI. Key modules include:",
+      "modules": [
+        "job_commands.rs: create_job, get_job, cancel_job, get_jobs_for_session, clear_job_history.",
+        "workflow_commands.rs: start_file_finder_workflow, get_workflow_status, retry_workflow, pause_workflow, resume_workflow.",
+        "terminal_commands.rs: create_terminal_session, send_terminal_input, resize_terminal, get_terminal_output, check_cli_availability.",
+        "session_commands.rs: create_session, get_session, update_session, sync_task_description_history, sync_file_selection_history.",
+        "auth0_commands.rs: initiate_login, complete_login, refresh_token, logout, get_user_info.",
+        "implementation_plan_commands.rs: generate_implementation_plan, merge_implementation_plans, estimate_tokens.",
+        "config_commands.rs: get_runtime_config, get_model_config, get_system_prompts, refresh_config_cache.",
+        "settings_commands.rs: get_setting, set_setting, get_project_system_prompt, set_project_system_prompt."
+      ]
+    },
+    "appState": {
+      "heading": "AppState management",
+      "description": "The Rust core manages application state through Tauri's state system:",
+      "structure": "AppState struct in lib.rs holds: config_load_error (Option<String>), HTTP client (reqwest::Client), RuntimeConfig (server URL, onboarding status) behind Mutex, and Auth0State for authentication.",
+      "config": "RuntimeConfig contains server_url, onboarding_complete flag, and is updated via set_runtime_config command. ConfigCache stores runtime AI configuration with per-project overrides.",
+      "tokens": "TokenManager uses the OS keyring (via keyring crate) to securely store access_token, refresh_token, and jwt with automatic refresh before expiry."
+    },
+    "jobs": {
+      "heading": "Job processors and workflows",
+      "description": "Job processing architecture in desktop/src-tauri/src/jobs/:",
+      "queue": "queue.rs manages the job queue with in-memory pending jobs and SQLite persistence. Jobs transition through statuses: idle, created, queued, acknowledged_by_worker, preparing, preparing_input, running, generating_stream, processing_stream, completed, failed, canceled.",
+      "processors": "processors/ directory contains task-specific processors: ImplementationPlanProcessor (streaming plans), TextImprovementProcessor (inline rewrites), RootFolderSelectionProcessor, RegexFileFilterProcessor, FileRelevanceAssessmentProcessor, ExtendedPathFinderProcessor.",
+      "orchestrator": "workflow_orchestrator/ coordinates multi-stage workflows: definition_loader.rs loads JSON workflow definitions, stage_scheduler.rs dispatches stages, payload_builder.rs constructs inputs, event_emitter.rs publishes progress events.",
+      "streaming": "processors/generic_llm_stream_processor.rs handles streaming LLM responses, emitting job:stream-progress events and accumulating content in background_jobs.response."
+    },
+    "persistence": {
+      "heading": "Local persistence",
+      "description": "SQLite storage in desktop/src-tauri/migrations/consolidated_schema.sql:",
+      "tables": [
+        "sessions: id (UUID), name, project_directory, project_hash, task_description, included_files, force_excluded_files, model_used, history versions.",
+        "background_jobs: id (UUID), session_id (FK), task_type, status, prompt, response, tokens_sent/received, cache_read/write_tokens, actual_cost, metadata (JSON), server_request_id.",
+        "terminal_sessions: id, job_id (nullable FK), session_id, status, process_pid, output_log, working_directory, environment_vars, last_output_at.",
+        "task_description_history: session_id (FK), description, device_id, sequence_number, version for multi-device sync.",
+        "file_selection_history: session_id (FK), included_files, force_excluded_files, device_id, sequence_number.",
+        "project_system_prompts: project_hash, task_type, system_prompt for per-project prompt overrides.",
+        "key_value_store: key, value (JSON), updated_at for app settings.",
+        "error_logs: timestamp, level, error_type, message, context, stack, metadata for client-side error tracking."
+      ],
+      "repositories": "Repositories in db_utils/ provide typed access: background_job_repository/ (modular with base.rs, worker.rs, metadata.rs, cleanup.rs), session_repository.rs, terminal_repository.rs, settings_repository.rs, error_log_repository.rs."
+    },
+    "terminal": {
+      "heading": "Terminal sessions",
+      "description": "PTY terminal implementation:",
+      "commands": "terminal_commands.rs manages session lifecycle: create_terminal_session spawns PTY via portable-pty crate, send_terminal_input forwards keystrokes, resize_terminal adjusts dimensions, check_cli_availability verifies tool presence (claude, cursor, codex, gemini).",
+      "persistence": "terminal_repository.rs persists sessions with output_log (accumulated terminal output), status (idle/running/completed/failed/agent_requires_attention), exit_code, working_directory. Sessions can be restored after app restart.",
+      "attention": "Agent attention detection monitors last_output_at timestamps. Level 1 (30s idle): yellow indicator. Level 2 (2min idle): red indicator with desktop notification."
+    },
+    "inputStability": {
+      "heading": "Task description stability",
+      "description": "The task description editor includes safeguards to prevent cursor jumps:",
+      "guards": [
+        "Remote updates are queued while the user is typing and flushed on idle or blur.",
+        "Selection state is tracked and restored after React re-renders.",
+        "Background writers call sessionActions.updateCurrentSessionFields to coordinate updates.",
+        "Multi-device sync uses sequence_number and version fields to resolve conflicts."
+      ]
+    },
+    "plugins": {
+      "heading": "Tauri plugins",
+      "description": "PlanToCode uses the Tauri v2 plugin ecosystem:",
+      "list": [
+        "tauri-plugin-http (2.5.2): HTTP client with CSP-aware fetch for API calls.",
+        "tauri-plugin-dialog (2.4.2): Native file/folder picker and message dialogs.",
+        "tauri-plugin-shell (2.3.3): Shell command execution for external CLI tools.",
+        "tauri-plugin-store (2.4.1): Persistent key-value storage for app settings.",
+        "tauri-plugin-notification (2.3.0): Desktop notifications for agent attention.",
+        "tauri-plugin-updater (2.9.0): In-app updates with signature verification.",
+        "tauri-plugin-single-instance (2.3.4): Single instance enforcement.",
+        "tauri-plugin-process (2.3.1): Process restart capability."
+      ]
+    }
+  },
+  "serverApi": {
+    "meta": {
+      "title": "Server API and LLM proxy - PlanToCode",
+      "description": "Auth, provider routing, model configuration, and WebSocket endpoints used by desktop and mobile clients."
+    },
+    "category": "Server",
+    "date": "2025-09-25",
+    "readTime": "12 min",
+    "title": "Server API & LLM Proxy",
+    "description": "Auth, provider routing, model configuration, billing, and WebSocket endpoints.",
+    "intro": "The server is an Actix-Web service written in Rust that provides authentication, model configuration, LLM proxying, and billing. Desktop and mobile clients depend on it for secure provider routing and streaming responses. The server runs on dedicated infrastructure in two regions: Hetzner (EU) at api-eu.plantocode.com and InterServer (US) at api-us.plantocode.com.",
+    "visuals": {
+      "flow": {
+        "title": "Server request flow",
+        "description": "Diagram showing clients, API routes, and the LLM proxy.",
+        "imageSrc": "/images/docs/server-api/request-flow.png",
+        "imageAlt": "Server request flow diagram",
+        "caption": "Placeholder for the server request flow."
+      }
+    },
+    "routeOrganization": {
+      "heading": "Route organization",
+      "description": "Routes are organized in server/src/routes.rs with three configuration functions:",
+      "functions": [
+        "configure_routes(): JWT-authenticated routes under /api scope. Includes auth, billing, config, providers, models, llm proxy, audio, system-prompts, consent, devices, notifications.",
+        "configure_public_auth_routes(): Browser-based auth flow under /auth scope. Includes Auth0 initiate-login, callback, and logged-out routes.",
+        "configure_webhook_routes(): Unauthenticated webhook endpoints under /webhooks scope. Currently handles Stripe webhooks."
+      ]
+    },
+    "auth": {
+      "heading": "Authentication endpoints",
+      "description": "Authentication uses Auth0 with PKCE flow:",
+      "routes": [
+        "/auth/auth0/initiate-login (GET): Starts OAuth flow with code_challenge, redirects to Auth0.",
+        "/auth/auth0/callback (GET): Handles Auth0 redirect, exchanges code for tokens.",
+        "/api/auth/userinfo (GET): Returns authenticated user info from Auth0.",
+        "/api/auth/logout (POST): Revokes tokens and clears session.",
+        "/api/auth/account (DELETE): Account deletion with cascading cleanup.",
+        "/api/auth0/refresh-app-token (POST): Refreshes access token using refresh token."
+      ],
+      "implementation": "Auth handlers in server/src/handlers/auth0_handlers.rs and server/src/handlers/auth/. JWT validation uses services/auth/jwt.rs with JWKS rotation. Revoked tokens tracked in revoked_token_repository.rs."
+    },
+    "llmProxy": {
+      "heading": "LLM proxy and streaming",
+      "description": "The LLM proxy normalizes requests across providers and streams responses:",
+      "routes": [
+        "/api/llm/chat/completions (POST): Main chat completion endpoint. Routes to OpenAI, Anthropic, Google, X.AI, or OpenRouter based on model ID.",
+        "/api/llm/video/analyze (POST): Multipart video upload for frame analysis. Requires google/* models with video capability.",
+        "/api/llm/cancel (POST): Cancels in-flight streaming request by request_id.",
+        "/api/llm/status/{request_id} (GET): Returns status of a request (active, completed, cancelled).",
+        "/api/audio/transcriptions (POST): Whisper-compatible transcription. Multipart upload with audio file and parameters."
+      ],
+      "routing": "Router in server/src/handlers/proxy/router.rs selects provider based on model ID prefix (openai/, anthropic/, google/, xai/, openrouter/). Provider-specific handlers in server/src/handlers/proxy/providers/ transform requests and normalize responses.",
+      "streaming": "Streaming responses use Server-Sent Events (SSE) via streaming/sse_adapter.rs. The proxy forwards chunks from providers, transforms them to a common format, and tracks token usage in real-time."
+    },
+    "providers": {
+      "heading": "Provider routing",
+      "description": "Provider handlers in server/src/handlers/proxy/providers/:",
+      "handlers": [
+        "openai.rs: OpenAI and OpenAI-compatible APIs (GPT-4, o1, o3).",
+        "anthropic.rs: Anthropic Claude models with prompt caching support.",
+        "google.rs: Google Gemini models including video analysis capability.",
+        "xai.rs: X.AI Grok models.",
+        "openrouter.rs: OpenRouter aggregation for model routing."
+      ],
+      "transformers": "Request/response transformers in server/src/handlers/provider_transformers/ normalize API differences. Each transformer handles: request body format, authentication headers, streaming chunk format, usage extraction, error normalization."
+    },
+    "config": {
+      "heading": "Configuration endpoints",
+      "description": "Configuration and model metadata endpoints:",
+      "routes": [
+        "/api/config/all-configurations (GET): Returns all application configurations including model settings per task type.",
+        "/api/config/desktop-runtime-config (GET): Desktop-specific runtime configuration.",
+        "/api/config/billing (GET/PUT): Billing configuration management.",
+        "/api/providers (GET): List of available LLM providers with capabilities.",
+        "/api/providers/with-counts (GET): Providers with model counts.",
+        "/api/providers/by-capability/{capability} (GET): Filter providers by capability.",
+        "/api/models (GET): All available models with pricing.",
+        "/api/models/{id} (GET): Single model details.",
+        "/api/models/by-provider/{provider_code} (GET): Models for a specific provider.",
+        "/api/models/estimate-cost (POST): Cost estimation for a request.",
+        "/api/models/estimate-tokens (POST): Token count estimation.",
+        "/api/system-prompts/defaults (GET): Default system prompts by task type."
+      ]
+    },
+    "billing": {
+      "heading": "Billing endpoints",
+      "description": "Credit-based billing system integrated with Stripe:",
+      "routes": [
+        "/api/billing/dashboard (GET): User billing dashboard data.",
+        "/api/billing/usage-summary (GET): Detailed usage with cost breakdown.",
+        "/api/billing/credits/balance (GET): Current credit balance.",
+        "/api/billing/credits/details (GET): Credit details including grants and purchases.",
+        "/api/billing/credits/unified-history (GET): Transaction history.",
+        "/api/billing/checkout/credit-purchase (POST): Create Stripe checkout for credits.",
+        "/api/billing/checkout/setup (POST): Create Stripe setup session for payment method.",
+        "/api/billing/auto-top-off (GET/PUT): Auto top-off settings management."
+      ],
+      "implementation": "Billing handlers in server/src/handlers/billing/. Credit service in services/credit_service.rs. Stripe integration via services/stripe_service.rs with webhook handling in webhook_handlers.rs."
+    },
+    "devices": {
+      "heading": "Device management",
+      "description": "Device registration and push notifications:",
+      "routes": [
+        "/api/devices/register (POST): Register desktop device with device_id.",
+        "/api/devices/mobile/register (POST): Register mobile device with platform info.",
+        "/api/devices/{device_id}/heartbeat (POST): Device heartbeat for presence.",
+        "/api/devices/{device_id}/push-token (POST): Save push notification token.",
+        "/api/devices/{device_id}/connection-descriptor (GET): WebSocket connection info for device linking.",
+        "/api/notifications/job-completed (POST): Send push notification for completed job.",
+        "/api/notifications/job-progress (POST): Send progress notification."
+      ]
+    },
+    "websockets": {
+      "heading": "WebSocket endpoints",
+      "description": "Real-time communication via WebSocket:",
+      "endpoints": [
+        "/ws/device-link: Relay for desktop-mobile device linking. Handles terminal output streaming, job status updates, and RPC commands between linked devices.",
+        "/ws/events: General event stream for real-time updates."
+      ],
+      "implementation": "Device link relay in server/src/handlers/device_link_ws.rs. Sessions managed by services/relay_session_store.rs with heartbeat monitoring and reconnection support."
+    },
+    "serverStorage": {
+      "heading": "Server-side persistence",
+      "description": "PostgreSQL database with repositories in server/src/db/repositories/:",
+      "repositories": [
+        "user_repository.rs: User accounts linked to Auth0 sub.",
+        "customer_billing_repository.rs: Stripe customer and credit state.",
+        "credit_transaction_repository.rs: Credit transaction history.",
+        "provider_repository.rs: LLM provider configuration.",
+        "system_prompts_repository.rs: System prompt templates.",
+        "consent_repository.rs: Legal consent tracking.",
+        "audit_log_repository.rs: Audit trail for sensitive operations.",
+        "revoked_token_repository.rs: JWT revocation list.",
+        "api_key_repository.rs: API key management with secure hashing."
+      ]
+    }
+  },
+  "backgroundJobs": {
+    "meta": {
+      "title": "Background jobs - PlanToCode",
+      "description": "Job queue architecture, processor types, state machine, and artifact storage for the desktop job engine."
+    },
+    "category": "Architecture",
+    "date": "2025-09-25",
+    "readTime": "14 min",
+    "title": "Background Jobs",
+    "description": "Job queue, processors, state machine, event streaming, and artifact storage.",
+    "intro": "All LLM-backed work runs through the background job system in the desktop app. The job queue dispatches work to processors, streams progress events, and persists every prompt and response in SQLite for audit and recovery. This architecture enables cancellation, retry, cost tracking, and real-time UI updates.",
+    "visuals": {
+      "stateMachine": {
+        "title": "Job state machine",
+        "description": "Diagram showing job status transitions from created through completion or failure.",
+        "imageSrc": "/images/docs/background-jobs/state-machine.png",
+        "imageAlt": "Job state machine diagram",
+        "caption": "Placeholder for job state machine diagram."
+      }
+    },
+    "jobRecord": {
+      "heading": "Job record structure",
+      "description": "Each job creates a background_jobs row in SQLite with these fields:",
+      "fields": [
+        "id (TEXT PRIMARY KEY): UUID for the job.",
+        "session_id (TEXT NOT NULL, FK): References sessions.id with CASCADE DELETE.",
+        "task_type (TEXT DEFAULT 'unknown'): Processor identifier (e.g., implementation_plan, text_improvement, root_folder_selection).",
+        "status (TEXT): Current state with CHECK constraint for valid values.",
+        "prompt (TEXT NOT NULL): Full text sent to the LLM, stored for audit.",
+        "response (TEXT): LLM output or error message.",
+        "error_message (TEXT): Detailed error information on failure.",
+        "tokens_sent (INTEGER DEFAULT 0): Input token count from provider response.",
+        "tokens_received (INTEGER DEFAULT 0): Output token count.",
+        "cache_read_tokens (INTEGER DEFAULT 0): Tokens read from provider cache (Anthropic).",
+        "cache_write_tokens (INTEGER DEFAULT 0): Tokens written to cache.",
+        "model_used (TEXT): Model identifier used for the request.",
+        "actual_cost (REAL): Computed cost based on token usage and model pricing.",
+        "metadata (TEXT): JSON with task-specific data, workflow IDs, stage names.",
+        "system_prompt_template (TEXT): Template identifier used for the system prompt.",
+        "server_request_id (TEXT): Links to server-side usage tracking.",
+        "created_at, updated_at, start_time, end_time (INTEGER): Timestamps.",
+        "is_finalized (INTEGER DEFAULT 0): Whether final cost/usage has been recorded."
+      ]
+    },
+    "statusValues": {
+      "heading": "Status values and transitions",
+      "description": "Jobs transition through well-defined statuses tracked in the database:",
+      "statuses": [
+        "idle: Initial state before processing starts.",
+        "created: Job record created, not yet queued.",
+        "queued: Added to job queue, waiting for processor.",
+        "acknowledged_by_worker: Processor has picked up the job.",
+        "preparing: Processor is gathering inputs (files, prompts).",
+        "preparing_input: Building the LLM request payload.",
+        "running: Request sent to LLM, awaiting response.",
+        "generating_stream: Streaming response in progress.",
+        "processing_stream: Processing streamed chunks.",
+        "completed: Job finished successfully.",
+        "completed_by_tag: Completed via stream end tag detection.",
+        "failed: Job failed with error_message populated.",
+        "canceled: User requested cancellation."
+      ],
+      "transitions": "Transitions are enforced in background_job_repository/worker.rs. Invalid transitions are rejected. Status changes emit job:status-changed Tauri events."
+    },
+    "orchestrator": {
+      "heading": "Workflow orchestrator",
+      "description": "Multi-stage workflows are managed by WorkflowOrchestrator in desktop/src-tauri/src/jobs/workflow_orchestrator/:",
+      "modules": [
+        "mod.rs: Main orchestrator struct and workflow execution entry point.",
+        "definition_loader.rs: Loads workflow JSON definitions (e.g., file_finder_workflow.json) specifying stage order and processor types.",
+        "stage_scheduler.rs: Schedules stages sequentially, waits for upstream completion.",
+        "stage_job_manager.rs: Creates background_job records for each stage.",
+        "payload_builder.rs: Constructs stage inputs from IntermediateData.",
+        "data_extraction.rs: Extracts outputs from completed stage jobs.",
+        "event_emitter.rs: Publishes workflow-status and workflow-stage Tauri events.",
+        "state_updater.rs: Updates workflow state in memory and database.",
+        "completion_handler.rs: Handles workflow completion and cleanup.",
+        "failure_handler.rs: Manages stage failures and retry decisions.",
+        "retry_handler.rs: Implements retry logic with exponential backoff."
+      ],
+      "dataFlow": "Workflows use WorkflowIntermediateData (defined in workflow_types.rs) to pass outputs between stages: directoryTreeContent, selectedRoots, rawRegexPatterns, locallyFilteredFiles, aiFilteredFiles, verifiedPaths, unverifiedPaths."
+    },
+    "processors": {
+      "heading": "Job processors",
+      "description": "Each task_type maps to a processor in desktop/src-tauri/src/jobs/processors/:",
+      "implementations": [
+        "implementation_plan_processor.rs: Loads selected file contents, builds structured prompt with directory tree, streams XML plan to UI. Uses generic_llm_stream_processor for streaming.",
+        "text_improvement_processor.rs: Wraps selection in XML tags, sends non-streaming request, returns improved text. Runs via LlmTaskRunner.",
+        "root_folder_selection_processor.rs: Sends directory tree to LLM, parses JSON array response of selected directories.",
+        "RegexFileFilterProcessor (in processors/mod.rs): Generates regex patterns from task, applies to git file list, filters binaries.",
+        "FileRelevanceAssessmentProcessor: Chunks file contents by token limit, scores relevance in batches, aggregates relevant paths.",
+        "ExtendedPathFinderProcessor (path_finder_types.rs): Analyzes imports/dependencies, suggests related files, validates paths exist.",
+        "web_search_prompts_generator_processor.rs: Generates research_task XML blocks for deep research.",
+        "web_search_executor_processor.rs: Executes research prompts in parallel via server search API.",
+        "generic_llm_stream_processor.rs: Reusable streaming processor that handles chunk accumulation, event emission, and response finalization."
+      ]
+    },
+    "events": {
+      "heading": "Event streaming",
+      "description": "Job progress emits Tauri events consumed by the React UI:",
+      "eventTypes": [
+        "job:status-changed: Payload {jobId, status, error?}. Emitted on every status transition.",
+        "job:stream-progress: Payload {jobId, content, tokensReceived}. Emitted for each streaming chunk.",
+        "job:completed: Payload {jobId, response, tokensTotal, cost}. Emitted on successful completion.",
+        "workflow-status: Payload {workflowId, status, currentStage?}. Workflow-level status updates.",
+        "workflow-stage: Payload {workflowId, stageName, status}. Individual stage status."
+      ],
+      "reactConsumption": "React components subscribe via useEffect with listen() from @tauri-apps/api/event. WorkflowTracker aggregates workflow events. JobStatusIndicator displays real-time status."
+    },
+    "retry": {
+      "heading": "Retry and cancellation",
+      "description": "Job retry and cancellation mechanisms:",
+      "retryLogic": "retry_handler.rs manages retry counts and delays. Retries use exponential backoff with configurable max attempts. Retry state stored in job.metadata.retryCount.",
+      "cancellation": "Cancellation sets a flag checked between streaming chunks in generic_llm_stream_processor.rs. Server-side cancellation sends /api/llm/cancel with request_id.",
+      "cleanup": "workflow_cleanup.rs handles cleanup of incomplete workflows. Stale jobs (running status after app restart) are marked failed."
+    },
+    "artifacts": {
+      "heading": "Artifact storage",
+      "description": "Job inputs and outputs are fully persisted for audit:",
+      "stored": [
+        "prompt: Complete LLM prompt including system prompt and user content.",
+        "response: Full LLM response text or streaming accumulation.",
+        "metadata: JSON with task-specific data (original text for improvements, file lists, workflow context).",
+        "system_prompt_template: Identifier linking to server-side prompt template version.",
+        "Token counts and cost: Captured from provider response for billing and analysis."
+      ],
+      "access": "background_job_repository provides queries: get_jobs_for_session, get_job_by_id, get_jobs_by_task_type, get_recent_jobs. Job history displayed in BackgroundJobsSidebar component."
+    },
+    "costTracking": {
+      "heading": "Cost tracking",
+      "description": "Per-job cost tracking enables budget management:",
+      "calculation": "Cost calculated using model pricing from server/src/models/model_pricing.rs. Formula: (tokens_sent * input_price + tokens_received * output_price) with cache adjustments.",
+      "accumulation": "Session-level cost aggregated from background_jobs. UI displays cumulative cost in session header.",
+      "serverSync": "server_request_id links desktop jobs to server-side usage records for billing reconciliation."
+    },
+    "cta": {
+      "heading": "See the data model",
+      "description": "Understand the SQLite schema that stores jobs, sessions, and terminal output.",
+      "links": {
+        "dataModel": "Data model",
+        "runtime": "Runtime walkthrough"
+      }
+    }
+  },
+  "buildYourOwn": {
+    "meta": {
+      "title": "Build your own pipeline - PlanToCode",
+      "description": "Conceptual guide for designing file discovery and plan generation workflows similar to PlanToCode."
+    },
+    "category": "Reference",
+    "date": "2025-09-25",
+    "readTime": "12 min",
+    "title": "Build Your Own Pipeline",
+    "description": "Conceptual guide for designing file discovery and plan generation workflows.",
+    "intro": "This guide distills the key architectural patterns from PlanToCode into a conceptual blueprint. Whether you want to build a similar system or understand why certain design decisions were made, this document covers the foundational patterns you can reuse or adapt.",
+    "visuals": {
+      "pipelineMap": {
+        "title": "Pipeline architecture map",
+        "description": "Overview of the multi-stage pipeline from task input to plan output.",
+        "imageSrc": "/images/docs/build-your-own/pipeline-map.png",
+        "imageAlt": "Pipeline architecture diagram",
+        "caption": "Placeholder for pipeline architecture diagram."
+      }
+    },
+    "keyPatterns": {
+      "heading": "Key Architectural Patterns",
+      "jobQueue": {
+        "title": "Job Queue Pattern",
+        "description": "All LLM-backed operations run as background jobs with status tracking, cancellation support, and retry logic. Jobs are persisted to SQLite so state survives app restarts.",
+        "benefits": [
+          "Decouples UI responsiveness from LLM latency",
+          "Enables cancellation mid-stream",
+          "Provides audit trail of all operations",
+          "Supports retry with exponential backoff"
+        ],
+        "pitfalls": [
+          "Job status management adds complexity",
+          "Need careful handling of stale jobs on restart",
+          "Stream accumulation can consume memory for large responses"
+        ]
+      },
+      "workflowOrchestrator": {
+        "title": "Workflow Orchestrator Pattern",
+        "description": "Multi-stage workflows are coordinated by an orchestrator that schedules stages sequentially, passes intermediate data between them, and handles failures at any stage.",
+        "components": [
+          "Definition loader reads workflow JSON specs",
+          "Stage scheduler dispatches stages in order",
+          "Payload builder constructs inputs from prior outputs",
+          "Event emitter publishes progress for UI updates"
+        ]
+      },
+      "repositoryPattern": {
+        "title": "Repository Pattern",
+        "description": "All persistence goes through typed repositories that abstract SQLite operations. This provides a clean API, enables testing, and centralizes database access.",
+        "benefits": [
+          "Typed access prevents SQL injection",
+          "Repositories can be mocked for testing",
+          "Centralized query optimization",
+          "Consistent error handling"
+        ]
+      }
+    },
+    "steps": {
+      "step1": {
+        "title": "1. Define your task model",
+        "description": "Start by defining what constitutes a task in your system. PlanToCode uses sessions with task descriptions, file selections, and model preferences.",
+        "details": "Store task metadata in a dedicated table with versioning for history tracking."
+      },
+      "step2": {
+        "title": "2. Build the job queue",
+        "description": "Create a job queue that persists jobs to storage, emits status events, and supports cancellation. Jobs should track prompts, responses, tokens, and cost.",
+        "details": "Use a semaphore-based concurrency limiter to control parallel LLM requests."
+      },
+      "step3": {
+        "title": "3. Implement processors",
+        "description": "Each job type needs a processor that builds prompts, calls the LLM, and parses responses. Use streaming for long outputs.",
+        "details": "Processors should be stateless and receive all context through job parameters."
+      },
+      "step4": {
+        "title": "4. Create the workflow orchestrator",
+        "description": "For multi-stage workflows, build an orchestrator that schedules stages, manages intermediate data, and handles failures.",
+        "details": "Store workflow definitions as JSON for easy modification without code changes."
+      },
+      "step5": {
+        "title": "5. Add the routing layer",
+        "description": "Route LLM requests through a server proxy that normalizes payloads, manages API keys, and tracks usage.",
+        "details": "Keep provider credentials on the server; never embed them in desktop clients."
+      }
+    },
+    "architectureDecisions": {
+      "heading": "Architecture Decisions",
+      "decisions": [
+        {
+          "question": "Should you use a local database or server-side storage?",
+          "recommendation": "Use local SQLite for job state and artifacts. This enables offline operation and fast queries. Sync to server only for billing and cross-device state."
+        },
+        {
+          "question": "Streaming vs non-streaming responses?",
+          "recommendation": "Use streaming for plan generation and any output shown progressively. Use non-streaming for short transformations like text improvement."
+        },
+        {
+          "question": "How to handle LLM provider failures?",
+          "recommendation": "Implement automatic retry with exponential backoff. Consider a fallback provider like OpenRouter for resilience."
+        },
+        {
+          "question": "Where should file content be loaded?",
+          "recommendation": "Load file content in the processor just before building the prompt. This ensures fresh content and avoids storing large blobs in job records."
+        }
+      ]
+    },
+    "customizeVsReuse": {
+      "heading": "What to Customize vs Reuse",
+      "customize": [
+        "Prompt templates for your specific use case",
+        "File discovery patterns for your project types",
+        "Output format (XML, JSON, Markdown)",
+        "Model selection per task type"
+      ],
+      "reuse": [
+        "Job queue architecture with status tracking",
+        "Workflow orchestrator pattern",
+        "Repository pattern for persistence",
+        "Streaming response handling",
+        "Provider routing and normalization"
+      ]
+    },
+    "commonPitfalls": {
+      "heading": "Common Pitfalls to Avoid",
+      "items": [
+        {
+          "pitfall": "Embedding API keys in the client",
+          "solution": "Route all LLM requests through a server proxy that manages credentials securely."
+        },
+        {
+          "pitfall": "Not persisting job state",
+          "solution": "Store every job with full prompt and response for audit and recovery."
+        },
+        {
+          "pitfall": "Blocking UI on LLM calls",
+          "solution": "Use background jobs with event-driven UI updates for responsive interfaces."
+        },
+        {
+          "pitfall": "Ignoring token limits",
+          "solution": "Estimate tokens before sending and chunk large inputs to stay within context windows."
+        },
+        {
+          "pitfall": "No cancellation support",
+          "solution": "Check cancellation flags between streaming chunks and propagate to server."
+        }
+      ]
+    },
+    "artifacts": {
+      "heading": "Artifacts to Persist",
+      "items": [
+        "Full prompt sent to the LLM (for debugging and audit)",
+        "Complete response including streaming accumulation",
+        "Token counts from provider response",
+        "Computed cost based on model pricing",
+        "System prompt template identifier for versioning",
+        "Workflow intermediate data for multi-stage flows"
+      ]
+    },
+    "implementationNotes": {
+      "heading": "Implementation Notes",
+      "items": [
+        "Use SQLite with WAL mode for concurrent read/write access",
+        "Implement graceful shutdown that marks running jobs as failed",
+        "Add health checks for external dependencies before job processing",
+        "Log all LLM errors with full context for debugging",
+        "Consider caching file content with short TTL to avoid redundant reads"
+      ]
+    }
+  },
+  "decisionsTradeoffs": {
+    "meta": {
+      "title": "Technical decisions and tradeoffs - PlanToCode",
+      "description": "Why Tauri, SQLite, and a dedicated LLM proxy were chosen, and what operational tradeoffs they create."
+    },
+    "category": "Architecture",
+    "date": "2025-09-25",
+    "readTime": "10 min",
+    "title": "Technical Decisions & Tradeoffs",
+    "description": "Why Tauri, SQLite, and a dedicated LLM proxy were chosen and what they cost.",
+    "intro": "Every architecture involves tradeoffs. This document explains the major technology choices in PlanToCode, what benefits they provide, and what costs or limitations they introduce.",
+    "visuals": {
+      "tradeoffMatrix": {
+        "title": "Tradeoff matrix",
+        "description": "Visual comparison of technology choices with their benefits and costs.",
+        "imageSrc": "/images/docs/decisions-tradeoffs/tradeoff-matrix.png",
+        "imageAlt": "Technology tradeoff matrix",
+        "caption": "Placeholder for tradeoff matrix diagram."
+      }
+    },
+    "sections": {
+      "tauri": {
+        "title": "Tauri v2 for Desktop",
+        "description": "Tauri provides a Rust backend with a web-based frontend, enabling cross-platform desktop apps with native performance and small binary sizes.",
+        "benefits": [
+          "Small binary size (~15MB vs 200MB+ for Electron)",
+          "Native Rust performance for file operations and job processing",
+          "Capability-based security model with fine-grained permissions",
+          "Single codebase for macOS, Windows, and Linux",
+          "Access to system APIs (PTY, keychain, notifications)"
+        ],
+        "tradeoffs": [
+          "Smaller ecosystem than Electron",
+          "Rust learning curve for backend development",
+          "WebView rendering differences across platforms",
+          "Less mature tooling for debugging IPC issues"
+        ],
+        "implementation": "PlanToCode uses Tauri 2.9.1 with ~35 command modules, capability-based permissions, and plugins for shell, dialog, and notifications."
+      },
+      "sqlite": {
+        "title": "SQLite for Local Persistence",
+        "description": "SQLite stores all local state including sessions, jobs, terminal output, and settings. This enables offline operation and fast queries.",
+        "benefits": [
+          "Zero-config embedded database",
+          "Fast queries for local data",
+          "Enables offline operation",
+          "Single file backup and restore",
+          "WAL mode for concurrent access"
+        ],
+        "tradeoffs": [
+          "No built-in replication or sync",
+          "Large terminal logs can grow the database",
+          "Need manual schema migrations",
+          "Single-writer limitation (mitigated by WAL)"
+        ],
+        "implementation": "Schema in consolidated_schema.sql with ~10 tables. Repositories provide typed access with rusqlite."
+      },
+      "llmProxy": {
+        "title": "Dedicated LLM Proxy Server",
+        "description": "All LLM requests route through a server proxy that manages API keys, normalizes requests, tracks usage, and handles billing.",
+        "benefits": [
+          "API keys never leave the server",
+          "Single request format for all providers",
+          "Centralized usage tracking and billing",
+          "Provider failover without client updates",
+          "Content filtering and rate limiting"
+        ],
+        "tradeoffs": [
+          "Requires server infrastructure",
+          "Adds network latency to requests",
+          "Server becomes single point of failure",
+          "Need to maintain provider integrations"
+        ],
+        "implementation": "Actix-Web server with handlers in server/src/handlers/proxy/. Transformers in provider_transformers/ normalize requests."
+      },
+      "websocket": {
+        "title": "WebSocket Relay for Mobile",
+        "description": "Desktop and mobile clients connect through a WebSocket relay for device linking, terminal streaming, and job synchronization.",
+        "benefits": [
+          "Real-time bidirectional communication",
+          "No direct P2P networking required",
+          "Works across NAT and firewalls",
+          "Supports multiple linked devices"
+        ],
+        "tradeoffs": [
+          "Requires persistent server connections",
+          "Relay adds latency for large payloads",
+          "Connection management complexity",
+          "Need reconnection and heartbeat logic"
+        ],
+        "implementation": "device_link_ws.rs implements the relay with session tracking, heartbeats, and PTC1 binary framing for terminal output."
+      }
+    },
+    "operational": {
+      "heading": "Operational Consequences",
+      "items": [
+        "Tauri: Need separate builds for each platform. CI/CD must cross-compile or use platform-specific runners.",
+        "SQLite: Database file grows with terminal output. May need periodic cleanup for long-running instances.",
+        "LLM Proxy: Server downtime blocks all LLM operations. Need monitoring and redundancy for production.",
+        "WebSocket: Reconnection logic adds complexity. Clients must handle connection drops gracefully."
+      ]
+    },
+    "securityBoundaries": {
+      "heading": "Security Boundaries",
+      "description": "The architecture creates clear security boundaries that limit exposure:",
+      "items": [
+        "API keys stored in server vault, never sent to clients",
+        "JWT tokens validated on every request with JWKS rotation",
+        "Capability-based permissions limit filesystem access",
+        "Content sent to LLMs requires explicit user approval",
+        "Audit logs track all LLM requests with user context"
+      ]
+    },
+    "whenToReconsider": {
+      "heading": "When to Reconsider",
+      "description": "These decisions may need revisiting if requirements change significantly:",
+      "items": [
+        "If browser-only access is required, consider a web-based alternative to Tauri",
+        "If multi-device sync is critical, consider server-side job storage",
+        "If provider lock-in is acceptable, direct API calls may reduce latency",
+        "If mobile is primary, consider native apps instead of device linking"
+      ]
+    }
+  },
+  "dataModel": {
+    "meta": {
+      "title": "Data model and storage - PlanToCode",
+      "description": "SQLite entities, relationships, and how state is rehydrated on app restart."
+    },
+    "category": "Architecture",
+    "date": "2025-09-25",
+    "readTime": "10 min",
+    "title": "Data Model & Storage",
+    "description": "SQLite entities, relationships, and how state is rehydrated.",
+    "intro": "PlanToCode uses SQLite for all local state. This document describes the schema, entity relationships, and how state is restored when the app restarts.",
+    "sqlite": {
+      "heading": "SQLite Configuration",
+      "description": "The database uses WAL mode for concurrent read/write access. The file is stored in the Tauri app data directory (~/.local/share/plantocode on Linux, ~/Library/Application Support/plantocode on macOS).",
+      "migrations": "Schema migrations are consolidated in consolidated_schema.sql. The app checks schema version on startup and runs any pending migrations."
+    },
+    "entities": {
+      "heading": "Core Entities",
+      "items": [
+        "sessions: Project context with task description, file selections, model preferences",
+        "background_jobs: LLM-backed operations with prompt, response, tokens, cost",
+        "terminal_sessions: PTY sessions with output log, status, process info",
+        "task_description_history: Version history for task descriptions",
+        "file_selection_history: Version history for file selections",
+        "project_system_prompts: Per-project prompt overrides",
+        "key_value_store: App settings and configuration",
+        "error_logs: Client-side error tracking"
+      ]
+    },
+    "visuals": {
+      "schema": {
+        "title": "Entity relationship diagram",
+        "description": "Visual representation of the SQLite schema and relationships.",
+        "imageSrc": "/images/docs/data-model/schema.png",
+        "imageAlt": "Database schema diagram",
+        "caption": "Placeholder for database schema diagram."
+      }
+    },
+    "relationships": {
+      "heading": "Entity Relationships",
+      "description": "Entities are linked through foreign keys with cascade delete rules:",
+      "links": [
+        "sessions → background_jobs: One-to-many, cascade delete",
+        "background_jobs → terminal_sessions: Optional one-to-one link via job_id",
+        "sessions → task_description_history: One-to-many for version tracking",
+        "sessions → file_selection_history: One-to-many for version tracking"
+      ]
+    },
+    "repositories": {
+      "heading": "Repository Layer",
+      "description": "All database access goes through typed repositories in desktop/src-tauri/src/db_utils/:",
+      "examples": [
+        "background_job_repository/: Modular with base.rs, worker.rs, metadata.rs, cleanup.rs",
+        "session_repository.rs: Session CRUD with history management",
+        "terminal_repository.rs: Terminal session persistence and output logging",
+        "settings_repository.rs: Key-value settings storage"
+      ]
+    },
+    "rehydration": {
+      "heading": "State Rehydration",
+      "description": "When the app starts, state is restored from SQLite:",
+      "sessions": "Active session is loaded with task description, file selections, and model preferences. Recent sessions are available in the session picker."
+    },
+    "retention": {
+      "heading": "Data Retention",
+      "description": "Old data is cleaned up based on configurable retention periods:",
+      "exports": "Sessions and jobs can be exported for backup before cleanup."
+    },
+    "cta": {
+      "heading": "Explore job processing",
+      "description": "See how background jobs use this data model.",
+      "links": {
+        "jobs": "Background jobs",
+        "terminals": "Terminal sessions"
+      }
+    }
+  },
+  "serverSetup": {
+    "meta": {
+      "title": "Dedicated server setup - PlanToCode",
+      "description": "Ansible-based infrastructure setup: base hardening, PostgreSQL, Redis, and application deployment."
+    },
+    "category": "Deployment",
+    "date": "2025-09-25",
+    "readTime": "12 min",
+    "title": "Dedicated Server Setup",
+    "description": "Ansible-based infrastructure: base hardening, app deployment, and vault-managed secrets.",
+    "intro": "PlanToCode runs on dedicated servers managed through Ansible playbooks. This document covers the infrastructure setup, security hardening, and deployment process.",
+    "layers": {
+      "heading": "Infrastructure Layers",
+      "description": "The infrastructure is organized into layers, each managed by dedicated playbooks:",
+      "items": [
+        "Base layer: OS hardening, SSH configuration, firewall rules",
+        "Database layer: PostgreSQL 17 with replication and backups",
+        "Cache layer: Redis 7+ for session state and job queues",
+        "Application layer: Rust server binary with systemd service",
+        "Proxy layer: Nginx reverse proxy with SSL termination"
+      ]
+    },
+    "servers": {
+      "heading": "Server Regions",
+      "description": "PlanToCode runs in two regions for geographic redundancy:",
+      "items": [
+        "EU region: Hetzner dedicated server (api-eu.plantocode.com)",
+        "US region: InterServer dedicated server (api-us.plantocode.com)"
+      ]
+    },
+    "requirements": {
+      "heading": "Server Requirements",
+      "items": [
+        "Debian 12 or Ubuntu 22.04 LTS",
+        "4+ CPU cores, 16GB+ RAM, 200GB+ SSD",
+        "Public IPv4 with firewall access to ports 22, 80, 443",
+        "SSH key access for Ansible deployment"
+      ]
+    },
+    "hardening": {
+      "heading": "Base Hardening",
+      "description": "site-base.yml applies security hardening:",
+      "items": [
+        "Disable root SSH login, require key authentication",
+        "Configure UFW firewall with minimal open ports",
+        "Install fail2ban for brute force protection",
+        "Enable automatic security updates",
+        "Configure audit logging"
+      ]
+    },
+    "postgresql": {
+      "heading": "PostgreSQL Setup",
+      "description": "PostgreSQL 17 is configured for production use:",
+      "items": [
+        "Connection pooling with PgBouncer",
+        "Automated daily backups with pg_dump",
+        "WAL archiving for point-in-time recovery",
+        "SSL required for all connections",
+        "Row-level security for multi-tenant data"
+      ]
+    },
+    "redis": {
+      "heading": "Redis Setup",
+      "description": "Redis 7+ handles caching and session state:",
+      "items": [
+        "Password authentication required",
+        "AOF persistence for durability",
+        "Memory limits with eviction policy",
+        "TLS encryption for connections"
+      ]
+    },
+    "zeroDowntime": {
+      "heading": "Zero-Downtime Deployment",
+      "description": "Deployments use a rolling update strategy:",
+      "items": [
+        "New binary uploaded alongside running version",
+        "Health check confirms new version is ready",
+        "Systemd restarts with graceful shutdown",
+        "Load balancer drains connections during switch",
+        "Rollback available via previous binary symlink"
+      ]
+    },
+    "quickStart": {
+      "heading": "Quick Start",
+      "steps": [
+        "Clone the infrastructure repository",
+        "Copy inventory.example to inventory and configure hosts",
+        "Set vault password in .vault_pass",
+        "Run: ansible-playbook -i inventory site-base.yml",
+        "Run: ansible-playbook -i inventory site-app.yml"
+      ]
+    },
+    "vault": {
+      "heading": "Secrets Management",
+      "description": "Sensitive configuration uses Ansible Vault:",
+      "items": [
+        "Database credentials",
+        "API keys for LLM providers",
+        "SSL certificates and private keys",
+        "Auth0 client secrets",
+        "Stripe webhook secrets"
+      ]
+    },
+    "operations": {
+      "heading": "Common Operations",
+      "items": [
+        "ansible-playbook -i inventory site-app.yml --tags deploy",
+        "ansible-playbook -i inventory site-base.yml --tags backup",
+        "ansible-playbook -i inventory site-app.yml --tags rollback",
+        "ansible-playbook -i inventory site-base.yml --tags logs"
+      ]
+    },
+    "ssl": {
+      "heading": "SSL/TLS Configuration",
+      "description": "Let's Encrypt provides free SSL certificates:",
+      "items": [
+        "Certbot configured with Nginx plugin",
+        "Automatic renewal via cron job",
+        "HSTS headers enabled",
+        "TLS 1.2+ only, modern cipher suite"
+      ]
+    },
+    "security": {
+      "heading": "Security Checklist",
+      "items": [
+        "All default passwords changed",
+        "SSH key rotation scheduled",
+        "Firewall rules audited",
+        "Security updates automated",
+        "Backup restoration tested"
+      ]
+    },
+    "recovery": {
+      "heading": "Disaster Recovery",
+      "description": "Recovery procedures for common failure scenarios:",
+      "items": [
+        "Database corruption: Restore from latest pg_dump backup",
+        "Server failure: Provision new server and run playbooks",
+        "SSL expiration: Manual certbot renew --force-renewal",
+        "Security breach: Rotate all credentials, audit logs"
+      ]
+    }
+  },
+  "tauriV2": {
+    "meta": {
+      "title": "Tauri v2 development guide - PlanToCode",
+      "description": "Project layout, commands, capabilities, and development workflow for Tauri v2."
+    },
+    "category": "Deployment",
+    "date": "2025-09-25",
+    "readTime": "10 min",
+    "title": "Tauri v2 Development Guide",
+    "description": "Project layout, commands, and capability-based permissions for Tauri v2.",
+    "intro": "PlanToCode uses Tauri v2 for the desktop application. This guide covers the project structure, command system, capability-based permissions, and development workflow.",
+    "projectLayout": {
+      "heading": "Project Layout",
+      "description": "The desktop application follows standard Tauri v2 conventions:",
+      "items": [
+        "desktop/src/: React frontend with components, hooks, and providers",
+        "desktop/src-tauri/: Rust backend with commands, jobs, and services",
+        "desktop/src-tauri/src/lib.rs: Application entry point",
+        "desktop/src-tauri/src/commands/: Tauri command handlers (~35 modules)",
+        "desktop/src-tauri/capabilities/: Permission definitions",
+        "desktop/src-tauri/tauri.conf.json: Tauri configuration"
+      ]
+    },
+    "configuration": {
+      "heading": "Tauri Configuration",
+      "description": "tauri.conf.json configures the application:",
+      "items": [
+        "productName, version, identifier for app metadata",
+        "build.beforeDevCommand and beforeBuildCommand for frontend",
+        "bundle settings for installers (DMG, NSIS, AppImage)",
+        "security.csp for Content Security Policy",
+        "plugins configuration for official plugins"
+      ]
+    },
+    "capabilities": {
+      "heading": "Capability-Based Permissions",
+      "description": "Tauri v2 uses capabilities to control what the app can access:",
+      "items": [
+        "default.json: Base permissions for all windows",
+        "desktop-default.json: Desktop-specific permissions",
+        "plantocode-api.json: Custom permissions for PlanToCode commands",
+        "Permissions grant access to: filesystem, shell, http, dialog, notification"
+      ]
+    },
+    "plugins": {
+      "heading": "Tauri Plugins",
+      "description": "PlanToCode uses several official Tauri plugins:",
+      "items": [
+        "tauri-plugin-http: HTTP client for API calls",
+        "tauri-plugin-dialog: Native file/folder pickers",
+        "tauri-plugin-shell: Shell command execution",
+        "tauri-plugin-store: Persistent key-value storage",
+        "tauri-plugin-notification: Desktop notifications",
+        "tauri-plugin-updater: In-app updates",
+        "tauri-plugin-single-instance: Single instance enforcement"
+      ]
+    },
+    "appState": {
+      "heading": "Application State",
+      "description": "Rust state managed through Tauri's state system:",
+      "items": [
+        "AppState struct holds shared state",
+        "RuntimeConfig for server URLs and feature flags",
+        "TokenManager for secure credential storage",
+        "ConfigCache for AI model configuration"
+      ]
+    },
+    "commands": {
+      "heading": "Creating Commands",
+      "description": "Tauri commands expose Rust functions to the frontend:",
+      "items": [
+        "Use #[tauri::command] attribute on async functions",
+        "Return Result<T, String> for error handling",
+        "Access state via State<AppState> parameter",
+        "Register in lib.rs invoke_handler"
+      ]
+    },
+    "singleInstance": {
+      "heading": "Single Instance",
+      "description": "The app enforces single instance to prevent data conflicts:",
+      "items": [
+        "tauri-plugin-single-instance handles detection",
+        "Second launch focuses existing window",
+        "Deep links forwarded to running instance"
+      ]
+    },
+    "devWorkflow": {
+      "heading": "Development Workflow",
+      "description": "Common commands for development:",
+      "items": [
+        "pnpm tauri dev: Start development with hot reload",
+        "pnpm tauri build: Build production release",
+        "cargo test: Run Rust tests",
+        "cargo clippy: Lint Rust code"
+      ]
+    },
+    "mobile": {
+      "heading": "Mobile Considerations",
+      "description": "Tauri v2 supports mobile, but PlanToCode uses native Swift:",
+      "items": [
+        "iOS app built with SwiftUI for native experience",
+        "Shared API contracts between desktop and mobile",
+        "Device linking via WebSocket relay"
+      ]
+    },
+    "distribution": {
+      "heading": "Distribution",
+      "description": "Build artifacts for each platform:",
+      "items": [
+        "macOS: .dmg with universal binary (Intel + Apple Silicon)",
+        "Windows: NSIS installer and MSIX package",
+        "Linux: AppImage for broad compatibility"
+      ]
+    }
+  },
+  "distributionMacos": {
+    "meta": {
+      "title": "macOS distribution - PlanToCode",
+      "description": "Code signing, notarization, DMG packaging, and updater configuration for macOS."
+    },
+    "category": "Deployment",
+    "date": "2025-09-25",
+    "readTime": "10 min",
+    "title": "macOS Distribution",
+    "description": "Signing, notarization, DMG packaging, and updater artifacts.",
+    "intro": "Distributing on macOS requires code signing, notarization, and proper packaging. This document covers the complete process for PlanToCode.",
+    "signing": {
+      "heading": "Code Signing",
+      "description": "All binaries must be signed with an Apple Developer ID:",
+      "items": [
+        "Developer ID Application certificate for app signing",
+        "Developer ID Installer certificate for PKG signing",
+        "Certificates stored in CI secrets, imported to keychain",
+        "Hardened runtime enabled for notarization compatibility"
+      ]
+    },
+    "entitlements": {
+      "heading": "Entitlements",
+      "description": "Required entitlements for PlanToCode features:",
+      "items": [
+        "com.apple.security.cs.allow-jit",
+        "com.apple.security.cs.allow-unsigned-executable-memory",
+        "com.apple.security.device.audio-input",
+        "com.apple.security.network.client",
+        "com.apple.security.files.user-selected.read-write"
+      ]
+    },
+    "build": {
+      "heading": "Build Process",
+      "description": "Steps to build a signed release:",
+      "steps": [
+        "Run pnpm tauri build --target universal-apple-darwin",
+        "Tauri signs with APPLE_SIGNING_IDENTITY from environment",
+        "Universal binary created with lipo for Intel + ARM",
+        "DMG packaged with custom background and layout"
+      ]
+    },
+    "universalBinaries": {
+      "heading": "Universal Binaries",
+      "description": "PlanToCode ships as a universal binary:",
+      "items": [
+        "Single .app supports both Intel and Apple Silicon",
+        "Built with --target universal-apple-darwin",
+        "Slightly larger binary but simpler distribution",
+        "Native performance on both architectures"
+      ]
+    },
+    "notarization": {
+      "heading": "Notarization",
+      "description": "Apple notarization is required for Gatekeeper approval:",
+      "items": [
+        "DMG submitted to Apple notary service",
+        "Uses notarytool with App Store Connect credentials",
+        "Stapling attaches notarization ticket to DMG",
+        "Process takes 1-5 minutes typically"
+      ]
+    },
+    "updater": {
+      "heading": "In-App Updates",
+      "description": "tauri-plugin-updater handles automatic updates:",
+      "items": [
+        "Checks update endpoint on launch",
+        "Downloads new version in background",
+        "Prompts user to restart to apply",
+        "Signature verification before installation"
+      ]
+    },
+    "latestJson": {
+      "heading": "Update Manifest",
+      "description": "latest.json describes available updates:",
+      "items": [
+        "version: Semantic version string",
+        "platforms.darwin-universal: URL and signature",
+        "notes: Release notes in markdown",
+        "pub_date: ISO 8601 publish timestamp"
+      ]
+    },
+    "pitfalls": {
+      "heading": "Common Pitfalls",
+      "description": "Issues frequently encountered:",
+      "items": [
+        "Keychain locked during CI: Unlock before signing",
+        "Notarization timeout: Retry with exponential backoff",
+        "Invalid signature: Check entitlements match capabilities",
+        "Gatekeeper rejection: Verify notarization stapled correctly"
+      ]
+    },
+    "verification": {
+      "heading": "Verification Commands",
+      "description": "Commands to verify signing and notarization:",
+      "items": [
+        "codesign -dv --verbose=4 PlanToCode.app",
+        "spctl --assess --verbose PlanToCode.app",
+        "stapler validate PlanToCode.dmg",
+        "xcrun notarytool log <submission-id>"
+      ]
+    }
+  },
+  "distributionWindows": {
+    "meta": {
+      "title": "Windows distribution - PlanToCode",
+      "description": "NSIS installer, MSIX packaging, Microsoft Store submission, and code signing for Windows."
+    },
+    "category": "Deployment",
+    "date": "2025-09-25",
+    "readTime": "10 min",
+    "title": "Windows Distribution & Store",
+    "description": "NSIS builds, MSIX packaging, and Microsoft Store submission.",
+    "intro": "PlanToCode distributes on Windows through both direct download (NSIS installer) and the Microsoft Store (MSIX package). This document covers both distribution methods.",
+    "prereqs": {
+      "heading": "Prerequisites",
+      "description": "Required tools and certificates:",
+      "items": [
+        "Code signing certificate (EV or standard)",
+        "Windows SDK for signtool",
+        "NSIS for installer building",
+        "MSIX Packaging Tool for Store submissions"
+      ]
+    },
+    "nsisBuild": {
+      "heading": "NSIS Installer",
+      "description": "Tauri builds NSIS installers by default:",
+      "items": [
+        "Custom installer UI with PlanToCode branding",
+        "Per-user installation (no admin required)",
+        "Start menu and desktop shortcuts",
+        "Uninstaller with clean removal"
+      ]
+    },
+    "codeSigning": {
+      "heading": "Code Signing",
+      "description": "Windows code signing with Authenticode:",
+      "items": [
+        "Sign with signtool from Windows SDK",
+        "Timestamp from trusted TSA server",
+        "EV certificate provides SmartScreen reputation",
+        "CI uses secrets for certificate and password"
+      ]
+    },
+    "msixPackaging": {
+      "heading": "MSIX for Microsoft Store",
+      "description": "MSIX provides Store-compatible packaging:",
+      "items": [
+        "AppxManifest.xml defines capabilities",
+        "Virtual filesystem isolation",
+        "Automatic updates through Store",
+        "Sandboxed execution environment"
+      ]
+    },
+    "msixConfig": {
+      "heading": "MSIX Configuration",
+      "description": "Key AppxManifest settings:",
+      "items": [
+        "Identity: Name, Publisher, Version",
+        "Capabilities: internetClient, microphone",
+        "Visual elements: Tiles, splash screen",
+        "File associations and protocol handlers"
+      ]
+    },
+    "msixSteps": {
+      "heading": "MSIX Build Steps",
+      "description": "Process to create MSIX package:",
+      "steps": [
+        "Build release with pnpm tauri build",
+        "Create AppxManifest.xml with correct identity",
+        "Package with MakeAppx.exe",
+        "Sign with SignTool",
+        "Validate with Windows App Cert Kit"
+      ]
+    },
+    "store": {
+      "heading": "Microsoft Store Submission",
+      "description": "Store submission process:",
+      "items": [
+        "Create app in Partner Center",
+        "Upload MSIX package",
+        "Configure pricing (free with IAP credits)",
+        "Submit for certification",
+        "Review takes 1-3 business days"
+      ]
+    },
+    "updaterWindows": {
+      "heading": "Windows Updates",
+      "description": "Update mechanisms for each distribution:",
+      "items": [
+        "NSIS: tauri-plugin-updater with GitHub releases",
+        "MSIX/Store: Automatic through Microsoft Store",
+        "Both check for updates on launch"
+      ]
+    },
+    "webview2": {
+      "heading": "WebView2 Runtime",
+      "description": "Tauri uses WebView2 on Windows:",
+      "items": [
+        "Bundled WebView2 bootstrapper in installer",
+        "Evergreen version auto-updates",
+        "Fixed version available for isolation",
+        "Windows 10 1803+ required"
+      ]
+    },
+    "troubleshooting": {
+      "heading": "Troubleshooting",
+      "description": "Common Windows distribution issues:",
+      "items": [
+        "SmartScreen warning: Use EV certificate or build reputation",
+        "Missing WebView2: Ensure bootstrapper runs",
+        "Store rejection: Review certification report details",
+        "Update failure: Check signature and manifest version"
+      ]
+    }
+  },
+  "promptTypes": {
+    "meta": {
+      "title": "Prompt types and templates - PlanToCode",
+      "description": "Catalog of prompt-driven job types and template assembly process."
+    },
+    "category": "Reference",
+    "date": "2025-09-25",
+    "readTime": "8 min",
+    "title": "Prompt Types & Templates",
+    "description": "Catalog of prompt-driven job types and template assembly.",
+    "intro": "Every LLM-backed job in PlanToCode uses a structured prompt built from templates. This document catalogs the job types and explains how prompts are assembled.",
+    "catalog": {
+      "heading": "Job Type Catalog",
+      "items": [
+        {
+          "job": "implementation_plan",
+          "title": "Implementation Plan",
+          "description": "Generates file-by-file implementation plans with XML structure. Uses streaming for progressive display."
+        },
+        {
+          "job": "implementation_plan_merge",
+          "title": "Plan Merge",
+          "description": "Combines multiple plans with user instructions. Source plans wrapped in XML tags."
+        },
+        {
+          "job": "text_improvement",
+          "title": "Text Improvement",
+          "description": "Refines selected text while preserving formatting. Non-streaming for quick results."
+        },
+        {
+          "job": "root_folder_selection",
+          "title": "Root Folder Selection",
+          "description": "Analyzes directory tree to select relevant project roots. Returns JSON array."
+        },
+        {
+          "job": "regex_file_filter",
+          "title": "Regex File Filter",
+          "description": "Generates regex patterns for file filtering based on task description."
+        },
+        {
+          "job": "file_relevance_assessment",
+          "title": "File Relevance Assessment",
+          "description": "Scores file content relevance to task. Processes in batches."
+        },
+        {
+          "job": "extended_path_finder",
+          "title": "Extended Path Finder",
+          "description": "Discovers related files through imports and dependencies."
+        },
+        {
+          "job": "web_search_prompts",
+          "title": "Web Search Prompts",
+          "description": "Generates research queries for deep research workflow."
+        },
+        {
+          "job": "video_analysis",
+          "title": "Video Analysis",
+          "description": "Analyzes screen recordings for UI state and action sequences."
+        }
+      ]
+    },
+    "templateStructure": {
+      "heading": "Template Structure",
+      "description": "Prompts are assembled from system templates and user content:",
+      "sampleLabel": "Example template structure:",
+      "sample": "<system_prompt>\n  You are an AI assistant that generates implementation plans.\n  [template content from server]\n</system_prompt>\n\n<task>\n  [user's task description]\n</task>\n\n<files>\n  [selected file paths and content]\n</files>\n\n<directory_tree>\n  [project structure]\n</directory_tree>"
+    },
+    "visuals": {
+      "template": {
+        "title": "Prompt assembly flow",
+        "description": "How templates combine with user content to form complete prompts.",
+        "imageSrc": "/images/docs/prompt-types/template-flow.png",
+        "imageAlt": "Prompt template assembly diagram",
+        "caption": "Placeholder for prompt assembly diagram."
+      }
+    },
+    "assembly": {
+      "heading": "Assembly Process",
+      "steps": [
+        "Processor retrieves template ID from task model config",
+        "System prompt template loaded from server cache",
+        "User content wrapped in semantic XML tags",
+        "Context (files, tree) added based on job type",
+        "Complete prompt stored in job record before sending"
+      ]
+    },
+    "serverConfig": {
+      "heading": "Server-Side Configuration",
+      "description": "Templates and model settings are configured server-side:",
+      "fields": "task_model_config defines: default_model, allowed_models, system_prompt_template_id, max_tokens, temperature"
+    },
+    "tokenGuards": {
+      "heading": "Token Guardrails",
+      "description": "Each task type has token limits to prevent context overflow:",
+      "items": [
+        "max_tokens_input: Maximum prompt size",
+        "max_tokens_output: Maximum response size",
+        "Validation before sending prevents wasted API calls",
+        "UI shows token count and warns when approaching limits"
+      ]
+    },
+    "versioning": {
+      "heading": "Template Versioning",
+      "description": "System prompt templates are versioned for reproducibility. Each job records the template ID used, enabling audit and comparison of results across template versions."
+    },
+    "designNotes": {
+      "heading": "Design Notes",
+      "items": [
+        "XML tags provide clear boundaries for LLM parsing",
+        "Semantic naming (task, files, context) aids model understanding",
+        "Templates avoid instruction injection by sanitizing user input",
+        "Streaming jobs use end tags for completion detection"
+      ]
+    },
+    "cta": {
+      "heading": "See job processing in action",
+      "description": "Learn how these prompts flow through the job system.",
+      "links": {
+        "jobs": "Background jobs",
+        "merge": "Merge instructions"
+      }
+    }
+  },
+  "mergeInstructionsDoc": {
+    "meta": {
+      "title": "Merge instructions - PlanToCode",
+      "description": "How multiple plan drafts are merged using XML-tagged source plans and user guidance."
+    },
+    "category": "Planning",
+    "date": "2025-09-25",
+    "readTime": "8 min",
+    "title": "Merge Instructions",
+    "description": "How multiple plan drafts are merged using XML-tagged source plans and user guidance.",
+    "intro": "When you have multiple implementation plans that need to be combined, the merge workflow lets you select plans, provide guidance, and generate a unified plan that incorporates the best elements from each source.",
+    "processor": {
+      "heading": "ImplementationPlanMergeProcessor",
+      "description": "The merge processor combines multiple source plans with user instructions to create a unified plan.",
+      "payload": "Accepts source plan IDs, merge instructions, and selected model.",
+      "storage": "Merged plan stored as a new background_job with references to source jobs in metadata."
+    },
+    "inputs": {
+      "heading": "Merge Inputs",
+      "items": [
+        "Source plans: 2-5 implementation plans selected from the plan list",
+        "Merge instructions: User guidance on how to combine (prioritize, resolve conflicts)",
+        "Model selection: LLM model for merge generation",
+        "Task context: Original task description for reference"
+      ]
+    },
+    "xmlFormat": {
+      "heading": "XML-Tagged Source Plans",
+      "description": "Source plans are wrapped in XML tags with identifiers for clear reference:",
+      "example": "<source_plans>\n  <plan id=\"plan_1\" title=\"API Implementation\">\n    [full plan content]\n  </plan>\n  <plan id=\"plan_2\" title=\"Database Schema\">\n    [full plan content]\n  </plan>\n</source_plans>\n\n<merge_instructions>\n  Prioritize plan_1 for API structure.\n  Use database schema from plan_2.\n  Resolve conflicts by preferring newer patterns.\n</merge_instructions>"
+    },
+    "prompt": {
+      "heading": "Merge Prompt Structure",
+      "description": "The merge prompt includes all context needed for intelligent combination:",
+      "sections": [
+        "System prompt with merge guidelines",
+        "Source plans in XML tags",
+        "User's merge instructions",
+        "Task description for context",
+        "Output format requirements"
+      ]
+    },
+    "visuals": {
+      "mergeWalkthrough": {
+        "title": "Merge workflow walkthrough",
+        "description": "Video showing the complete merge process from selection to output.",
+        "videoSrc": "/videos/docs/merge-instructions/walkthrough.mp4",
+        "posterSrc": "/images/docs/merge-instructions/poster.png",
+        "caption": "Placeholder for merge walkthrough video."
+      }
+    },
+    "rules": {
+      "heading": "Merge Rules",
+      "description": "The LLM follows these rules when merging plans:",
+      "examples": [
+        "Preserve file paths exactly as specified in source plans",
+        "Combine non-conflicting changes from all sources",
+        "For conflicts, follow explicit user instructions",
+        "Maintain consistent code style across merged content",
+        "Include provenance comments indicating source plan"
+      ]
+    },
+    "output": {
+      "heading": "Merged Output",
+      "description": "The merged plan follows the same XML structure as individual plans:",
+      "provenance": "Each section includes comments indicating which source plan contributed the content.",
+      "metadata": "source_plan_ids, merge_instructions, and merge_timestamp stored in job metadata."
+    },
+    "ui": {
+      "heading": "UI Integration",
+      "description": "The Implementation Plans panel supports merge workflow:",
+      "audit": "Merged plans link back to source plans for complete audit trail."
+    },
+    "cta": {
+      "heading": "Learn about plan generation",
+      "description": "Understand how individual plans are created before merging.",
+      "links": {
+        "plans": "Implementation plans",
+        "runtime": "Runtime walkthrough"
+      }
+    }
+  },
+  "meetingIngestionDoc": {
+    "meta": {
+      "title": "Meeting and recording ingestion - PlanToCode",
+      "description": "How recordings become structured task inputs and artifacts through video analysis."
+    },
+    "category": "Inputs",
+    "date": "2025-09-25",
+    "readTime": "8 min",
+    "title": "Meeting & Recording Ingestion",
+    "description": "How recordings become structured task inputs and artifacts.",
+    "intro": "PlanToCode can process meeting recordings and screen captures to extract task-relevant information. This document describes the ingestion workflow from recording to structured artifacts.",
+    "visuals": {
+      "ingestionFlow": {
+        "title": "Recording ingestion flow",
+        "description": "How recordings flow through transcription and analysis.",
+        "imageSrc": "/images/docs/meeting-ingestion/flow.png",
+        "imageAlt": "Recording ingestion flow diagram",
+        "caption": "Placeholder for ingestion flow diagram."
+      }
+    },
+    "inputs": {
+      "heading": "Supported Inputs",
+      "description": "The meeting ingestion pipeline accepts various recording formats:",
+      "items": [
+        "Screen recordings (MP4, WebM, MOV)",
+        "Meeting recordings from Zoom, Meet, Teams",
+        "Audio-only files (MP3, WAV, M4A)",
+        "Direct screen capture from desktop"
+      ]
+    },
+    "uploadProcess": {
+      "heading": "Upload Process",
+      "description": "Recordings are uploaded through multipart form data to the server:",
+      "stepsHeading": "Processing Steps",
+      "steps": [
+        "File uploaded to server temporary storage",
+        "Metadata extracted (duration, format, resolution)",
+        "Audio track separated for transcription",
+        "Video frames sampled for visual analysis",
+        "Results combined and returned to client"
+      ]
+    },
+    "normalization": {
+      "heading": "Format Normalization",
+      "description": "Various input formats are normalized before processing. Audio is converted to 16kHz mono WAV for Whisper compatibility. Video is processed at native resolution with configurable frame sampling.",
+      "outputs": "Normalized outputs ensure consistent downstream processing regardless of input format."
+    },
+    "multimodalAnalysis": {
+      "heading": "Multimodal Analysis",
+      "description": "Recordings with both audio and video are analyzed using multimodal models. Models with {code} prefix support native video understanding.",
+      "combined": "Audio transcription and visual analysis are combined to produce a comprehensive understanding of the recording content."
+    },
+    "transcription": {
+      "heading": "Audio Transcription",
+      "description": "Audio tracks are transcribed using OpenAI Whisper through the server API.",
+      "attribution": "Speaker diarization attempts to attribute text to different speakers when multiple voices are detected.",
+      "featuresHeading": "Transcription Features",
+      "features": [
+        "Multiple language support with auto-detection",
+        "Word-level timestamps for alignment",
+        "Speaker diarization (multi-speaker)",
+        "Punctuation and formatting restoration"
+      ]
+    },
+    "frames": {
+      "heading": "Frame Sampling",
+      "description": "Video frames are sampled at configurable intervals to capture UI state changes and user actions.",
+      "timestamps": "Each frame includes its timestamp for correlation with the audio transcript."
+    },
+    "structuredExtraction": {
+      "heading": "Structured Extraction",
+      "description": "The combined analysis produces structured outputs suitable for planning:",
+      "extractedHeading": "Extracted Elements",
+      "items": [
+        "Action items and decisions mentioned",
+        "UI elements and navigation paths shown",
+        "Error states and issues demonstrated",
+        "Technical context for implementation"
+      ]
+    },
+    "artifacts": {
+      "heading": "Analysis Artifacts",
+      "description": "Meeting analysis produces several artifacts stored in the session:",
+      "items": [
+        "meeting_transcript: Full text with timestamps",
+        "action_items: Extracted tasks and decisions",
+        "ui_observations: Visual state changes",
+        "combined_context: Merged analysis summary"
+      ]
+    },
+    "keyFiles": {
+      "heading": "Key Source Files",
+      "items": [
+        "desktop/src/components/meeting/MeetingUploader.tsx",
+        "server/src/handlers/proxy/video_handler.rs",
+        "server/src/services/video_processor.rs"
+      ]
+    },
+    "handoff": {
+      "heading": "Planning Handoff",
+      "description": "Meeting analysis artifacts can be incorporated into the task description:",
+      "pipeline": "The combined context flows into the file discovery and plan generation pipeline, providing rich context for implementation planning."
+    },
+    "cta": {
+      "heading": "Continue to video analysis",
+      "description": "Learn more about how video frames are analyzed.",
+      "links": {
+        "video": "Video analysis",
+        "textImprovement": "Text improvement"
+      }
+    }
+  },
+  "videoAnalysisDoc": {
+    "meta": {
+      "title": "Video analysis - PlanToCode",
+      "description": "Frame sampling, prompts, and analysis artifacts from screen recordings."
+    },
+    "category": "Inputs",
+    "date": "2025-09-25",
+    "readTime": "6 min",
+    "title": "Video Analysis",
+    "description": "Frame sampling, prompts, and analysis artifacts from recordings.",
+    "intro": "Video analysis extracts UI state and action sequences from screen recordings. This enables understanding of user workflows and bug reproduction contexts.",
+    "visuals": {
+      "frameNotes": {
+        "title": "Video analysis pipeline",
+        "description": "How frames flow through the analysis model.",
+        "imageSrc": "/images/docs/video-analysis/pipeline.png",
+        "imageAlt": "Video analysis pipeline diagram",
+        "caption": "Placeholder for video analysis pipeline."
+      }
+    },
+    "apiEndpoint": {
+      "heading": "API Endpoint",
+      "endpoint": "Video analysis is handled by {code} on the server. The endpoint accepts multipart form data with the video file and analysis parameters.",
+      "payloadHeading": "Payload Fields",
+      "payloadFields": [
+        "video: The video file (MP4, WebM, MOV)",
+        "model: Model identifier for analysis",
+        "prompt: Optional custom analysis prompt",
+        "max_frames: Maximum frames to sample",
+        "fps: Frame sampling rate"
+      ]
+    },
+    "inputs": {
+      "heading": "Supported Input Formats",
+      "items": [
+        "MP4 with H.264 or H.265 codec",
+        "WebM with VP8 or VP9 codec",
+        "MOV from screen recording tools",
+        "Maximum file size: 100MB"
+      ]
+    },
+    "sampling": {
+      "heading": "Frame Sampling",
+      "description": "Frames are extracted at configurable intervals to balance coverage and API costs. Lower frame rates reduce token usage but may miss rapid changes.",
+      "fps": "Default rate is 1 frame per second. For detailed UI analysis, 2-3 FPS may be needed.",
+      "parametersHeading": "Sampling Parameters",
+      "parameters": [
+        "fps: Frames per second to extract (0.5-5)",
+        "max_frames: Maximum total frames (10-100)",
+        "start_time: Offset to begin sampling",
+        "end_time: Offset to stop sampling"
+      ]
+    },
+    "modelRequirements": {
+      "heading": "Model Requirements",
+      "format": "Video analysis requires vision-capable models. Model identifiers follow {code} format. Currently only {code} models support native video analysis.",
+      "reasoning": "Google Gemini models can process video natively, while other vision models require frame-by-frame image analysis."
+    },
+    "analysis": {
+      "heading": "Analysis Process",
+      "description": "Sampled frames are sent to the vision model along with the analysis prompt. The model produces structured observations about UI state and user actions.",
+      "prompting": "System prompts guide the model to focus on specific aspects of the recording.",
+      "promptElementsHeading": "Prompt Elements",
+      "promptElements": [
+        "UI inventory: List visible elements and controls",
+        "Action sequence: Describe user actions in order",
+        "Error detection: Identify error states and messages",
+        "Navigation paths: Track screen transitions"
+      ]
+    },
+    "outputs": {
+      "heading": "Analysis Outputs",
+      "items": [
+        "frame_observations: Per-frame UI descriptions",
+        "action_timeline: Ordered list of user actions",
+        "error_summary: Any errors or issues observed",
+        "context_summary: High-level workflow description"
+      ]
+    },
+    "billing": {
+      "heading": "Token Usage & Billing",
+      "description": "Video analysis consumes tokens based on frame count and resolution. Each frame is processed as an image token.",
+      "tracked": [
+        "tokens_sent: Prompt + image tokens",
+        "tokens_received: Analysis response tokens",
+        "actual_cost: Computed from model pricing"
+      ]
+    },
+    "storage": {
+      "heading": "Result Storage",
+      "description": "Analysis results are stored in the background_jobs table with task_type 'video_analysis'. The response contains the full analysis in JSON format.",
+      "reuse": "Results can be incorporated into task descriptions or used directly in the planning workflow."
+    },
+    "keyFiles": {
+      "heading": "Key Source Files",
+      "items": [
+        "server/src/handlers/proxy/video_handler.rs",
+        "server/src/services/video_processor.rs",
+        "desktop/src/components/video/VideoAnalyzer.tsx"
+      ]
+    },
+    "integration": {
+      "heading": "Integration with Planning",
+      "description": "Video analysis outputs can feed directly into the task description for context-aware planning.",
+      "followup": "The context_summary is particularly useful as a starting point for implementation planning."
+    },
+    "cta": {
+      "heading": "See meeting ingestion",
+      "description": "Learn how video analysis fits into the broader meeting ingestion workflow.",
+      "links": {
+        "meeting": "Meeting ingestion",
+        "runtime": "Runtime walkthrough"
+      }
+    }
+  },
+  "mobileIos": {
+    "meta": {
+      "title": "iOS client architecture - PlanToCode",
+      "description": "Swift workflows, Auth0 login flow, and device-link session management for the iOS companion app."
+    },
+    "category": "Architecture",
+    "date": "2025-09-25",
+    "readTime": "12 min",
+    "title": "iOS Client Architecture",
+    "description": "Swift workflows, Auth0 login flow, and device-link session management.",
+    "intro": "The PlanToCode iOS app is a companion client that connects to linked desktop sessions. It provides mobile access to terminal output, job status, and voice transcription while maintaining the desktop as the primary planning workspace.",
+    "visuals": {
+      "app": {
+        "title": "iOS app interface",
+        "description": "Screenshots of the iOS app showing device linking and terminal view.",
+        "imageSrc": "/images/docs/mobile-ios/app.png",
+        "imageAlt": "PlanToCode iOS app screenshots",
+        "caption": "Placeholder for iOS app screenshots."
+      }
+    },
+    "packageStructure": {
+      "heading": "Swift Package Structure",
+      "description": "The iOS app is organized into Swift packages:",
+      "packages": [
+        {
+          "name": "Core",
+          "path": "mobile/ios/Core/",
+          "description": "Business logic and API clients",
+          "components": ["WorkflowManager", "APIClient", "MobileSessionManager", "DeviceLinkClient"]
+        },
+        {
+          "name": "Security",
+          "path": "mobile/ios/Security/",
+          "description": "Authentication and credential storage",
+          "components": ["Auth0Manager", "KeychainHelper", "TokenStore"]
+        },
+        {
+          "name": "VibeUI",
+          "path": "mobile/ios/VibeUI/",
+          "description": "SwiftUI components and design system",
+          "components": ["TerminalView", "JobListView", "SettingsView", "DeviceLinkView"]
+        }
+      ]
+    },
+    "auth": {
+      "heading": "Auth0 PKCE Integration",
+      "description": "The iOS app uses Auth0 with PKCE flow for secure authentication:",
+      "flow": [
+        "User taps Sign In, app generates code verifier and challenge",
+        "ASWebAuthenticationSession opens Auth0 login page",
+        "User authenticates and Auth0 redirects with authorization code",
+        "App exchanges code for tokens using code verifier",
+        "Tokens stored securely in iOS Keychain"
+      ],
+      "tokenManagement": {
+        "heading": "Token Management",
+        "items": [
+          "Access token used for API requests",
+          "Refresh token stored for silent renewal",
+          "Token refresh triggered before expiry",
+          "Logout clears all tokens from Keychain"
+        ]
+      }
+    },
+    "deviceLink": {
+      "heading": "Device Linking via WebSocket Relay",
+      "description": "iOS connects to desktop sessions through the server's WebSocket relay:",
+      "protocol": {
+        "heading": "Linking Protocol",
+        "steps": [
+          "Desktop generates link code and displays QR",
+          "iOS scans QR or enters code manually",
+          "Both connect to /ws/device-link with credentials",
+          "Server validates and establishes relay",
+          "Bidirectional communication enabled"
+        ]
+      },
+      "messageTypes": {
+        "heading": "Message Types",
+        "items": [
+          "terminal_output: PTY output from desktop terminal",
+          "job_status: Background job status updates",
+          "session_sync: Session state synchronization",
+          "rpc_command: Commands from mobile to desktop"
+        ]
+      },
+      "reconnection": {
+        "heading": "Reconnection Handling",
+        "description": "The WebSocket connection handles network interruptions with automatic reconnection, exponential backoff, and session state recovery."
+      }
+    },
+    "rpcRouting": {
+      "heading": "RPC Command Routing",
+      "description": "iOS can send commands to the linked desktop:",
+      "commands": {
+        "heading": "Supported Commands",
+        "items": [
+          "send_terminal_input: Send keystrokes to terminal",
+          "request_job_status: Get status of specific job",
+          "start_voice_transcription: Begin recording on mobile",
+          "sync_session: Request full session state"
+        ]
+      },
+      "implementation": {
+        "heading": "Implementation",
+        "description": "Commands are JSON-RPC messages sent over WebSocket. Desktop validates commands and returns results asynchronously."
+      }
+    },
+    "offlineQueue": {
+      "heading": "Offline Action Queue",
+      "description": "Actions performed while disconnected are queued for sync:",
+      "architecture": {
+        "heading": "Queue Architecture",
+        "items": [
+          "Actions stored in local SQLite database",
+          "Queue processed on reconnection",
+          "Conflicts resolved with server timestamps",
+          "Failed actions reported to user"
+        ]
+      },
+      "supportedActions": {
+        "heading": "Supported Offline Actions",
+        "items": [
+          "Voice transcription recording (stored locally)",
+          "Session notes and annotations",
+          "Preference changes"
+        ]
+      }
+    },
+    "localStorage": {
+      "heading": "SQLite Local Storage",
+      "description": "iOS uses SQLite for local persistence:",
+      "database": {
+        "heading": "Database Schema",
+        "path": "~/Documents/plantocode.sqlite",
+        "tables": [
+          "linked_devices: Desktop connections",
+          "offline_queue: Pending sync actions",
+          "cached_sessions: Recent session data",
+          "transcriptions: Local voice recordings"
+        ]
+      },
+      "migrations": {
+        "heading": "Migrations",
+        "description": "Schema version tracked in user_version pragma. Migrations run on app launch."
+      }
+    },
+    "sessions": {
+      "heading": "Mobile Sessions",
+      "description": "MobileSessionManager coordinates session state:",
+      "lifecycle": [
+        "Load last active session on launch",
+        "Connect to linked desktop if available",
+        "Subscribe to session updates via WebSocket",
+        "Cache session data for offline access"
+      ]
+    },
+    "workflows": {
+      "heading": "Workflow Entry Points",
+      "description": "Key workflows accessible from mobile:",
+      "items": [
+        "Terminal monitoring: View output, send input",
+        "Job status: Track background job progress",
+        "Voice capture: Record and transcribe on mobile",
+        "Session browsing: Review plans and history"
+      ]
+    },
+    "region": {
+      "heading": "Region Settings",
+      "description": "iOS respects user region preference for API routing:",
+      "implementation": "Region stored in UserDefaults, used to select api-eu.plantocode.com or api-us.plantocode.com for all requests."
+    }
+  },
+  "providerRouting": {
+    "meta": {
+      "title": "Provider routing and streaming - PlanToCode",
+      "description": "How PlanToCode routes LLM requests through a proxy, normalizes responses, and streams tokens to the desktop client."
+    },
+    "category": "Research & Models",
+    "date": "2025-09-24",
+    "readTime": "10 min",
+    "title": "Provider Routing and Streaming",
+    "description": "Routing layer that mediates all external LLM requests with normalization, streaming, and usage tracking.",
+    "visuals": {
+      "routingMap": {
+        "title": "Provider routing map",
+        "description": "Diagram of how requests flow from the desktop app to the proxy and out to providers.",
+        "imageSrc": "/images/docs/provider-routing/routing-map.png",
+        "imageAlt": "Diagram of provider routing flow from desktop to external providers",
+        "caption": "Placeholder for provider routing diagram."
+      }
+    }
   }
 }

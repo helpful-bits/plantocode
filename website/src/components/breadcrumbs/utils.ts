@@ -100,36 +100,6 @@ export function buildDocsBreadcrumbs(
 }
 
 /**
- * Build breadcrumbs for solution pages
- */
-export function buildSolutionBreadcrumbs(solutionTitle: string, solutionsLabel: string = 'Solutions'): BreadcrumbItem[] {
-  return [
-    {
-      label: solutionsLabel,
-      href: '/solutions',
-    },
-    {
-      label: solutionTitle,
-    },
-  ];
-}
-
-/**
- * Build breadcrumbs for blog posts
- */
-export function buildBlogBreadcrumbs(postTitle: string, blogLabel: string = 'Blog'): BreadcrumbItem[] {
-  return [
-    {
-      label: blogLabel,
-      href: '/blog',
-    },
-    {
-      label: postTitle,
-    },
-  ];
-}
-
-/**
  * Build breadcrumbs for feature pages
  */
 export function buildFeatureBreadcrumbs(featureTitle: string, featuresLabel: string = 'Features'): BreadcrumbItem[] {

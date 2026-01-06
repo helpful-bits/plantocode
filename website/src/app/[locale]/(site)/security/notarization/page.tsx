@@ -5,6 +5,7 @@ import { Header } from '@/components/landing/Header';
 import { generatePageMetadata } from '@/content/metadata';
 import type { Locale } from '@/i18n/config';
 import { locales } from '@/i18n/config';
+import { loadMessagesFor } from '@/lib/i18n';
 
 export async function generateMetadata({
   params,
@@ -12,17 +13,18 @@ export async function generateMetadata({
   params: Promise<{ locale: Locale }>;
 }): Promise<Metadata> {
   const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['pages']);
 
   return generatePageMetadata({
     locale,
     slug: '/security/notarization',
-    title: 'macOS Notarization & Security',
-    description: 'PlanToCode is signed and notarized by Apple for secure distribution on macOS. Learn about our security measures and Gatekeeper compliance.',
+    title: t['securityNotarization.meta.title'],
+    description: t['securityNotarization.meta.description'],
     images: [{
       url: cdnUrl('/images/og-image.png'),
       width: 1200,
       height: 630,
-      alt: 'PlanToCode - AI Planning for Code',
+      alt: t['securityNotarization.meta.imageAlt'],
     }],
   });
 }
@@ -31,26 +33,51 @@ export function generateStaticParams() {
   return locales.map((locale: Locale) => ({ locale }));
 }
 
-export default function NotarizationPage() {
+export default async function NotarizationPage({ params }: { params: Promise<{ locale: Locale }> }) {
+  const { locale } = await params;
+  const t = await loadMessagesFor(locale, ['pages']);
+
   return (
     <>
       <div className="fixed inset-0 -z-20" style={{ background: 'var(--background-gradient)' }} />
       <div className="relative z-0 bg-transparent">
         <Header />
         <main className="container mx-auto px-4 py-16 max-w-3xl">
-          <h1 className="text-3xl font-bold mb-6">macOS Notarization</h1>
+          <h1 className="text-3xl font-bold mb-6">{t['securityNotarization.hero.title']}</h1>
           <p className="text-foreground/90 mb-4">
-            Our Mac app is signed and notarized by Apple. Notarization means Apple scans the app for malicious content and approves it for distribution. This reduces scary install prompts and helps Gatekeeper trust the app.
+            {t['securityNotarization.hero.subtitle']}
           </p>
           <ul className="list-disc pl-6 space-y-2 text-foreground/80 mb-6">
             <li>
-              Apple Support: <a className="underline hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web">Gatekeeper and runtime protection</a>
+              {t['securityNotarization.links.gatekeeper.label']}{' '}
+              <a
+                className="underline hover:text-primary"
+                target="_blank"
+                rel="noreferrer noopener"
+                href="https://support.apple.com/guide/security/gatekeeper-and-runtime-protection-sec5599b66df/web"
+              >
+                {t['securityNotarization.links.gatekeeper.text']}
+              </a>
             </li>
             <li>
-              Apple Developer: <a className="underline hover:text-primary" target="_blank" rel="noreferrer noopener" href="https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution">Notarizing macOS software</a>
+              {t['securityNotarization.links.notarize.label']}{' '}
+              <a
+                className="underline hover:text-primary"
+                target="_blank"
+                rel="noreferrer noopener"
+                href="https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution"
+              >
+                {t['securityNotarization.links.notarize.text']}
+              </a>
             </li>
           </ul>
-          <p className="text-foreground/80">If you see warnings, try opening via the context menu and choose "Open", or see our <Link href="/downloads" className="underline hover:text-primary">Downloads</Link> page for guidance.</p>
+          <p className="text-foreground/80">
+            {t['securityNotarization.footer.text']}{' '}
+            <Link href="/downloads" className="underline hover:text-primary">
+              {t['securityNotarization.footer.link']}
+            </Link>
+            .
+          </p>
         </main>
       </div>
     </>

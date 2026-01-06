@@ -1,7 +1,7 @@
 'use client';
 
 import { Link } from '@/i18n/navigation';
-import { BRAND_X_URL, FEATUREBASE_BASE_URL, CALENDLY_URL } from '@/lib/brand';
+import { BRAND_X_URL, FEATUREBASE_BASE_URL, GITHUB_REPO_URL } from '@/lib/brand';
 import { trackCTA } from '@/lib/track';
 import { useMessages } from '@/components/i18n/useMessages';
 
@@ -9,15 +9,8 @@ export function Footer() {
   const { t } = useMessages();
 
   return (
-    <footer className="relative mt-24">
-      {/* Gradient border */}
-      <div className="absolute inset-x-0 top-0 h-px">
-        <div className="w-full h-full bg-gradient-to-r from-transparent via-primary/50 to-transparent" />
-      </div>
-
-      {/* Glass background with subtle effect */}
-      <div className="relative glass border-t border-primary/10">
-        <div className="container mx-auto px-4">
+    <footer className="border-t border-border/20 py-8 mt-16">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Main footer content */}
           <div className="py-16 grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
             {/* Brand section */}
@@ -50,29 +43,48 @@ export function Footer() {
 
             {/* Links Grid - Streamlined to 3 columns */}
             <div className="md:col-span-7 lg:col-span-6 grid grid-cols-1 sm:grid-cols-3 gap-8">
-              {/* Product */}
+              {/* Project */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  {t('footer.product', 'Product')}
+                  {t('footer.product')}
+                </h4>
+                <ul className="space-y-3">
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/architecture">
+                      {t('footer.architecture')}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs">
+                      {t('footer.documentation')}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/evolution">
+                      {t('footer.evolution')}
+                    </Link>
+                  </li>
+                  <li>
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/about">
+                      {t('footer.about')}
+                    </Link>
+                  </li>
+                </ul>
+              </div>
+
+              {/* Resources */}
+              <div>
+                <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
+                  {t('footer.resources')}
                 </h4>
                 <ul className="space-y-3">
                   <li>
                     <Link
                       className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline"
-                      href="/demo"
-                      onClick={() => trackCTA('footer', 'Interactive Demo', '/demo')}
+                      href="/docs/runtime-walkthrough"
+                      onClick={() => trackCTA('footer', 'Runtime Walkthrough', '/docs/runtime-walkthrough')}
                     >
-                      {t('footer.interactiveDemo')}
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/how-it-works">
-                      {t('footer.howItWorks')}
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="#pricing">
-                      {t('footer.pricing')}
+                      {t('footer.runtimeWalkthrough')}
                     </Link>
                   </li>
                   <li>
@@ -89,28 +101,9 @@ export function Footer() {
                       {t('footer.changelog')}
                     </Link>
                   </li>
-                </ul>
-              </div>
-
-              {/* Resources */}
-              <div>
-                <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  {t('footer.resources', 'Resources')}
-                </h4>
-                <ul className="space-y-3">
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs">
-                      {t('footer.documentation')}
-                    </Link>
-                  </li>
                   <li>
                     <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/support">
                       {t('footer.support')}
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/docs/architecture">
-                      {t('footer.architecture')}
                     </Link>
                   </li>
                   <li>
@@ -126,20 +119,20 @@ export function Footer() {
                 </ul>
               </div>
 
-              {/* Company */}
+              {/* Source */}
               <div>
                 <h4 className="font-semibold text-foreground mb-4 text-sm uppercase tracking-wide">
-                  {t('footer.company', 'Company')}
+                  {t('footer.company')}
                 </h4>
                 <ul className="space-y-3">
                   <li>
-                    <a className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href={CALENDLY_URL} target="_blank" rel="noopener noreferrer">
-                      {t('footer.talkToArchitect')}
+                    <a className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">
+                      {t('footer.sourceCode')}
                     </a>
                   </li>
                   <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/about">
-                      {t('footer.about')}
+                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal">
+                      {t('footer.legal')}
                     </Link>
                   </li>
                   <li>
@@ -152,35 +145,21 @@ export function Footer() {
                       {t('footer.terms')}
                     </Link>
                   </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal/eu/imprint">
-                      {t('footer.imprint')}
-                    </Link>
-                  </li>
-                  <li>
-                    <Link className="text-foreground/80 dark:text-foreground/90 hover:text-primary text-sm font-medium transition-colors duration-200 clickable-text-underline" href="/legal">
-                      {t('footer.legal')}
-                    </Link>
-                  </li>
                 </ul>
               </div>
             </div>
           </div>
 
-          {/* Bottom bar */}
-          <div className="py-6 border-t border-primary/10">
-            <div className="flex flex-col items-center gap-2">
-              <div className="flex items-center gap-2 text-muted-foreground text-xs">
-                <span>🇩🇪</span>
-                <span>{t('footer.madeInGermany')}</span>
-              </div>
-              <p className="text-muted-foreground text-xs text-center mb-2">
-                {t('footer.notAffiliated')}
-              </p>
-              <p className="text-muted-foreground text-xs">
-                {t('footer.copyright').replace('{year}', new Date().getFullYear().toString())}
-              </p>
+        {/* Bottom bar */}
+        <div className="py-6 border-t border-primary/10">
+          <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+              <span>🇩🇪</span>
+              <span>{t('footer.madeInGermany')}</span>
             </div>
+            <p className="text-muted-foreground text-xs">
+              {t('footer.copyright').replace('{year}', new Date().getFullYear().toString())}
+            </p>
           </div>
         </div>
       </div>

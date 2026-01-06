@@ -21,7 +21,7 @@ interface WERBarChartProps {
 
 export function WERBarChart({
   data,
-  highlightId = 'gpt-4o-transcribe',
+  highlightId = 'primary-transcription',
   title = 'Word Error Rate by Model',
   desc = 'Lower is better.',
   className

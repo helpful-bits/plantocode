@@ -56,7 +56,7 @@ export async function generateMetadata({ params }: DPAPageProps): Promise<Metada
         url: cdnUrl('/images/og-image.png'),
         width: 1200,
         height: 630,
-        alt: 'PlanToCode - AI Planning for Code',
+        alt: 'PlanToCode overview',
       }],
     },
   };
