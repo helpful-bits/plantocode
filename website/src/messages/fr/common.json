@@ -85,6 +85,16 @@
     "english": "Anglais",
     "german": "Allemand"
   },
+  "docs": {
+    "article": {
+      "backToDocs": "Retour à la documentation",
+      "share": "Partager",
+      "copyLink": "Copier le lien",
+      "copied": "Copié !",
+      "viewAllDocs": "Voir toute la documentation",
+      "readSuffix": "de lecture"
+    }
+  },
   "nav": {
     "compare": "Comparer",
     "demo": "Démo",

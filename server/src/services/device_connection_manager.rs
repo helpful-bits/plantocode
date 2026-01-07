@@ -44,7 +44,8 @@ pub struct DeviceConnection {
 pub struct DeviceConnectionManager {
     // user_id -> device_id -> connection
     connections: Arc<DashMap<Uuid, DashMap<String, DeviceConnection>>>,
-    binary_routes: Arc<RwLock<HashMap<(Uuid, String), String>>>,
+    // (user_id, producer_device_id, session_id) -> consumer_device_id
+    binary_routes: Arc<RwLock<HashMap<(Uuid, String, String), String>>>,
 }
 
 impl DeviceConnectionManager {
@@ -505,65 +506,68 @@ impl DeviceConnectionManager {
         Ok(())
     }
 
-    /// Set binary route for terminal I/O forwarding
-    /// Repeated calls replace existing routes (last bind wins) - essential for LTE reconnect
-    pub fn set_binary_route(&self, user_id: &Uuid, producer: &str, consumer: &str) {
+    pub fn set_binary_route_for_session(&self, user_id: &Uuid, producer: &str, session_id: &str, consumer: &str) {
         let p = producer.to_lowercase();
         let c = consumer.to_lowercase();
+        let s = session_id.to_string();
 
         match self.binary_routes.write() {
             Ok(mut map) => {
-                map.insert((user_id.clone(), p.clone()), c.clone());
+                map.insert((user_id.clone(), p.clone(), s.clone()), c.clone());
                 debug!(
                     user_id = %user_id,
                     producer = %p,
+                    session_id = %s,
                     consumer = %c,
-                    "Binary route established: producer={} -> consumer={}",
-                    p, c
+                    "Binary route established: producer={}, session={} -> consumer={}",
+                    p, s, c
                 );
             }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned, recovering");
                 let mut map = poisoned.into_inner();
-                map.insert((user_id.clone(), p.clone()), c.clone());
+                map.insert((user_id.clone(), p.clone(), s.clone()), c.clone());
                 debug!(
                     user_id = %user_id,
                     producer = %p,
+                    session_id = %s,
                     consumer = %c,
-                    "Binary route established: producer={} -> consumer={}",
-                    p, c
+                    "Binary route established: producer={}, session={} -> consumer={}",
+                    p, s, c
                 );
             }
         }
     }
 
-    pub fn get_binary_consumer(&self, user_id: &Uuid, producer: &str) -> Option<String> {
+    pub fn get_binary_consumer_for_session(&self, user_id: &Uuid, producer: &str, session_id: &str) -> Option<String> {
         let p = producer.to_lowercase();
 
         let result = match self.binary_routes.read() {
             Ok(map) => {
-                let consumer = map.get(&(user_id.clone(), p.clone())).cloned();
+                let consumer = map.get(&(user_id.clone(), p.clone(), session_id.to_string())).cloned();
                 debug!(
                     user_id = %user_id,
                     producer = %p,
+                    session_id = %session_id,
                     found = %consumer.is_some(),
                     map_size = map.len(),
-                    "Binary route lookup: producer={}, hit={}, map_size={}",
-                    p, consumer.is_some(), map.len()
+                    "Binary route lookup: producer={}, session={}, hit={}, map_size={}",
+                    p, session_id, consumer.is_some(), map.len()
                 );
                 consumer
             }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned during read, recovering");
                 let map = poisoned.into_inner();
-                let consumer = map.get(&(user_id.clone(), p.clone())).cloned();
+                let consumer = map.get(&(user_id.clone(), p.clone(), session_id.to_string())).cloned();
                 debug!(
                     user_id = %user_id,
                     producer = %p,
+                    session_id = %session_id,
                     found = %consumer.is_some(),
                     map_size = map.len(),
-                    "Binary route lookup: producer={}, hit={}, map_size={}",
-                    p, consumer.is_some(), map.len()
+                    "Binary route lookup: producer={}, session={}, hit={}, map_size={}",
+                    p, session_id, consumer.is_some(), map.len()
                 );
                 consumer
             }
@@ -572,47 +576,38 @@ impl DeviceConnectionManager {
         result
     }
 
-    /// Get all binary routes involving a specific device (as producer or consumer)
-    /// Returns a vector of (producer_device_id, consumer_device_id) tuples
-    pub fn get_binary_routes_for_device(&self, user_id: &Uuid, device_id: &str) -> Vec<(String, String)> {
-        let device_id_lower = device_id.to_lowercase();
+    pub fn clear_binary_route_for_session(&self, user_id: &Uuid, producer: &str, session_id: &str) {
+        let p = producer.to_lowercase();
 
-        match self.binary_routes.read() {
-            Ok(map) => {
-                let mut routes = Vec::new();
-                for ((u, prod), cons) in map.iter() {
-                    if u == user_id && (prod == &device_id_lower || cons == &device_id_lower) {
-                        routes.push((prod.clone(), cons.clone()));
-                    }
-                }
-                routes
+        match self.binary_routes.write() {
+            Ok(mut map) => {
+                map.remove(&(user_id.clone(), p.clone(), session_id.to_string()));
+                debug!(
+                    user_id = %user_id,
+                    producer = %p,
+                    session_id = %session_id,
+                    "Binary route cleared for session"
+                );
             }
             Err(poisoned) => {
-                warn!("Binary routes lock poisoned during read, recovering");
-                let map = poisoned.into_inner();
-                let mut routes = Vec::new();
-                for ((u, prod), cons) in map.iter() {
-                    if u == user_id && (prod == &device_id_lower || cons == &device_id_lower) {
-                        routes.push((prod.clone(), cons.clone()));
-                    }
-                }
-                routes
+                warn!("Binary routes lock poisoned, recovering");
+                let mut map = poisoned.into_inner();
+                map.remove(&(user_id.clone(), p.clone(), session_id.to_string()));
             }
         }
     }
 
     pub fn clear_binary_routes_for_device(&self, user_id: &Uuid, device_id: &str) {
-        // Normalize device ID to lowercase for case-insensitive comparisons
         let device_id_lower = device_id.to_lowercase();
 
         match self.binary_routes.write() {
             Ok(mut map) => {
-                map.retain(|(u, prod), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
+                map.retain(|(u, prod, _session), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
             }
             Err(poisoned) => {
                 warn!("Binary routes lock poisoned, recovering");
                 let mut map = poisoned.into_inner();
-                map.retain(|(u, prod), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
+                map.retain(|(u, prod, _session), cons| !(u == user_id && (prod == &device_id_lower || cons == &device_id_lower)));
             }
         }
     }

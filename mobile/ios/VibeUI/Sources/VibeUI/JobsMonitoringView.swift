@@ -52,10 +52,29 @@ public struct JobsMonitoringView: View {
             }
     }
 
-    // Filtered jobs sorted by date
+    // Filtered jobs sorted by date with defensive deduplication
     private var filteredJobs: [BackgroundJob] {
-        return baseFilteredJobs
+        // Defensive dedup by job.id - prefer job with newest timestamp
+        var dedupedById: [String: BackgroundJob] = [:]
+        for job in baseFilteredJobs {
+            if let existing = dedupedById[job.id] {
+                let existingTimestamp = existing.updatedAt ?? existing.createdAt ?? 0
+                let newTimestamp = job.updatedAt ?? job.createdAt ?? 0
+                if newTimestamp > existingTimestamp {
+                    dedupedById[job.id] = job
+                }
+            } else {
+                dedupedById[job.id] = job
+            }
+        }
+
+        return Array(dedupedById.values)
             .sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
+    }
+
+    // Whether to show inline loading indicator (when we have jobs but are refreshing)
+    private var showInlineLoading: Bool {
+        (isLoading || jobsService.isLoading) && !filteredJobs.isEmpty
     }
 
     public var body: some View {
@@ -98,6 +117,19 @@ public struct JobsMonitoringView: View {
                 } else {
                     ScrollView {
                         LazyVStack(spacing: Theme.Spacing.cardSpacing) {
+                            // Inline loading indicator when refreshing with existing jobs
+                            if showInlineLoading {
+                                HStack(spacing: 8) {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Refreshing...")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(Color.textMuted)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                            }
+
                             ForEach(filteredJobs) { job in
                                 JobCardView(
                                     job: job,

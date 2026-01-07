@@ -28,23 +28,24 @@ export default async function ModelConfigurationDocPage({ params }: { params: Pr
   const { locale } = await params;
   const t = await loadMessages(locale);
 
-  // Task types with their model configurations
+  // Task types with their model configurations (from server/migrations/data_app_configs.sql)
   const taskConfigs = [
-    { task: 'implementation_plan', defaultModel: 'claude-3-5-sonnet-latest', contextWindow: 200000, maxOutput: 16384 },
-    { task: 'file_discovery', defaultModel: 'gpt-4o', contextWindow: 128000, maxOutput: 8192 },
-    { task: 'task_refinement', defaultModel: 'claude-3-5-sonnet-latest', contextWindow: 200000, maxOutput: 8192 },
-    { task: 'text_improvement', defaultModel: 'gpt-4o-mini', contextWindow: 128000, maxOutput: 4096 },
-    { task: 'voice_transcription', defaultModel: 'gpt-4o-transcribe', contextWindow: 25000, maxOutput: 4096 },
-    { task: 'deep_research', defaultModel: 'gpt-4o', contextWindow: 128000, maxOutput: 16384 },
+    { task: 'implementation_plan', defaultModel: 'openai/gpt-5.2-2025-12-11', maxOutput: 23000 },
+    { task: 'implementation_plan_merge', defaultModel: 'openai/gpt-5.2-2025-12-11', maxOutput: 35000 },
+    { task: 'task_refinement', defaultModel: 'anthropic/claude-opus-4-5-20251101', maxOutput: 16384 },
+    { task: 'text_improvement', defaultModel: 'anthropic/claude-opus-4-5-20251101', maxOutput: 4096 },
+    { task: 'voice_transcription', defaultModel: 'openai/gpt-4o-transcribe', maxOutput: 4096 },
+    { task: 'regex_file_filter', defaultModel: 'anthropic/claude-sonnet-4-5-20250929', maxOutput: 35000 },
+    { task: 'file_relevance_assessment', defaultModel: 'openai/gpt-5-mini', maxOutput: 24000 },
+    { task: 'extended_path_finder', defaultModel: 'openai/gpt-5-mini', maxOutput: 8192 },
+    { task: 'web_search_prompts_generation', defaultModel: 'openai/gpt-5.2-2025-12-11', maxOutput: 30000 },
+    { task: 'video_analysis', defaultModel: 'google/gemini-2.5-pro', maxOutput: 50000 },
   ];
 
   // Guardrail checks
   const guardrailChecks = [
     { check: 'Context Window', description: 'Prompt + max_output must fit within model context limit' },
     { check: 'Output Budget', description: 'Requested output tokens cannot exceed model max_output' },
-    { check: 'Vision Capability', description: 'Image content only allowed for vision-capable models' },
-    { check: 'Reasoning Mode', description: 'Extended thinking only for o1/o3 models' },
-    { check: 'Cost Threshold', description: 'Estimated cost checked against project budget' },
   ];
 
   return (
@@ -85,7 +86,6 @@ export default async function ModelConfigurationDocPage({ params }: { params: Pr
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-semibold">Task Type</th>
                   <th className="text-left py-3 px-4 font-semibold">Default Model</th>
-                  <th className="text-left py-3 px-4 font-semibold">Context Window</th>
                   <th className="text-left py-3 px-4 font-semibold">Max Output</th>
                 </tr>
               </thead>
@@ -96,7 +96,6 @@ export default async function ModelConfigurationDocPage({ params }: { params: Pr
                       <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">{config.task}</code>
                     </td>
                     <td className="py-3 px-4 font-medium">{config.defaultModel}</td>
-                    <td className="py-3 px-4 text-muted-foreground">{config.contextWindow.toLocaleString()}</td>
                     <td className="py-3 px-4 text-muted-foreground">{config.maxOutput.toLocaleString()}</td>
                   </tr>
                 ))}
@@ -168,38 +167,42 @@ function validateRequest(
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
             The desktop client fetches runtime configuration at startup from the server. This includes task model configs,
-            copy button templates, feature flags, and provider availability.
+            provider information with model details, and concurrency limits.
           </p>
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Runtime config response structure
+            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// DesktopRuntimeAIConfig response structure
 {
-  "task_model_configs": {
+  "tasks": {
     "implementation_plan": {
-      "default_model": "claude-3-5-sonnet-latest",
-      "allowed_models": [
-        "claude-3-5-sonnet-latest",
-        "claude-3-opus-latest",
-        "gpt-4o",
-        "gemini-2.0-flash-exp"
+      "model": "openai/gpt-5.2-2025-12-11",
+      "allowedModels": [
+        "openai/gpt-5.2-2025-12-11",
+        "google/gemini-3-pro-preview",
+        "google/gemini-2.5-pro",
+        "anthropic/claude-opus-4-5-20251101",
+        "deepseek/deepseek-r1-0528"
       ],
-      "context_window": 200000,
-      "max_output": 16384,
-      "supports_vision": true,
-      "supports_streaming": true
+      "maxTokens": 23000,
+      "temperature": 0.7,
+      "copyButtons": [...]
     }
     // ... other task configs
   },
-  "copy_button_templates": [...],
-  "feature_flags": {
-    "deep_research_enabled": true,
-    "voice_transcription_enabled": true,
-    "extended_thinking_enabled": false
-  },
-  "provider_status": {
-    "openai": "available",
-    "anthropic": "available",
-    "google": "degraded"
-  }
+  "providers": [
+    {
+      "provider": { "code": "openai", "name": "OpenAI" },
+      "models": [
+        {
+          "id": "openai/gpt-5.2-2025-12-11",
+          "name": "GPT-5.2",
+          "contextWindow": 200000,
+          "priceInputPerMillion": "2.50",
+          "priceOutputPerMillion": "10.00"
+        }
+      ]
+    }
+  ],
+  "maxConcurrentJobs": 20
 }`}</code></pre>
           </div>
           <div className="bg-muted/30 rounded-lg p-4 mt-4">
@@ -207,7 +210,7 @@ function validateRequest(
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Fetched once at app startup</li>
               <li>• Cached in React context for component access</li>
-              <li>• Refreshed on user request or after 24 hours</li>
+              <li>• Auto-refreshed every 30 seconds via background sync</li>
               <li>• Merged with project-level overrides</li>
             </ul>
           </div>
@@ -219,38 +222,36 @@ function validateRequest(
         <h2 className="text-2xl font-bold">Project-Level Overrides in SQLite</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Teams can override server defaults at the project level. These overrides are stored in SQLite and merged with
-            the runtime config when tasks are executed.
+            Teams can override server defaults at the project level. These overrides are stored in the <code className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">key_value_store</code> table
+            using a structured key pattern and merged with the runtime config when tasks are executed.
           </p>
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`-- project_model_overrides table
-CREATE TABLE project_model_overrides (
-    project_id    TEXT NOT NULL,
-    task_type     TEXT NOT NULL,
-    default_model TEXT,
-    allowed_models TEXT,  -- JSON array
-    max_tokens    INTEGER,
-    temperature   REAL,
-    created_at    TEXT NOT NULL,
-    PRIMARY KEY (project_id, task_type)
+            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`-- Project task settings use key_value_store with structured keys
+-- Key pattern: project_task_settings:{project_hash}:{task_type}:{field}
+
+-- Example: Override model for implementation_plan in a specific project
+INSERT INTO key_value_store (key, value, updated_at) VALUES (
+    'project_task_settings:abc123hash:implementation_plan:model',
+    'anthropic/claude-opus-4-5-20251101',
+    strftime('%s', 'now')
 );
 
--- Example override
-INSERT INTO project_model_overrides VALUES (
-    'proj_abc123',
-    'implementation_plan',
-    'gpt-4o',
-    '["gpt-4o", "gpt-4o-mini"]',
-    8192,
-    0.5,
-    '2025-01-01T00:00:00Z'
-);`}</code></pre>
+-- Example: Override temperature
+INSERT INTO key_value_store (key, value, updated_at) VALUES (
+    'project_task_settings:abc123hash:implementation_plan:temperature',
+    '0.5',
+    strftime('%s', 'now')
+);
+
+-- Retrieve all settings for a project
+SELECT key, value FROM key_value_store
+WHERE key LIKE 'project_task_settings:abc123hash:%';`}</code></pre>
           </div>
-          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-4 mt-4">
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">Merge Behavior</h4>
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              Project overrides take precedence over server defaults. If a project specifies a custom allowed_models list,
-              it completely replaces the server list. Other fields (like temperature) are merged additively.
+              Project overrides take precedence over server defaults. Settings are retrieved using the <code className="px-1 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-xs font-mono">get_all_project_task_settings</code> method
+              which queries all keys matching the project hash prefix.
             </p>
           </div>
         </GlassCard>
@@ -295,7 +296,7 @@ INSERT INTO project_model_overrides VALUES (
               </div>
             </div>
           </div>
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4 mt-4">
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">Overage Warning</h4>
             <p className="text-sm text-amber-700 dark:text-amber-300">
               If a model cannot support the total token requirement, the toggle disables the button and surfaces a tooltip with

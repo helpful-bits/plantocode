@@ -213,6 +213,8 @@ final class SessionWorkspaceViewModel: ObservableObject {
 
     private func handleEnterHealthy() {
         showFullConnectionBanner = false
+        reconnectionSuccess = nil
+        reconnectionMessage = nil
     }
 
     private func handleEnterTransientReconnecting() {

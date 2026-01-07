@@ -54,6 +54,25 @@ pub async fn transcription_handler(
     .await
 }
 
+pub async fn streaming_transcription_handler(
+    req: HttpRequest,
+    payload: Multipart,
+    user: web::ReqData<AuthenticatedUser>,
+    app_settings: web::Data<AppSettings>,
+    billing_service: web::Data<Arc<BillingService>>,
+    model_repository: web::Data<ModelRepository>,
+) -> Result<HttpResponse, AppError> {
+    specialized::transcription::streaming_transcription_handler(
+        req,
+        payload,
+        user,
+        app_settings,
+        billing_service,
+        model_repository,
+    )
+    .await
+}
+
 /// Handle video analysis requests
 pub async fn video_analysis_handler(
     payload: Multipart,

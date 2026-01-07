@@ -32,6 +32,7 @@ public class ServerFeatureService: ObservableObject {
         }
 
         isLoading = true
+        lastError = nil
         defer { isLoading = false }
 
         let startTime = Date()
@@ -152,6 +153,7 @@ public class ServerFeatureService: ObservableObject {
         }
 
         isLoading = true
+        lastError = nil
         defer { isLoading = false }
 
         let startTime = Date()
@@ -235,6 +237,7 @@ public class ServerFeatureService: ObservableObject {
         }
 
         isLoading = true
+        lastError = nil
         defer { isLoading = false }
 
         do {
@@ -332,9 +335,11 @@ public class ServerFeatureService: ObservableObject {
         var bodyData = Data()
 
         // Field: file (server expects this name)
+        // Use audio/mp4 (M4A/AAC) for smaller file sizes and faster uploads
+        // M4A is ~10x smaller than WAV for the same audio duration
         bodyData.append("--\(boundary)\r\n")
-        bodyData.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n")
-        bodyData.append("Content-Type: audio/wav\r\n\r\n")
+        bodyData.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n")
+        bodyData.append("Content-Type: audio/mp4\r\n\r\n")
         bodyData.append(audioData)
         bodyData.append("\r\n")
 
@@ -408,6 +413,130 @@ public class ServerFeatureService: ObservableObject {
         }
 
         return try JSONDecoder().decode(TranscriptionResponse.self, from: responseData)
+    }
+
+    public struct TranscriptionChunk: Decodable {
+        public let text: String
+        public let done: Bool
+    }
+
+    public func transcribeAudioStreaming(
+        _ audioData: Data,
+        durationMs: Int64,
+        model: String,
+        language: String? = nil,
+        prompt: String? = nil,
+        temperature: Double? = nil
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let boundary = UUID().uuidString
+                    let contentType = "multipart/form-data; boundary=\(boundary)"
+
+                    var bodyData = Data()
+
+                    // Field: file
+                    bodyData.append("--\(boundary)\r\n")
+                    bodyData.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.m4a\"\r\n")
+                    bodyData.append("Content-Type: audio/mp4\r\n\r\n")
+                    bodyData.append(audioData)
+                    bodyData.append("\r\n")
+
+                    bodyData.append("--\(boundary)\r\n")
+                    bodyData.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+                    bodyData.append(model + "\r\n")
+
+                    bodyData.append("--\(boundary)\r\n")
+                    bodyData.append("Content-Disposition: form-data; name=\"duration_ms\"\r\n\r\n")
+                    bodyData.append("\(durationMs)\r\n")
+
+                    if let language = language {
+                        bodyData.append("--\(boundary)\r\n")
+                        bodyData.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+                        bodyData.append(language + "\r\n")
+                    }
+
+                    if let prompt = prompt {
+                        bodyData.append("--\(boundary)\r\n")
+                        bodyData.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+                        bodyData.append(prompt + "\r\n")
+                    }
+
+                    if let temperature = temperature {
+                        bodyData.append("--\(boundary)\r\n")
+                        bodyData.append("Content-Disposition: form-data; name=\"temperature\"\r\n\r\n")
+                        bodyData.append("\(temperature)\r\n")
+                    }
+
+                    bodyData.append("--\(boundary)--\r\n")
+
+                    let cleanedBase = Config.serverURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    guard let url = URL(string: "\(cleanedBase)/api/audio/transcriptions/stream") else {
+                        throw DataServiceError.invalidRequest("Invalid streaming transcription URL")
+                    }
+
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+
+                    guard let token = await self.getCurrentAuthToken() else {
+                        throw DataServiceError.authenticationError("Missing authentication token")
+                    }
+                    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+                    let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+                    request.setValue(deviceId, forHTTPHeaderField: "X-Device-ID")
+                    request.setValue(deviceId, forHTTPHeaderField: "X-Token-Binding")
+
+                    request.httpBody = bodyData
+
+                    let config = URLSessionConfiguration.default
+                    config.timeoutIntervalForRequest = 90
+                    config.timeoutIntervalForResource = 240
+                    let session = URLSession(configuration: config)
+
+                    let (bytes, httpResponse) = try await session.bytes(for: request)
+
+                    guard let httpResponse = httpResponse as? HTTPURLResponse else {
+                        throw DataServiceError.networkError(URLError(.badServerResponse))
+                    }
+
+                    guard (200...299).contains(httpResponse.statusCode) else {
+                        throw DataServiceError.serverError("HTTP \(httpResponse.statusCode)")
+                    }
+
+                    var buffer = ""
+                    for try await byte in bytes {
+                        buffer.append(Character(UnicodeScalar(byte)))
+
+                        while let range = buffer.range(of: "\n\n") {
+                            let line = String(buffer[..<range.lowerBound])
+                            buffer.removeSubrange(..<range.upperBound)
+
+                            if line.hasPrefix("data: ") {
+                                let jsonStr = String(line.dropFirst(6))
+                                if let jsonData = jsonStr.data(using: .utf8),
+                                   let chunk = try? JSONDecoder().decode(TranscriptionChunk.self, from: jsonData) {
+                                    if !chunk.text.isEmpty {
+                                        continuation.yield(chunk.text)
+                                    }
+                                    if chunk.done {
+                                        continuation.finish()
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     private func getCurrentAuthToken() async -> String? {

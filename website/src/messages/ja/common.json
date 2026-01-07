@@ -85,6 +85,16 @@
     "english": "英語",
     "german": "ドイツ語"
   },
+  "docs": {
+    "article": {
+      "backToDocs": "ドキュメントに戻る",
+      "share": "共有",
+      "copyLink": "リンクをコピー",
+      "copied": "コピーしました！",
+      "viewAllDocs": "すべてのドキュメントを表示",
+      "readSuffix": "で読めます"
+    }
+  },
   "nav": {
     "compare": "比較",
     "demo": "デモ",

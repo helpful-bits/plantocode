@@ -1106,6 +1106,60 @@ export function useFileSelection(projectDirectory?: string) {
     };
   }, [currentSession?.id, searchTerm, filterMode, sortBy, sortOrder, setFilterMode]);
 
+  // Listen for authoritative backend file updates
+  useEffect(() => {
+    const sessionId = currentSession?.id;
+    if (!sessionId) return;
+
+    let unlisten: UnlistenFn | null = null;
+
+    const setupListener = async () => {
+      try {
+        unlisten = await listen<{
+          sessionId: string;
+          includedFiles: string[] | string;
+          forceExcludedFiles: string[] | string;
+        }>("session-files-updated", (event) => {
+          const p = event.payload;
+
+          if (p.sessionId !== sessionId) return;
+
+          // Defensively parse arrays in case they arrive as stringified JSON
+          const parseArray = (val: string[] | string): string[] => {
+            if (Array.isArray(val)) return val;
+            if (typeof val === "string") {
+              try {
+                const parsed = JSON.parse(val);
+                return Array.isArray(parsed) ? parsed : [];
+              } catch {
+                return [];
+              }
+            }
+            return [];
+          };
+
+          const included = parseArray(p.includedFiles);
+          const excluded = parseArray(p.forceExcludedFiles);
+
+          updateCurrentSessionFields({
+            includedFiles: included,
+            forceExcludedFiles: excluded,
+          });
+        });
+      } catch (err) {
+        console.error("Failed to setup session-files-updated listener:", err);
+      }
+    };
+
+    setupListener();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, [currentSession?.id, updateCurrentSessionFields]);
+
   return {
     files: filteredAndSortedFiles,
     loading,

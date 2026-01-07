@@ -4,8 +4,41 @@ import OSLog
 
 /// Service for accessing background jobs data from desktop
 @MainActor
-public class JobsDataService: ObservableObject {
+public final class JobsDataService: ObservableObject {
     let logger = Logger(subsystem: "PlanToCode", category: "JobsDataService")
+
+    // MARK: - Canonical Job Store (Single Source of Truth)
+
+    /// Canonical job store keyed by jobId - the single source of truth for all job state
+    @Published public internal(set) var jobsById: [String: BackgroundJob] = [:]
+
+    /// Derived state: count of active jobs that contribute to badge
+    @Published public private(set) var activeJobsCount: Int = 0
+
+    /// Single-flight reconciliation task to prevent concurrent reconciliation
+    private var reconcileTask: Task<Void, Never>?
+
+    /// Source of incoming job data for merge conflict resolution
+    public enum MergeSource {
+        case snapshot  // Full list from server (authoritative for removals)
+        case event     // Incremental update from relay event
+    }
+
+    /// Reasons for triggering job reconciliation
+    public enum JobsReconcileReason {
+        case foregroundResume
+        case connectivityReconnected
+        case listInvalidated
+        case pushHint
+        case relayRegistered
+        case userRefresh
+        case initialLoad
+        case periodicSync
+        case sessionChanged
+    }
+
+    /// Badge count derived from activeJobsCount
+    public var badgeCount: Int { activeJobsCount }
 
     // MARK: - Published Properties
     @Published public var jobs: [BackgroundJob] = []
@@ -45,6 +78,125 @@ public class JobsDataService: ObservableObject {
         MultiConnectionManager.shared.activeDeviceId?.uuidString ?? "no_device"
     }
 
+    // MARK: - Central Merge Reducer
+
+    /// Debounce work item for high-frequency events like response-appended
+    private var debouncedPublishWorkItem: DispatchWorkItem?
+
+    /// Central merge reducer - the single point of truth for job state mutations
+    /// All job updates flow through this method to ensure consistent state
+    /// - Parameters:
+    ///   - incoming: Jobs to merge into the canonical store
+    ///   - source: Whether this is a snapshot (full replace) or event (incremental update)
+    ///   - isHighFrequency: If true, debounces publish for 100ms (for response-appended events)
+    public func reduceJobs(_ incoming: [BackgroundJob], source: MergeSource, isHighFrequency: Bool = false) {
+        var updated = jobsById
+
+        for job in incoming {
+            let id = job.id
+            if let existing = updated[id] {
+                updated[id] = resolveConflict(existing: existing, incoming: job, source: source)
+            } else {
+                updated[id] = job
+            }
+        }
+
+        // For snapshots, remove jobs not in the incoming set (server is authoritative)
+        if case .snapshot = source {
+            let incomingIds = Set(incoming.map { $0.id })
+            for id in updated.keys {
+                if !incomingIds.contains(id) {
+                    updated.removeValue(forKey: id)
+                }
+            }
+        }
+
+        jobsById = updated
+
+        // Debounce high-frequency updates (e.g., response-appended) for 100ms
+        if isHighFrequency {
+            debouncedPublishWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.recomputeDerivedState()
+            }
+            debouncedPublishWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+        } else {
+            // Structural changes (created/status/finalized) publish immediately
+            recomputeDerivedState()
+        }
+    }
+
+    /// Recompute all derived state from the canonical jobsById store in a single pass
+    /// This is the single source of truth for badge counts
+    func recomputeDerivedState() {
+        let allJobs = Array(jobsById.values)
+
+        // Compute activeJobsCount from canonical store
+        activeJobsCount = allJobs.filter { $0.jobStatus.isActive && JobTypeFilters.isBadgeCountable($0) }.count
+
+        // Sync the derived jobs array (this is the ONLY place it gets updated)
+        syncLegacyJobsArray()
+    }
+
+    /// Resolve conflicts between existing and incoming job data
+    private func resolveConflict(existing: BackgroundJob, incoming: BackgroundJob, source: MergeSource) -> BackgroundJob {
+        let existingTimestamp: Int64? = existing.updatedAt ?? existing.createdAt
+        let incomingTimestamp: Int64? = incoming.updatedAt ?? incoming.createdAt
+
+        // Compare timestamps if both are available
+        switch (existingTimestamp, incomingTimestamp) {
+        case let (existingTs?, incomingTs?):
+            if existingTs == incomingTs {
+                // Equal timestamps: prefer terminal status to prevent regression
+                if existing.jobStatus.isTerminal && !incoming.jobStatus.isTerminal {
+                    return existing
+                }
+                return incoming
+            }
+            return incomingTs > existingTs ? incoming : existing
+
+        case (_?, nil):
+            // Existing has timestamp, incoming doesn't - prefer existing
+            return existing
+
+        case (nil, _?):
+            // Incoming has timestamp, existing doesn't - prefer incoming
+            return incoming
+
+        case (nil, nil):
+            // Neither has timestamps - trust the source
+            return source == .snapshot ? incoming : existing
+        }
+    }
+
+    /// Sync the derived jobs array from the canonical jobsById store
+    /// This is a pure projection - jobs array is ONLY updated here
+    private func syncLegacyJobsArray() {
+        // Sort by (updatedAt ?? createdAt) DESC, tie-break by id for stable ordering
+        let sortedJobs = Array(jobsById.values).sorted { job1, job2 in
+            let time1 = job1.updatedAt ?? job1.createdAt
+            let time2 = job2.updatedAt ?? job2.createdAt
+            if time1 == time2 {
+                return job1.id > job2.id // Stable tie-breaker
+            }
+            return (time1 ?? 0) > (time2 ?? 0)
+        }
+        jobs = sortedJobs
+        jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+
+        // Update accumulated lengths for new jobs
+        for job in sortedJobs {
+            if lastAccumulatedLengths[job.id] == nil {
+                lastAccumulatedLengths[job.id] = job.response?.count ?? 0
+            }
+        }
+
+        // Update workflow/implementation plan counts from canonical store
+        updateWorkflowCountsFromJobs(sortedJobs)
+        updateImplementationPlanCountsFromJobs(sortedJobs)
+    }
+
     // MARK: - Initialization
 
     public init(
@@ -73,6 +225,15 @@ public class JobsDataService: ObservableObject {
     }
 
     public func reset() {
+        // Reset canonical store
+        jobsById.removeAll()
+        activeJobsCount = 0
+        reconcileTask?.cancel()
+        reconcileTask = nil
+        debouncedPublishWorkItem?.cancel()
+        debouncedPublishWorkItem = nil
+
+        // Reset derived state
         jobs = []
         isLoading = false
         error = nil
@@ -303,12 +464,13 @@ public class JobsDataService: ObservableObject {
 
     /// Clear jobs from memory
     public func clearJobs() {
-        mutateJobs {
-            self.jobs.removeAll()
-            self.jobsIndex.removeAll()
-            self.lastAccumulatedLengths.removeAll()
-            self.hydrationWaiters.removeAll()
-        }
+        // Clear canonical store - this is the single source of truth
+        jobsById.removeAll()
+        lastAccumulatedLengths.removeAll()
+        hydrationWaiters.removeAll()
+
+        // Recompute derived state (will set jobs = [], jobsIndex = [:], activeJobsCount = 0)
+        recomputeDerivedState()
     }
 
     /// Reset jobs state when active device changes
@@ -343,6 +505,31 @@ public class JobsDataService: ObservableObject {
         // Only validate cache - don't call refreshActiveJobs() which can cause race conditions.
         // validateWorkflowCache() does a full job fetch which is more comprehensive.
         validateWorkflowCache()
+    }
+
+    /// Reconcile jobs with single-flight coalescing.
+    /// Concurrent calls will wait for the existing reconciliation to complete.
+    /// This is the primary entry point for ensuring job data is up-to-date.
+    public func reconcileJobs(reason: JobsReconcileReason) async {
+        // Coalesce concurrent calls - wait for existing reconciliation
+        if let existing = reconcileTask {
+            await existing.value
+            return
+        }
+
+        let task = Task { [weak self] in
+            guard let self = self else { return }
+            do {
+                let jobs = try await self.fetchVisibleJobsSnapshot(reason: reason)
+                self.reduceJobs(jobs, source: .snapshot)
+            } catch {
+                // Log but don't mutate badge incorrectly
+                self.logger.error("Reconciliation failed for reason \(String(describing: reason)): \(error.localizedDescription)")
+            }
+        }
+        reconcileTask = task
+        await task.value
+        reconcileTask = nil
     }
 
     /// Prefetch job details for multiple jobs in background (best-effort, no loading state)
@@ -393,8 +580,9 @@ public class JobsDataService: ObservableObject {
             guard let self else { return }
             await self.refreshJob(jobId: id)
 
-            if let index = self.jobsIndex[id] {
-                let currentLen = self.jobs[index].response?.count ?? 0
+            // Use canonical store for job lookup
+            if let job = self.jobsById[id] {
+                let currentLen = job.response?.count ?? 0
                 self.lastAccumulatedLengths[id] = currentLen
             } else {
                 await self.scheduleCoalescedListJobsForActiveSession()
@@ -503,18 +691,15 @@ public class JobsDataService: ObservableObject {
             pageSize: 100
         )
 
-        // Fetch without replacing - we'll merge instead
+        // Fetch without replacing - routes through reducer which handles all state updates
         listJobsViaRPC(request: request, shouldReplace: false)
             .receive(on: DispatchQueue.main)
             .sink(
                 receiveCompletion: { _ in },
                 receiveValue: { [weak self] response in
                     guard let self = self else { return }
-
-                    self.mergeJobs(fetchedJobs: response.jobs)
-                    self.updateWorkflowCountsFromJobs(self.jobs)
-                    self.updateImplementationPlanCountsFromJobs(self.jobs)
-
+                    // State already updated via reducer in listJobsViaRPC
+                    // Just update sync status
                     self.syncStatus = JobSyncStatus(
                         activeJobs: response.jobs.count,
                         lastUpdate: Date(),
@@ -525,42 +710,26 @@ public class JobsDataService: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Merge fetched jobs with existing jobs, preserving incremental updates
+    /// Merge fetched jobs with existing jobs through the canonical reducer
     /// Note: This only updates/adds jobs, it doesn't remove completed jobs
     /// Completed jobs remain in memory and are updated only via events
     func mergeJobs(fetchedJobs: [BackgroundJob]) {
-        mutateJobs {
-            for fetchedJob in fetchedJobs {
-                if let existingIndex = jobsIndex[fetchedJob.id] {
-                    jobs[existingIndex] = fetchedJob
-                } else {
-                    jobs.append(fetchedJob)
-                    jobsIndex[fetchedJob.id] = jobs.count - 1
-                }
-            }
-
-            jobs.sort {
-                ($0.updatedAt ?? $0.createdAt ?? 0) > ($1.updatedAt ?? $1.createdAt ?? 0)
-            }
-
-            jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
-        }
+        reduceJobs(fetchedJobs, source: .event)
     }
 
     private func handleJobProgressUpdate(_ update: JobProgressUpdate) {
-        // Update local job if it exists - use index for O(1) lookup
-        guard let index = jobsIndex[update.jobId] else { return }
+        // Update local job if it exists in canonical store
+        guard var job = jobsById[update.jobId] else { return }
 
-        mutateJobs {
-            var job = jobs[index]
-            job.status = update.status.rawValue
-            job.updatedAt = update.timestamp
-            jobs[index] = job
-        }
+        job.status = update.status.rawValue
+        job.updatedAt = update.timestamp
 
-        // Update sync status
+        // Route through reducer for consistent state management
+        reduceJobs([job], source: .event)
+
+        // Update sync status from canonical store
         syncStatus = JobSyncStatus(
-            activeJobs: jobs.filter { $0.jobStatus.isActive }.count,
+            activeJobs: jobsById.values.filter { $0.jobStatus.isActive }.count,
             lastUpdate: Date(),
             isConnected: true
         )
@@ -587,47 +756,43 @@ public class JobsDataService: ObservableObject {
             }
 
             await MainActor.run {
-                self.mutateJobs {
-                    guard let index = self.jobsIndex[jobId] else { return }
-                    var job = self.jobs[index]
+                guard var job = self.jobsById[jobId] else { return }
 
-                    var dict: [String: Any] = [:]
-                    if let metadataString = job.metadata,
-                       let data = metadataString.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        dict = json
-                    }
+                var dict: [String: Any] = [:]
+                if let metadataString = job.metadata,
+                   let data = metadataString.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    dict = json
+                }
 
-                    dict["markdownResponse"] = markdown
-                    dict["markdownConversionStatus"] = "completed"
+                dict["markdownResponse"] = markdown
+                dict["markdownConversionStatus"] = "completed"
 
-                    if let newData = try? JSONSerialization.data(withJSONObject: dict),
-                       let newString = String(data: newData, encoding: .utf8) {
-                        job.metadata = newString
-                        self.jobs[index] = job
-                    }
+                if let newData = try? JSONSerialization.data(withJSONObject: dict),
+                   let newString = String(data: newData, encoding: .utf8) {
+                    job.metadata = newString
+                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    self.reduceJobs([job], source: .event)
                 }
             }
         } catch {
             await MainActor.run {
-                self.mutateJobs {
-                    guard let index = self.jobsIndex[jobId] else { return }
-                    var job = self.jobs[index]
+                guard var job = self.jobsById[jobId] else { return }
 
-                    var dict: [String: Any] = [:]
-                    if let metadataString = job.metadata,
-                       let data = metadataString.data(using: .utf8),
-                       let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        dict = json
-                    }
+                var dict: [String: Any] = [:]
+                if let metadataString = job.metadata,
+                   let data = metadataString.data(using: .utf8),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    dict = json
+                }
 
-                    dict["markdownConversionStatus"] = "failed"
+                dict["markdownConversionStatus"] = "failed"
 
-                    if let newData = try? JSONSerialization.data(withJSONObject: dict),
-                       let newString = String(data: newData, encoding: .utf8) {
-                        job.metadata = newString
-                        self.jobs[index] = job
-                    }
+                if let newData = try? JSONSerialization.data(withJSONObject: dict),
+                   let newString = String(data: newData, encoding: .utf8) {
+                    job.metadata = newString
+                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    self.reduceJobs([job], source: .event)
                 }
             }
         }

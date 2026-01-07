@@ -61,7 +61,7 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
             {t['backgroundJobs.orchestrator.description']}
           </p>
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['backgroundJobs.orchestrator.dependencies']}
+            {t['backgroundJobs.orchestrator.dataFlow']}
           </p>
           <div className="mt-4 p-4 bg-muted/50 rounded-lg">
             <h4 className="text-sm font-semibold mb-2 text-foreground">Orchestrator components:</h4>
@@ -85,7 +85,7 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
             {t['backgroundJobs.processors.description']}
           </p>
           <ul className="space-y-2 text-muted-foreground ml-6 list-disc">
-            {(t['backgroundJobs.processors.examples'] as string[]).map((example, index) => (
+            {(t['backgroundJobs.processors.implementations'] as string[]).map((example, index) => (
               <li key={index} className="font-mono text-sm">{example}</li>
             ))}
           </ul>
@@ -93,13 +93,13 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
       </section>
 
       <section className="space-y-6 mb-12">
-        <h2 className="text-2xl font-bold">{t['backgroundJobs.stateMachine.heading']}</h2>
+        <h2 className="text-2xl font-bold">{t['backgroundJobs.statusValues.heading']}</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['backgroundJobs.stateMachine.description']}
+            {t['backgroundJobs.statusValues.description']}
           </p>
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['backgroundJobs.stateMachine.transitions']}
+            {t['backgroundJobs.statusValues.transitions']}
           </p>
           <div className="mt-4 p-4 bg-muted/50 rounded-lg">
             <h4 className="text-sm font-semibold mb-2 text-foreground">Job status values:</h4>
@@ -128,10 +128,10 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
         <h2 className="text-2xl font-bold">{t['backgroundJobs.events.heading']}</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['backgroundJobs.events.streaming']}
+            {t['backgroundJobs.events.description']}
           </p>
           <ul className="space-y-2 text-muted-foreground ml-6 list-disc">
-            {(t['backgroundJobs.events.payloads'] as string[]).map((payload, index) => (
+            {(t['backgroundJobs.events.eventTypes'] as string[]).map((payload, index) => (
               <li key={index} className="font-mono text-sm">{payload}</li>
             ))}
           </ul>
@@ -139,13 +139,13 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
       </section>
 
       <section className="space-y-6 mb-12">
-        <h2 className="text-2xl font-bold">{t['backgroundJobs.retries.heading']}</h2>
+        <h2 className="text-2xl font-bold">{t['backgroundJobs.retry.heading']}</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['backgroundJobs.retries.description']}
+            {t['backgroundJobs.retry.description']}
           </p>
           <p className="text-muted-foreground leading-relaxed">
-            {t['backgroundJobs.retries.cancellation']}
+            {t['backgroundJobs.retry.cancellation']}
           </p>
         </GlassCard>
       </section>
@@ -157,7 +157,7 @@ export default async function BackgroundJobsDocPage({ params }: { params: Promis
             {t['backgroundJobs.artifacts.description']}
           </p>
           <ul className="space-y-2 text-muted-foreground ml-6 list-disc">
-            {(t['backgroundJobs.artifacts.examples'] as string[]).map((item, index) => (
+            {(t['backgroundJobs.artifacts.stored'] as string[]).map((item, index) => (
               <li key={index}>{item}</li>
             ))}
           </ul>

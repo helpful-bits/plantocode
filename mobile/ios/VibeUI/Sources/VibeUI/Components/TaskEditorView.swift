@@ -18,6 +18,7 @@ public struct TaskEditorView: View {
     let projectDirectory: String?
     let onInteraction: () -> Void
     let onTextChanged: () -> Void
+    let onImmediateSync: () -> Void
     let showLanguagePicker: Bool
     let showEnhanceButtons: Bool
     let showUndoRedo: Bool
@@ -54,6 +55,7 @@ public struct TaskEditorView: View {
         projectDirectory: String?,
         onInteraction: @escaping () -> Void = {},
         onTextChanged: @escaping () -> Void = {},
+        onImmediateSync: @escaping () -> Void = {},
         showLanguagePicker: Bool = false,
         showEnhanceButtons: Bool = true,
         showUndoRedo: Bool = true,
@@ -70,6 +72,7 @@ public struct TaskEditorView: View {
         self.projectDirectory = projectDirectory
         self.onInteraction = onInteraction
         self.onTextChanged = onTextChanged
+        self.onImmediateSync = onImmediateSync
         self.showLanguagePicker = showLanguagePicker
         self.showEnhanceButtons = showEnhanceButtons
         self.showUndoRedo = showUndoRedo
@@ -135,7 +138,7 @@ public struct TaskEditorView: View {
                             forceSelectionApply = true
                             undoRedoManager.saveState(text)
                             onTextChanged()
-                            onInteraction()
+                            onImmediateSync()
                         }
                     )
 

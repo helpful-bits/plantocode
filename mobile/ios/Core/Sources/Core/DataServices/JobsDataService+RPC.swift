@@ -5,10 +5,155 @@ import Combine
 
 extension JobsDataService {
 
+    // MARK: - Job Scope
+
+    /// Represents the scope for job queries
+    public struct JobScope {
+        public let sessionId: String?
+        public let projectDirectory: String?
+
+        public init(sessionId: String? = nil, projectDirectory: String? = nil) {
+            self.sessionId = sessionId
+            self.projectDirectory = projectDirectory
+        }
+
+        /// Whether this scope has valid query parameters
+        public var isValid: Bool {
+            (sessionId != nil && !sessionId!.isEmpty) || (projectDirectory != nil && !projectDirectory!.isEmpty)
+        }
+    }
+
+    // MARK: - Visible Jobs Snapshot
+
+    /// Fetches a snapshot of visible jobs filtered by scope and reason
+    /// - Parameters:
+    ///   - reason: The reason for the fetch, affects cache bypass behavior
+    /// - Returns: Array of visible jobs (internal workflow steps filtered out)
+    @MainActor
+    public func fetchVisibleJobsSnapshot(reason: JobsReconcileReason) async throws -> [BackgroundJob] {
+        let scope = await determineJobScope()
+
+        guard scope.isValid else {
+            throw DataServiceError.invalidState("No valid session or project directory for job scope")
+        }
+
+        // Determine if we should bypass cache based on reconcile reason
+        let bypassCache: Bool
+        switch reason {
+        case .foregroundResume, .connectivityReconnected, .pushHint, .userRefresh, .listInvalidated, .relayRegistered:
+            bypassCache = true
+        case .initialLoad, .periodicSync, .sessionChanged:
+            bypassCache = false
+        }
+
+        var params: [String: Any] = [:]
+        if let sessionId = scope.sessionId {
+            params["sessionId"] = sessionId
+        }
+        if let projectDirectory = scope.projectDirectory {
+            params["projectDirectory"] = projectDirectory
+        }
+        params["bypassCache"] = bypassCache
+
+        // Perform RPC call
+        var jobsData: [String: Any]?
+
+        for try await rpcResponse in CommandRouter.jobList(
+            sessionId: scope.sessionId,
+            projectDirectory: scope.projectDirectory,
+            statusFilter: nil,
+            taskTypeFilter: nil,
+            page: nil,
+            pageSize: 100,
+            bypassCache: bypassCache
+        ) {
+            if let error = rpcResponse.error {
+                throw DataServiceError.serverError(error.message)
+            }
+
+            if let result = rpcResponse.result?.value as? [String: Any] {
+                jobsData = result
+                if rpcResponse.isFinal {
+                    break
+                }
+            }
+        }
+
+        guard let data = jobsData else {
+            throw DataServiceError.invalidResponse("No job list data received")
+        }
+
+        let response = try JobsDecoding.decodeJobList(dict: data)
+
+        // Filter out internal workflow jobs that shouldn't be visible
+        return response.jobs.filter { JobTypeFilters.isVisibleInJobsList($0) }
+    }
+
+    /// Determines the current job scope based on active session and project
+    @MainActor
+    private func determineJobScope() async -> JobScope {
+        // For mobile sessions (prefixed with "mobile-session-"), use nil sessionId
+        // to fetch ALL jobs for the project, not filtered by the mobile session
+        let effectiveSessionId: String?
+        if let sessionId = activeSessionId, !sessionId.hasPrefix("mobile-session-") {
+            effectiveSessionId = sessionId
+        } else {
+            effectiveSessionId = nil
+        }
+
+        return JobScope(
+            sessionId: effectiveSessionId,
+            projectDirectory: activeProjectDirectory
+        )
+    }
+
+    /// Fetches visible jobs and updates the service state via canonical reducer
+    /// - Parameter reason: The reason for the reconciliation
+    @MainActor
+    public func reconcileVisibleJobs(reason: JobsReconcileReason) async {
+        do {
+            let fetchedJobs = try await fetchVisibleJobsSnapshot(reason: reason)
+
+            // Determine merge source based on reason
+            // Foreground resume and reconnect use snapshot (authoritative replace)
+            // Other reasons use event (incremental merge)
+            let source: MergeSource
+            switch reason {
+            case .foregroundResume, .connectivityReconnected:
+                source = .snapshot
+            case .initialLoad, .sessionChanged, .userRefresh, .listInvalidated, .relayRegistered, .pushHint, .periodicSync:
+                source = .snapshot
+            }
+
+            // Route through canonical reducer
+            reduceJobs(fetchedJobs, source: source)
+
+            hasLoadedOnce = true
+            error = nil
+
+        } catch let err as DataServiceError {
+            logger.error("Failed to reconcile jobs (\(String(describing: reason))): \(err.localizedDescription)")
+            error = err
+            hasLoadedOnce = true
+        } catch {
+            logger.error("Failed to reconcile jobs (\(String(describing: reason))): \(error.localizedDescription)")
+            self.error = .networkError(error)
+            hasLoadedOnce = true
+        }
+    }
+
+    // MARK: - List Jobs via RPC (Combine)
+
     @MainActor
     func listJobsViaRPC(request: JobListRequest, shouldReplace: Bool) -> AnyPublisher<JobListResponse, DataServiceError> {
         let token = UUID()
         let cacheKey = makeJobListDedupKey(for: request)
+
+        // Only set isLoading = true on initial load (when jobsById is empty)
+        // This prevents loading spinners during background refreshes
+        if jobsById.isEmpty {
+            isLoading = true
+        }
 
         return Future<JobListResponse, DataServiceError> { [weak self] promise in
             Task { @MainActor in
@@ -39,12 +184,13 @@ extension JobsDataService {
                 let now = Date()
                 if let lastAt = self.lastJobsFetchAt[cacheKey],
                    now.timeIntervalSince(lastAt) < 1.0 {
-                    // Return cached response
+                    // Return current state from canonical store
+                    let currentJobs = Array(self.jobsById.values)
                     let response = JobListResponse(
-                        jobs: self.jobs,
-                        totalCount: UInt32(self.jobs.count),
+                        jobs: currentJobs,
+                        totalCount: UInt32(currentJobs.count),
                         page: request.page ?? 0,
-                        pageSize: request.pageSize ?? UInt32(self.jobs.count),
+                        pageSize: request.pageSize ?? UInt32(currentJobs.count),
                         hasMore: false
                     )
                     promise(.success(response))
@@ -127,10 +273,12 @@ extension JobsDataService {
                     let response = try JobsDecoding.decodeJobList(dict: data)
 
                     await MainActor.run {
-                        if shouldReplace && token == self.currentListJobsRequestToken {
-                            self.replaceJobsArray(with: response.jobs)
-                            self.updateWorkflowCountsFromJobs(response.jobs)
-                            self.updateImplementationPlanCountsFromJobs(response.jobs)
+                        if token == self.currentListJobsRequestToken {
+                            // Route through canonical reducer
+                            // shouldReplace == true -> snapshot (prune to exact set)
+                            // shouldReplace == false -> event (merge/upsert only)
+                            let source: MergeSource = shouldReplace ? .snapshot : .event
+                            self.reduceJobs(response.jobs, source: source)
                             self.hasLoadedOnce = true
                         }
                     }
@@ -166,9 +314,9 @@ extension JobsDataService {
                 if case .failure(let error) = completion {
                     // Only set error state if:
                     // - This is a replacing fetch (shouldReplace == true), OR
-                    // - The jobs array is empty (no existing data to fall back on)
+                    // - The jobsById is empty (no existing data to fall back on)
                     // This prevents background refreshes from nuking the UI with error banners
-                    if shouldReplace || self.jobs.isEmpty {
+                    if shouldReplace || self.jobsById.isEmpty {
                         self.error = error
                     } else {
                         // Log but don't show error to user when background refresh fails
@@ -284,16 +432,15 @@ extension JobsDataService {
                     }
 
                     await MainActor.run {
-                        guard let self = self, let index = self.jobsIndex[jobId] else {
+                        guard let self = self else {
                             promise(.success(true))
                             return
                         }
-                        self.mutateJobs {
-                            self.jobs.remove(at: index)
-                            self.jobsIndex.removeValue(forKey: jobId)
-                            self.jobsIndex = Dictionary(uniqueKeysWithValues: self.jobs.enumerated().map { ($1.id, $0) })
-                            self.lastAccumulatedLengths.removeValue(forKey: jobId)
-                        }
+                        // Remove from canonical store
+                        self.jobsById.removeValue(forKey: jobId)
+                        self.lastAccumulatedLengths.removeValue(forKey: jobId)
+                        // Recompute derived state
+                        self.recomputeDerivedState()
                         self.scheduleCoalescedListJobsForActiveSession()
                         promise(.success(true))
                     }
@@ -353,16 +500,12 @@ extension JobsDataService {
 
                     if response.success {
                         await MainActor.run {
-                            guard let self = self, let index = self.jobsIndex[request.jobId] else { return }
-                            self.mutateJobs {
-                                var job = self.jobs[index]
-                                job.status = "canceled"
-                                job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                                self.jobs[index] = job
-                            }
-                        }
-                        await MainActor.run {
-                            self?.scheduleCoalescedListJobsForActiveSession()
+                            guard let self = self, var job = self.jobsById[request.jobId] else { return }
+                            job.status = "canceled"
+                            job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                            // Route through reducer for consistent state
+                            self.reduceJobs([job], source: .event)
+                            self.scheduleCoalescedListJobsForActiveSession()
                         }
                     }
 

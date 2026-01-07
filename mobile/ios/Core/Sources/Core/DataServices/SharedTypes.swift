@@ -28,6 +28,15 @@ public enum JobStatus: String, Codable, CaseIterable {
         }
     }
 
+    public var isTerminal: Bool {
+        switch self {
+        case .completed, .completedByTag, .failed, .canceled:
+            return true
+        default:
+            return false
+        }
+    }
+
     public var displayName: String {
         switch self {
         case .idle: return "Idle"

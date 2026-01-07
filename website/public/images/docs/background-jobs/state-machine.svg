@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 620" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="idleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#64748b"/>
+      <stop offset="100%" style="stop-color:#475569"/>
+    </linearGradient>
+    <linearGradient id="queueGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
+    </linearGradient>
+    <linearGradient id="prepGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="100%" style="stop-color:#9333ea"/>
+    </linearGradient>
+    <linearGradient id="runningGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="streamingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="completedGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="failedGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <linearGradient id="canceledGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="620" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1100" height="620" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="550" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">Background Job State Machine</text>
+  <text x="550" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">Job lifecycle from creation to completion</text>
+
+  <!-- Row 1: Initial States -->
+  <!-- Idle -->
+  <g transform="translate(50, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="50" rx="25" fill="url(#idleGrad)"/>
+    <text x="50" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">idle</text>
+  </g>
+
+  <!-- Created -->
+  <g transform="translate(180, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="50" rx="25" fill="url(#idleGrad)"/>
+    <text x="50" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">created</text>
+  </g>
+
+  <!-- Queued -->
+  <g transform="translate(310, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="50" rx="25" fill="url(#queueGrad)"/>
+    <text x="50" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">queued</text>
+  </g>
+
+  <!-- Acknowledged by Worker -->
+  <g transform="translate(440, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="140" height="50" rx="25" fill="url(#queueGrad)"/>
+    <text x="70" y="24" text-anchor="middle" fill="white" font-size="10" font-weight="600">acknowledged</text>
+    <text x="70" y="38" text-anchor="middle" fill="white" font-size="10" font-weight="600">_by_worker</text>
+  </g>
+
+  <!-- Row 2: Preparation States -->
+  <!-- Preparing -->
+  <g transform="translate(180, 180)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="50" rx="25" fill="url(#prepGrad)"/>
+    <text x="50" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">preparing</text>
+  </g>
+
+  <!-- Preparing Input -->
+  <g transform="translate(310, 180)" filter="url(#shadow)">
+    <rect x="0" y="0" width="120" height="50" rx="25" fill="url(#prepGrad)"/>
+    <text x="60" y="30" text-anchor="middle" fill="white" font-size="11" font-weight="600">preparing_input</text>
+  </g>
+
+  <!-- Row 3: Active Processing States -->
+  <!-- Running -->
+  <g transform="translate(180, 260)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="50" rx="25" fill="url(#runningGrad)"/>
+    <text x="50" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">running</text>
+  </g>
+
+  <!-- Generating Stream -->
+  <g transform="translate(310, 260)" filter="url(#shadow)">
+    <rect x="0" y="0" width="130" height="50" rx="25" fill="url(#streamingGrad)"/>
+    <text x="65" y="30" text-anchor="middle" fill="white" font-size="11" font-weight="600">generating_stream</text>
+  </g>
+
+  <!-- Processing Stream -->
+  <g transform="translate(470, 260)" filter="url(#shadow)">
+    <rect x="0" y="0" width="130" height="50" rx="25" fill="url(#streamingGrad)"/>
+    <text x="65" y="30" text-anchor="middle" fill="white" font-size="11" font-weight="600">processing_stream</text>
+  </g>
+
+  <!-- Row 4: Terminal States -->
+  <!-- Completed -->
+  <g transform="translate(700, 180)" filter="url(#shadow)">
+    <rect x="0" y="0" width="110" height="50" rx="25" fill="url(#completedGrad)"/>
+    <text x="55" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">completed</text>
+  </g>
+
+  <!-- Completed by Tag -->
+  <g transform="translate(840, 180)" filter="url(#shadow)">
+    <rect x="0" y="0" width="130" height="50" rx="25" fill="url(#completedGrad)"/>
+    <text x="65" y="30" text-anchor="middle" fill="white" font-size="11" font-weight="600">completed_by_tag</text>
+  </g>
+
+  <!-- Failed -->
+  <g transform="translate(700, 260)" filter="url(#shadow)">
+    <rect x="0" y="0" width="110" height="50" rx="25" fill="url(#failedGrad)"/>
+    <text x="55" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">failed</text>
+  </g>
+
+  <!-- Canceled -->
+  <g transform="translate(700, 340)" filter="url(#shadow)">
+    <rect x="0" y="0" width="110" height="50" rx="25" fill="url(#canceledGrad)"/>
+    <text x="55" y="30" text-anchor="middle" fill="white" font-size="12" font-weight="600">canceled</text>
+  </g>
+
+  <!-- Transitions -->
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <!-- idle -> created -->
+    <path d="M150 125 L170 125" marker-end="url(#arrow)"/>
+
+    <!-- created -> queued -->
+    <path d="M280 125 L300 125" marker-end="url(#arrow)"/>
+
+    <!-- queued -> acknowledged_by_worker -->
+    <path d="M410 125 L430 125" marker-end="url(#arrow)"/>
+
+    <!-- acknowledged_by_worker -> preparing -->
+    <path d="M510 150 C510 180 280 150 250 170" marker-end="url(#arrow)"/>
+
+    <!-- preparing -> preparing_input -->
+    <path d="M280 205 L300 205" marker-end="url(#arrow)"/>
+
+    <!-- preparing_input -> running -->
+    <path d="M370 230 C370 250 250 240 240 250" marker-end="url(#arrow)"/>
+
+    <!-- running -> generating_stream -->
+    <path d="M280 285 L300 285" marker-end="url(#arrow)"/>
+    <text x="290" y="275" fill="#64748b" font-size="8" text-anchor="middle">stream</text>
+
+    <!-- generating_stream -> processing_stream -->
+    <path d="M440 285 L460 285" marker-end="url(#arrow)"/>
+
+    <!-- processing_stream -> completed -->
+    <path d="M600 270 L690 220" marker-end="url(#arrow)"/>
+    <text x="650" y="235" fill="#64748b" font-size="8" text-anchor="middle">done</text>
+
+    <!-- running -> completed (direct) -->
+    <path d="M280 260 C350 160 550 160 690 195" marker-end="url(#arrow)"/>
+    <text x="480" y="150" fill="#64748b" font-size="8" text-anchor="middle">sync complete</text>
+
+    <!-- any active -> failed -->
+    <path d="M600 290 L690 285" marker-end="url(#arrow)"/>
+    <text x="650" y="298" fill="#64748b" font-size="8" text-anchor="middle">error</text>
+
+    <!-- any active -> canceled -->
+    <path d="M280 310 C400 380 550 380 690 365" marker-end="url(#arrow)"/>
+    <text x="480" y="390" fill="#64748b" font-size="8" text-anchor="middle">cancel()</text>
+
+    <!-- completed_by_tag indicator -->
+    <path d="M810 205 L830 205" marker-end="url(#arrow)"/>
+    <text x="840" y="150" fill="#64748b" font-size="8" text-anchor="middle">workflow</text>
+    <text x="840" y="160" fill="#64748b" font-size="8" text-anchor="middle">tagging</text>
+  </g>
+
+  <!-- Start indicator -->
+  <g transform="translate(20, 110)">
+    <circle cx="0" cy="15" r="8" fill="#22c55e"/>
+    <path d="M10 125 L40 125" stroke="#22c55e" stroke-width="2" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Task Types Legend -->
+  <g transform="translate(50, 430)">
+    <text x="0" y="0" fill="#f8fafc" font-size="12" font-weight="600">Task Types (from data_app_configs.sql)</text>
+    <g transform="translate(0, 20)" fill="#94a3b8" font-size="10">
+      <text x="0" y="0">implementation_plan</text>
+      <text x="0" y="16">implementation_plan_merge</text>
+      <text x="0" y="32">text_improvement</text>
+      <text x="0" y="48">voice_transcription</text>
+      <text x="0" y="64">task_refinement</text>
+    </g>
+    <g transform="translate(180, 20)" fill="#94a3b8" font-size="10">
+      <text x="0" y="0">regex_file_filter</text>
+      <text x="0" y="16">file_relevance_assessment</text>
+      <text x="0" y="32">extended_path_finder</text>
+      <text x="0" y="48">root_folder_selection</text>
+      <text x="0" y="64">file_finder_workflow</text>
+    </g>
+    <g transform="translate(360, 20)" fill="#94a3b8" font-size="10">
+      <text x="0" y="0">web_search_prompts_generation</text>
+      <text x="0" y="16">web_search_execution</text>
+      <text x="0" y="32">web_search_workflow</text>
+      <text x="0" y="48">video_analysis</text>
+      <text x="0" y="64">generic_llm_stream</text>
+    </g>
+  </g>
+
+  <!-- State Categories -->
+  <g transform="translate(600, 430)">
+    <text x="0" y="0" fill="#f8fafc" font-size="12" font-weight="600">State Categories</text>
+    <g transform="translate(0, 20)" font-size="10">
+      <rect x="0" y="-8" width="12" height="12" rx="2" fill="url(#idleGrad)"/>
+      <text x="18" y="0" fill="#94a3b8">Initial: idle, created</text>
+      <rect x="0" y="8" width="12" height="12" rx="2" fill="url(#queueGrad)"/>
+      <text x="18" y="16" fill="#94a3b8">Queue: queued, acknowledged_by_worker</text>
+      <rect x="0" y="24" width="12" height="12" rx="2" fill="url(#prepGrad)"/>
+      <text x="18" y="32" fill="#94a3b8">Prep: preparing, preparing_input</text>
+      <rect x="0" y="40" width="12" height="12" rx="2" fill="url(#runningGrad)"/>
+      <text x="18" y="48" fill="#94a3b8">Active: running</text>
+      <rect x="0" y="56" width="12" height="12" rx="2" fill="url(#streamingGrad)"/>
+      <text x="18" y="64" fill="#94a3b8">Streaming: generating_stream, processing_stream</text>
+    </g>
+  </g>
+
+  <!-- Notes -->
+  <g transform="translate(900, 430)">
+    <text x="0" y="0" fill="#f8fafc" font-size="12" font-weight="600">Notes</text>
+    <text x="0" y="20" fill="#64748b" font-size="10">Terminal states: completed,</text>
+    <text x="0" y="32" fill="#64748b" font-size="10">completed_by_tag, failed, canceled</text>
+    <text x="0" y="52" fill="#64748b" font-size="10">Active states allow cancel()</text>
+    <text x="0" y="68" fill="#64748b" font-size="10">All transitions persist to SQLite</text>
+  </g>
+</svg>

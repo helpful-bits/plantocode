@@ -4,6 +4,7 @@ import Core
 public struct AppView: View {
   @EnvironmentObject private var appState: AppState
   @StateObject private var container: AppContainer
+  @Environment(\.scenePhase) private var scenePhase
 
   public init() {
     guard let serverURL = URL(string: Config.serverURL) else {
@@ -22,11 +23,21 @@ public struct AppView: View {
     _container = StateObject(wrappedValue: AppContainer(baseURL: serverURL, deviceId: deviceId))
   }
 
+  private var badgeCoordinator: JobsBadgeCoordinator {
+    container.jobsBadgeCoordinator
+  }
+
   public var body: some View {
     NavigationStack {
       AuthFlowCoordinator()
     }
     .ignoresSafeArea(.keyboard, edges: .bottom)
     .environmentObject(container)
+    .environmentObject(badgeCoordinator)
+    .onChange(of: scenePhase) { newPhase in
+      if newPhase == .active {
+        appState.handleAppDidBecomeActive()
+      }
+    }
   }
 }

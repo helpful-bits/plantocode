@@ -85,6 +85,16 @@
     "english": "영어",
     "german": "독일어"
   },
+  "docs": {
+    "article": {
+      "backToDocs": "문서로 돌아가기",
+      "share": "공유",
+      "copyLink": "링크 복사",
+      "copied": "복사됨!",
+      "viewAllDocs": "모든 문서 보기",
+      "readSuffix": "읽기"
+    }
+  },
   "nav": {
     "compare": "비교",
     "demo": "데모",

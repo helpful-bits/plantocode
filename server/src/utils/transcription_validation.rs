@@ -648,7 +648,7 @@ pub fn validate_timeout_config(timeout_seconds: Option<u32>) -> ValidationResult
 pub fn mime_type_to_extension(mime_type: &str) -> &'static str {
     match mime_type {
         "audio/webm" => "webm",
-        "audio/mp4" => "mp4",
+        "audio/mp4" => "m4a",  // M4A (AAC audio in MP4 container) - preferred for iOS
         "audio/mpeg" => "mp3",
         "audio/wav" => "wav",
         "audio/x-wav" => "wav",

@@ -17,21 +17,21 @@ export function CSSFix() {
       cssScripts.forEach(script => {
         const scriptElement = script as HTMLScriptElement;
         const src = scriptElement.src;
-        
+
         // Check if a proper stylesheet link already exists
         const existingStylesheet = document.querySelector(`link[rel="stylesheet"][href="${src}"]`);
-        
+
         if (!existingStylesheet) {
           // Create a proper stylesheet link
           const link = document.createElement('link');
           link.rel = 'stylesheet';
           link.href = src;
           link.setAttribute('data-precedence', 'next');
-          
+
           // Insert the stylesheet where the script was
           script.parentNode?.insertBefore(link, script);
         }
-        
+
         // Remove the incorrect script tag
         script.remove();
       });

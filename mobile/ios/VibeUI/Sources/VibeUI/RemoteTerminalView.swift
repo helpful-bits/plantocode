@@ -87,6 +87,13 @@ public struct RemoteTerminalView: View {
             text: processed,
             appendCarriageReturn: true
         )
+        // Collapse actions and hide keyboard to maximize screen real estate
+        await MainActor.run {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isActionsExpanded = false
+            }
+            shouldShowKeyboard = false
+        }
     }
 
     private func pasteTaskDescription() async {
@@ -96,6 +103,13 @@ public struct RemoteTerminalView: View {
             text: taskDescriptionContent,
             appendCarriageReturn: true
         )
+        // Collapse actions and hide keyboard to maximize screen real estate
+        await MainActor.run {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                isActionsExpanded = false
+            }
+            shouldShowKeyboard = false
+        }
     }
 
     private func reattachToExistingSessionIfNeeded() {
@@ -449,10 +463,10 @@ public struct RemoteTerminalView: View {
     private static let sessionStartTimeout: TimeInterval = 30.0
 
     private func startTerminalSession() {
-        // Validate jobId is not empty
         guard !jobId.isEmpty else {
             errorMessage = "Invalid terminal job ID"
             isLoading = false
+            cleanupSession()
             return
         }
 
@@ -461,10 +475,8 @@ public struct RemoteTerminalView: View {
 
         Task {
             do {
-                // Get working directory from current session
                 let workingDirectory = container.sessionService.currentSession?.projectDirectory
 
-                // Fetch preferred shell from settings with timeout
                 var preferredShell: String?
                 do {
                     try await withTimeout(seconds: 5.0) {
@@ -472,14 +484,11 @@ public struct RemoteTerminalView: View {
                     }
                     preferredShell = container.settingsService.preferredTerminal
                 } catch {
-                    // Shell preference fetch failed - use default
                 }
 
-                // Capture service and jobId before entering MainActor scope
                 let terminalService = container.terminalService
                 let capturedJobId = jobId
 
-                // Build explicit context binding
                 let appSid = container.sessionService.currentSession?.id ?? ""
                 let contextBinding = TerminalContextBinding(
                     appSessionId: appSid,
@@ -487,7 +496,6 @@ public struct RemoteTerminalView: View {
                     jobId: capturedJobId
                 )
 
-                // Start session with timeout to prevent hanging
                 let session = try await withTimeout(seconds: Self.sessionStartTimeout) {
                     try await terminalService.startSession(
                         jobId: capturedJobId,
@@ -508,7 +516,6 @@ public struct RemoteTerminalView: View {
                         }
                     }
 
-                    // Propagate terminal size changes to remote PTY
                     terminalController.onResize = { cols, rows in
                         Task {
                             do {
@@ -520,28 +527,28 @@ public struct RemoteTerminalView: View {
                                     }
                                 }
                             } catch {
-                                // Resize failures are usually transient - PTY will use last known size
                             }
                         }
                     }
 
-                    // Start output stream immediately to receive live data
-                    outputCancellable = terminalService
-                        .getHydratedRawOutputStream(for: capturedJobId)
-                        .receive(on: DispatchQueue.main)
-                        .sink { data in
-                            terminalController.feedBytes(data: data)
-                        }
+                    if outputCancellable == nil {
+                        outputCancellable = terminalService
+                            .getHydratedRawOutputStream(for: capturedJobId)
+                            .receive(on: DispatchQueue.main)
+                            .sink { data in
+                                terminalController.feedBytes(data: data)
+                            }
+                    }
 
-                    // CRITICAL: Manually trigger first resize immediately!
-                    // sizeChanged may have already fired before onResize was set up
-                    // This ensures we always send the correct terminal size to desktop
+                    Task {
+                        try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
+                    }
+
                     if let termView = terminalController.terminalView {
                         let terminal = termView.getTerminal()
                         let cols = terminal.cols
                         let rows = terminal.rows
 
-                        // ONLY resize if we have valid dimensions (not 0x0)
                         if cols > 0 && rows > 0 {
                             Task {
                                 try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
@@ -553,7 +560,6 @@ public struct RemoteTerminalView: View {
                     }
                 }
 
-                // Load content based on context type
                 if self.contextType == .implementationPlan {
                     Task {
                         await loadCopyButtons()
@@ -569,6 +575,7 @@ public struct RemoteTerminalView: View {
                     errorMessage = error.localizedDescription
                     isSessionActive = false
                     isLoading = false
+                    cleanupSession()
                 }
             }
         }
@@ -634,10 +641,12 @@ public struct RemoteTerminalView: View {
                 try await container.terminalService.kill(jobId: jobId)
                 await MainActor.run {
                     isSessionActive = false
+                    cleanupSession()
                 }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
+                    cleanupSession()
                 }
             }
         }
@@ -648,6 +657,12 @@ public struct RemoteTerminalView: View {
         outputCancellable = nil
         readinessCancellable?.cancel()
         readinessCancellable = nil
+        isSessionActive = false
+        let capturedJobId = jobId
+        let terminalService = container.terminalService
+        Task {
+            try? await terminalService.detach(jobId: capturedJobId)
+        }
         terminalController.cleanup()
     }
 }
@@ -683,16 +698,18 @@ class SwiftTermController: NSObject, ObservableObject {
     private var displayLink: CADisplayLink?
     private var needsFlush = false
 
-    // Burst detection for adaptive frame rate
     private var lastDataReceivedAt: Date = .distantPast
     private var burstStartedAt: Date?
     private var framesSinceLastData: Int = 0
-    private static let burstThreshold: TimeInterval = 0.1 // 100ms between chunks = burst mode
-    private static let burstCooldown: TimeInterval = 0.5 // Stay in burst mode for 500ms after last data
-    // Flush interval: 250ms (~4fps) - aggressive coalescing to collect complete TUI screen states
-    // This prevents "scrolling up and down" artifact from flushing mid-redraw during Claude Code updates
-    private static let minFlushInterval: TimeInterval = 0.25
+    private static let burstThreshold: TimeInterval = 0.1
+    private static let burstCooldown: TimeInterval = 0.5
+    private static let minFlushIntervalIdle: TimeInterval = 0.12
+    private static let minFlushIntervalBurst: TimeInterval = 0.25
     private var lastFlushAt: Date = .distantPast
+
+    private var effectiveMinFlushInterval: TimeInterval {
+        return burstStartedAt == nil ? Self.minFlushIntervalIdle : Self.minFlushIntervalBurst
+    }
 
     // Background/foreground handling: pause feeding when app is backgrounded
     private var isFeedingPaused: Bool = false
@@ -749,13 +766,22 @@ class SwiftTermController: NSObject, ObservableObject {
         isFeedingPaused = false
 
         // Feed background-buffered data without animation to avoid scroll jumping
+        // CRITICAL: Consolidate all chunks into one data block before feeding.
+        // Feeding each chunk separately causes SwiftTerm to recalculate scroll position
+        // for each chunk, leading to "endless scrolling" when returning from background
+        // with many buffered chunks.
         if !backgroundBuffer.isEmpty {
-            UIView.performWithoutAnimation { [self] in
-                for chunk in backgroundBuffer {
-                    feedBytesImmediate(data: chunk)
-                }
+            var consolidated = Data()
+            for chunk in backgroundBuffer {
+                consolidated.append(chunk)
             }
             backgroundBuffer.removeAll()
+
+            if !consolidated.isEmpty {
+                UIView.performWithoutAnimation { [self] in
+                    feedBytesImmediate(data: consolidated)
+                }
+            }
             // Let SwiftTerm handle scrolling naturally after background resume
         }
 
@@ -790,11 +816,8 @@ class SwiftTermController: NSObject, ObservableObject {
 
         let now = Date()
 
-        // ALWAYS enforce minimum flush interval to coalesce TUI updates
-        // This is critical for preventing flicker from "clear screen + repaint" sequences
         let timeSinceLastFlush = now.timeIntervalSince(lastFlushAt)
-        if timeSinceLastFlush < Self.minFlushInterval {
-            // Don't flush yet - wait for more data to coalesce
+        if timeSinceLastFlush < effectiveMinFlushInterval {
             return
         }
 
@@ -999,14 +1022,20 @@ extension SwiftTermController: TerminalViewDelegate {
         }
 
         // Feed resize-buffered data without animation to avoid scroll jumping
+        // CRITICAL: Consolidate all chunks into one to avoid multiple scroll updates
         if !resizeBuffer.isEmpty {
-            UIView.performWithoutAnimation { [self] in
-                for chunk in resizeBuffer {
-                    let buffer = ArraySlice([UInt8](chunk))
+            var consolidated = Data()
+            for chunk in resizeBuffer {
+                consolidated.append(chunk)
+            }
+            resizeBuffer.removeAll()
+
+            if !consolidated.isEmpty {
+                UIView.performWithoutAnimation { [self] in
+                    let buffer = ArraySlice([UInt8](consolidated))
                     terminalView.feed(byteArray: buffer)
                 }
             }
-            resizeBuffer.removeAll()
         }
 
         // Let SwiftTerm handle scrolling naturally after resize

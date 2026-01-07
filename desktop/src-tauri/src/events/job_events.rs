@@ -163,7 +163,6 @@ pub fn emit_job_stream_progress(app_handle: &AppHandle, payload: JobStreamProgre
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }
 
 pub fn emit_job_tokens_updated(app_handle: &AppHandle, payload: JobTokensUpdatedEvent) {
@@ -176,7 +175,6 @@ pub fn emit_job_tokens_updated(app_handle: &AppHandle, payload: JobTokensUpdated
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }
 
 pub fn emit_job_cost_updated(app_handle: &AppHandle, payload: JobCostUpdatedEvent) {
@@ -189,7 +187,6 @@ pub fn emit_job_cost_updated(app_handle: &AppHandle, payload: JobCostUpdatedEven
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }
 
 pub fn emit_job_response_appended(app_handle: &AppHandle, payload: JobResponseAppendedEvent) {
@@ -202,7 +199,6 @@ pub fn emit_job_response_appended(app_handle: &AppHandle, payload: JobResponseAp
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }
 
 pub fn emit_job_error_details(app_handle: &AppHandle, payload: JobErrorDetailsEvent) {
@@ -215,7 +211,6 @@ pub fn emit_job_error_details(app_handle: &AppHandle, payload: JobErrorDetailsEv
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }
 
 pub fn emit_job_finalized(app_handle: &AppHandle, payload: JobFinalizedEvent) {
@@ -241,5 +236,4 @@ pub fn emit_job_metadata_updated(app_handle: &AppHandle, payload: JobMetadataUpd
         "sessionId": payload.session_id,
         "payload": payload
     }));
-    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(app_handle, &payload.session_id);
 }

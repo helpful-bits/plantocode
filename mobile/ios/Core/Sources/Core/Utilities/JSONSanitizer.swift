@@ -99,6 +99,96 @@ public enum JSONSanitizer {
     public static func isValidJSONObject(_ value: Any) -> Bool {
         JSONSerialization.isValidJSONObject(value)
     }
+
+    // MARK: - String Array Sanitization
+
+    /// Ensures the input is a flat array of valid, non-empty strings.
+    /// Handles various edge cases:
+    /// - If input is `[String]`, returns filtered for non-empty strings
+    /// - If input is a String looking like a JSON array (starts `[`, ends `]`), attempts JSON decode to `[String]`
+    /// - If input is a regular String, returns `[input]` only if valid path (non-empty, not JSON-looking)
+    /// - If input is `[Any]`, compactMaps strings, flattens nested arrays recursively
+    /// - Parameters:
+    ///   - input: The value to sanitize (can be String, [String], [Any], or other)
+    /// - Returns: A flat array of valid non-empty strings, or empty array if invalid
+    public static func ensureStringArray(_ input: Any) -> [String] {
+        // Handle string input
+        if let stringValue = input as? String {
+            let trimmed = stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Check if it looks like a JSON array
+            if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                // Attempt to parse as JSON array
+                if let data = trimmed.data(using: .utf8),
+                   let parsed = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+                    return ensureStringArray(parsed)
+                }
+                // Failed to parse - return empty (invalid JSON-looking string)
+                return []
+            }
+
+            // Regular string - return as single-element array if non-empty
+            if !trimmed.isEmpty {
+                return [trimmed]
+            }
+            return []
+        }
+
+        // Handle array of strings directly
+        if let stringArray = input as? [String] {
+            return stringArray
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { str in
+                    // Filter out empty strings and strings that look like JSON arrays
+                    !str.isEmpty && !(str.hasPrefix("[") && str.hasSuffix("]"))
+                }
+        }
+
+        // Handle array of Any (may contain mixed types or nested arrays)
+        if let anyArray = input as? [Any] {
+            var result: [String] = []
+            for element in anyArray {
+                // Recursively process nested arrays
+                if element is [Any] {
+                    result.append(contentsOf: ensureStringArray(element))
+                } else if let str = element as? String {
+                    let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    // Check if this element is a stringified JSON array
+                    if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                        // Attempt to parse and flatten
+                        if let data = trimmed.data(using: .utf8),
+                           let parsed = try? JSONSerialization.jsonObject(with: data) as? [Any] {
+                            result.append(contentsOf: ensureStringArray(parsed))
+                        }
+                        // If parse fails, skip this malformed entry
+                    } else if !trimmed.isEmpty {
+                        result.append(trimmed)
+                    }
+                }
+                // Skip non-string, non-array elements
+            }
+            return result
+        }
+
+        // Unknown type - return empty array
+        return []
+    }
+
+    /// Convenience method that also deduplicates the result while preserving order
+    /// - Parameter input: The value to sanitize
+    /// - Returns: A deduplicated flat array of valid non-empty strings
+    public static func ensureUniqueStringArray(_ input: Any) -> [String] {
+        let strings = ensureStringArray(input)
+        var seen = Set<String>()
+        return strings.filter { str in
+            if seen.contains(str) {
+                return false
+            }
+            seen.insert(str)
+            return true
+        }
+    }
 }
 
 private protocol OptionalProtocol { var wrappedValue: Any? { get } }

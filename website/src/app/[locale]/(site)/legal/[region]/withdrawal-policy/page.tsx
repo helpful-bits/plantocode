@@ -122,7 +122,7 @@ export default async function WithdrawalPolicyPage({ params }: WithdrawalPolicyP
       <section>
         <h2 className="text-2xl font-semibold mb-4">Starting Performance During the Withdrawal Period</h2>
         
-        <div className="border-l-4 border-amber-500 pl-6 py-4 my-6 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+        <div className="border-l-4 border-amber-500 pl-6 py-4 my-6 bg-amber-50 dark:bg-amber-900 rounded-lg">
           <h3 className="font-semibold mb-2">Important Notice for Services</h3>
           <p className="text-sm">
             If you are a consumer and ask us to begin providing services during the 14-day withdrawal 

@@ -151,7 +151,7 @@ const JobContentComponent = ({
               >
                 <div className={isWorkflowGroup ? "relative border border-dashed border-muted-foreground/40 rounded-lg p-[3px]" : ""}>
                   {group.jobs.map((job, jobIndex) => (
-                    <div key={`${job.id}-${job.updatedAt}`} className={jobIndex > 0 ? "mt-3" : ""}>
+                    <div key={job.id} className={jobIndex > 0 ? "mt-3" : ""}>
                       <JobCard
                         job={job}
                         handleCancel={handleCancel}

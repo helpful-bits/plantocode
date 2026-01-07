@@ -80,6 +80,16 @@
     "english": "English",
     "german": "German"
   },
+  "docs": {
+    "article": {
+      "backToDocs": "Back to Documentation",
+      "share": "Share",
+      "copyLink": "Copy link",
+      "copied": "Copied!",
+      "viewAllDocs": "View all documentation",
+      "readSuffix": "read"
+    }
+  },
   "nav": {
     "docs": "Documentation",
     "downloads": "Downloads",

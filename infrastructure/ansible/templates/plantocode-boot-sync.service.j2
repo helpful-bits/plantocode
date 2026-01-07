@@ -1,0 +1,12 @@
+[Unit]
+Description=Sync plantocode nginx upstream with active deployment on boot
+After=network.target
+Before=nginx.service plantocode-blue.service plantocode-green.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/plantocode-boot-sync
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

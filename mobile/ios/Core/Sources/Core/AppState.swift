@@ -105,6 +105,10 @@ public final class AppState: ObservableObject {
   @Published public var deepLinkRoute: DeepLinkRoute? = nil
   @Published public var pendingPlanJobIdToOpen: String? = nil
 
+  /// Flag indicating jobs should be refreshed when app becomes active.
+  /// Set by push notification handler for job-related notifications.
+  @Published public var needsJobsRefreshOnNextActive: Bool = false
+
   public func clearDeepLinkRoute() {
     self.deepLinkRoute = nil
   }
@@ -300,5 +304,31 @@ public final class AppState: ObservableObject {
   @MainActor
   public func setDeviceRegistrationState(_ state: DeviceRegistrationState) {
     self.deviceRegistrationState = state
+  }
+
+  // MARK: - App Lifecycle Handling
+
+  /// Called when the app becomes active (returns to foreground).
+  /// Always triggers jobs reconciliation unconditionally.
+  /// If a push hint was set, use pushHint reason; otherwise use foregroundResume.
+  @MainActor
+  public func handleAppDidBecomeActive() {
+    guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
+      return
+    }
+
+    // Always reconcile jobs on foreground resume - unconditionally
+    // This ensures jobs completed while backgrounded are reflected immediately
+    let reason: JobsDataService.JobsReconcileReason
+    if needsJobsRefreshOnNextActive {
+      needsJobsRefreshOnNextActive = false
+      reason = .pushHint
+    } else {
+      reason = .foregroundResume
+    }
+
+    Task {
+      await jobsService.reconcileJobs(reason: reason)
+    }
   }
 }

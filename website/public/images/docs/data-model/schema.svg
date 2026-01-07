@@ -1,0 +1,289 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="tableGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="tableGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="tableGrad3" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="tableGrad4" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.3"/>
+    </filter>
+    <marker id="fk" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+      <circle cx="4" cy="4" r="3" fill="#64748b"/>
+    </marker>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="900" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1200" height="900" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="600" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">SQLite Data Model</text>
+  <text x="600" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">11 tables with WAL mode for concurrent access</text>
+
+  <!-- Core Tables (Green) -->
+  <!-- sessions -->
+  <g transform="translate(40, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="280" rx="8" fill="url(#tableGrad)"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="110" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">sessions</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id TEXT PRIMARY KEY</text>
+      <text x="10" y="58">name TEXT NOT NULL</text>
+      <text x="10" y="72">project_directory TEXT NOT NULL</text>
+      <text x="10" y="86">project_hash TEXT NOT NULL</text>
+      <text x="10" y="100">task_description TEXT</text>
+      <text x="10" y="114">search_term TEXT</text>
+      <text x="10" y="128">created_at INTEGER NOT NULL</text>
+      <text x="10" y="142">updated_at INTEGER NOT NULL</text>
+      <text x="10" y="156">model_used TEXT</text>
+      <text x="10" y="170">search_selected_files_only INT</text>
+      <text x="10" y="184">included_files TEXT</text>
+      <text x="10" y="198">force_excluded_files TEXT</text>
+      <text x="10" y="212">video_analysis_prompt TEXT</text>
+      <text x="10" y="226">merge_instructions TEXT</text>
+      <text x="10" y="240">task_history_version INT</text>
+      <text x="10" y="254">file_history_version INT</text>
+      <text x="10" y="268">task_history_current_index INT</text>
+    </g>
+  </g>
+
+  <!-- background_jobs -->
+  <g transform="translate(280, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="230" height="310" rx="8" fill="url(#tableGrad)"/>
+    <rect x="0" y="0" width="230" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="115" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">background_jobs</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id TEXT PRIMARY KEY</text>
+      <text x="10" y="58">session_id TEXT NOT NULL FK</text>
+      <text x="10" y="72">task_type TEXT NOT NULL</text>
+      <text x="10" y="86">status TEXT NOT NULL</text>
+      <text x="10" y="100">prompt TEXT NOT NULL</text>
+      <text x="10" y="114">response TEXT</text>
+      <text x="10" y="128">error_message TEXT</text>
+      <text x="10" y="142">tokens_sent INTEGER</text>
+      <text x="10" y="156">tokens_received INTEGER</text>
+      <text x="10" y="170">cache_write_tokens INTEGER</text>
+      <text x="10" y="184">cache_read_tokens INTEGER</text>
+      <text x="10" y="198">model_used TEXT</text>
+      <text x="10" y="212">actual_cost REAL</text>
+      <text x="10" y="226">metadata TEXT (JSON)</text>
+      <text x="10" y="240">system_prompt_template TEXT</text>
+      <text x="10" y="254">created_at INTEGER NOT NULL</text>
+      <text x="10" y="268">updated_at INTEGER</text>
+      <text x="10" y="282">start_time / end_time INTEGER</text>
+      <text x="10" y="296">is_finalized INT, server_request_id</text>
+    </g>
+  </g>
+
+  <!-- terminal_sessions -->
+  <g transform="translate(530, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="280" rx="8" fill="url(#tableGrad)"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="110" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">terminal_sessions</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id TEXT PRIMARY KEY</text>
+      <text x="10" y="58">job_id TEXT UNIQUE FK</text>
+      <text x="10" y="72">session_id TEXT NOT NULL UNIQUE</text>
+      <text x="10" y="86">status TEXT NOT NULL</text>
+      <text x="10" y="100">process_pid INTEGER</text>
+      <text x="10" y="114">created_at INTEGER NOT NULL</text>
+      <text x="10" y="128">updated_at INTEGER NOT NULL</text>
+      <text x="10" y="142">started_at INTEGER</text>
+      <text x="10" y="156">ended_at INTEGER</text>
+      <text x="10" y="170">last_output_at INTEGER</text>
+      <text x="10" y="184">exit_code INTEGER</text>
+      <text x="10" y="198">working_directory TEXT</text>
+      <text x="10" y="212">environment_vars TEXT</text>
+      <text x="10" y="226">title TEXT</text>
+      <text x="10" y="240">output_log TEXT NOT NULL</text>
+      <text x="10" y="254">output_snapshot TEXT</text>
+    </g>
+  </g>
+
+  <!-- History Tables (Blue) -->
+  <!-- task_description_history -->
+  <g transform="translate(40, 400)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="140" rx="8" fill="url(#tableGrad2)"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="110" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">task_description_history</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id INTEGER PRIMARY KEY</text>
+      <text x="10" y="58">session_id TEXT NOT NULL FK</text>
+      <text x="10" y="72">description TEXT NOT NULL</text>
+      <text x="10" y="86">created_at INTEGER NOT NULL</text>
+      <text x="10" y="100">device_id TEXT</text>
+      <text x="10" y="114">sequence_number INTEGER</text>
+      <text x="10" y="128">version INTEGER</text>
+    </g>
+  </g>
+
+  <!-- file_selection_history -->
+  <g transform="translate(280, 420)" filter="url(#shadow)">
+    <rect x="0" y="0" width="230" height="140" rx="8" fill="url(#tableGrad2)"/>
+    <rect x="0" y="0" width="230" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="115" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">file_selection_history</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id INTEGER PRIMARY KEY</text>
+      <text x="10" y="58">session_id TEXT NOT NULL FK</text>
+      <text x="10" y="72">included_files TEXT NOT NULL</text>
+      <text x="10" y="86">force_excluded_files TEXT NOT NULL</text>
+      <text x="10" y="100">created_at INTEGER NOT NULL</text>
+      <text x="10" y="114">device_id TEXT, sequence_number INT</text>
+      <text x="10" y="128">version INTEGER</text>
+    </g>
+  </g>
+
+  <!-- project_system_prompts -->
+  <g transform="translate(530, 400)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="140" rx="8" fill="url(#tableGrad2)"/>
+    <rect x="0" y="0" width="220" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="110" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">project_system_prompts</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">project_hash TEXT PK</text>
+      <text x="10" y="58">task_type TEXT PK</text>
+      <text x="10" y="72">system_prompt TEXT NOT NULL</text>
+      <text x="10" y="86">is_custom INTEGER</text>
+      <text x="10" y="100">created_at INTEGER NOT NULL</text>
+      <text x="10" y="114">updated_at INTEGER NOT NULL</text>
+    </g>
+  </g>
+
+  <!-- Config Tables (Orange) -->
+  <!-- error_logs -->
+  <g transform="translate(770, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="190" height="180" rx="8" fill="url(#tableGrad3)"/>
+    <rect x="0" y="0" width="190" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="95" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">error_logs</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id INTEGER PRIMARY KEY</text>
+      <text x="10" y="58">timestamp INTEGER NOT NULL</text>
+      <text x="10" y="72">level TEXT NOT NULL</text>
+      <text x="10" y="86">error_type TEXT</text>
+      <text x="10" y="100">message TEXT NOT NULL</text>
+      <text x="10" y="114">context TEXT</text>
+      <text x="10" y="128">stack TEXT</text>
+      <text x="10" y="142">metadata TEXT (JSON)</text>
+      <text x="10" y="156">app_version TEXT</text>
+      <text x="10" y="170">platform TEXT</text>
+    </g>
+  </g>
+
+  <!-- key_value_store -->
+  <g transform="translate(770, 280)" filter="url(#shadow)">
+    <rect x="0" y="0" width="190" height="90" rx="8" fill="url(#tableGrad3)"/>
+    <rect x="0" y="0" width="190" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="95" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">key_value_store</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">key TEXT PRIMARY KEY</text>
+      <text x="10" y="58">value TEXT</text>
+      <text x="10" y="72">updated_at INTEGER NOT NULL</text>
+    </g>
+  </g>
+
+  <!-- app_settings -->
+  <g transform="translate(770, 400)" filter="url(#shadow)">
+    <rect x="0" y="0" width="190" height="120" rx="8" fill="url(#tableGrad3)"/>
+    <rect x="0" y="0" width="190" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="95" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">app_settings</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">key TEXT PRIMARY KEY</text>
+      <text x="10" y="58">value TEXT NOT NULL</text>
+      <text x="10" y="72">description TEXT</text>
+      <text x="10" y="86">created_at INTEGER NOT NULL</text>
+      <text x="10" y="100">updated_at INTEGER NOT NULL</text>
+    </g>
+  </g>
+
+  <!-- Meta Tables (Purple) -->
+  <!-- migrations -->
+  <g transform="translate(980, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="90" rx="8" fill="url(#tableGrad4)"/>
+    <rect x="0" y="0" width="180" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">migrations</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id INTEGER PRIMARY KEY</text>
+      <text x="10" y="58">name TEXT NOT NULL</text>
+      <text x="10" y="72">applied_at INTEGER NOT NULL</text>
+    </g>
+  </g>
+
+  <!-- db_diagnostic_logs -->
+  <g transform="translate(980, 200)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="110" rx="8" fill="url(#tableGrad4)"/>
+    <rect x="0" y="0" width="180" height="28" rx="8" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="19" text-anchor="middle" fill="white" font-size="12" font-weight="600">db_diagnostic_logs</text>
+    <g fill="rgba(255,255,255,0.9)" font-size="9">
+      <text x="10" y="44">id INTEGER PRIMARY KEY</text>
+      <text x="10" y="58">timestamp INTEGER NOT NULL</text>
+      <text x="10" y="72">error_type TEXT NOT NULL</text>
+      <text x="10" y="86">error_message TEXT NOT NULL</text>
+      <text x="10" y="100">additional_info TEXT</text>
+    </g>
+  </g>
+
+  <!-- Foreign Key Relationships -->
+  <g stroke="#64748b" stroke-width="1.5" fill="none">
+    <!-- sessions -> background_jobs -->
+    <path d="M260 200 L280 200" marker-end="url(#arrow)"/>
+    <!-- background_jobs -> terminal_sessions -->
+    <path d="M510 200 L530 200" marker-end="url(#arrow)"/>
+    <!-- sessions -> task_description_history -->
+    <path d="M150 360 L150 400" marker-end="url(#arrow)"/>
+    <!-- sessions -> file_selection_history -->
+    <path d="M220 360 C220 390 380 390 395 420" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(40, 600)">
+    <text x="0" y="0" fill="#f8fafc" font-size="14" font-weight="600">Table Categories</text>
+    <g transform="translate(0, 20)">
+      <rect x="0" y="0" width="16" height="16" rx="3" fill="url(#tableGrad)"/>
+      <text x="24" y="13" fill="#94a3b8" font-size="11">Core Tables - Session, job, and terminal management</text>
+    </g>
+    <g transform="translate(0, 44)">
+      <rect x="0" y="0" width="16" height="16" rx="3" fill="url(#tableGrad2)"/>
+      <text x="24" y="13" fill="#94a3b8" font-size="11">History Tables - Versioned records with device sync support</text>
+    </g>
+    <g transform="translate(350, 20)">
+      <rect x="0" y="0" width="16" height="16" rx="3" fill="url(#tableGrad3)"/>
+      <text x="24" y="13" fill="#94a3b8" font-size="11">Config Tables - Settings and error logging</text>
+    </g>
+    <g transform="translate(350, 44)">
+      <rect x="0" y="0" width="16" height="16" rx="3" fill="url(#tableGrad4)"/>
+      <text x="24" y="13" fill="#94a3b8" font-size="11">Meta Tables - Migrations and diagnostics</text>
+    </g>
+  </g>
+
+  <!-- Notes -->
+  <g transform="translate(40, 720)">
+    <text x="0" y="0" fill="#64748b" font-size="10">All tables use SQLite WAL mode for concurrent read/write access. TEXT columns may store JSON data (metadata, file lists).</text>
+    <text x="0" y="16" fill="#64748b" font-size="10">Foreign keys: background_jobs.session_id -> sessions.id, terminal_sessions.job_id -> background_jobs.id, history tables -> sessions.id</text>
+    <text x="0" y="32" fill="#64748b" font-size="10">Timestamps stored as Unix epoch integers. project_system_prompts uses composite primary key (project_hash, task_type).</text>
+  </g>
+</svg>

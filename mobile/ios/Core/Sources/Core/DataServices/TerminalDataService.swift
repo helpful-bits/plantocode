@@ -22,8 +22,8 @@ private let MOBILE_TERMINAL_RING_MAX_BYTES = 8 * 1_048_576
 /// Larger snapshots are trimmed to prevent overwhelming SwiftTerm
 private let MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES = 64 * 1024
 
-/// Chunk size for emitting snapshots: 16KB chunks with delays
-private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 16 * 1024
+/// Chunk size for emitting snapshots: 8KB chunks with delays
+private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 8 * 1024
 
 private enum TerminalSessionLifecycle: Equatable {
     case initializing
@@ -105,7 +105,6 @@ public class TerminalDataService: ObservableObject {
     private var activeDeviceReconnectCancellable: AnyCancellable?
     private var lastActivityBySession: [String: Date] = [:]
     private let bindingStore = TerminalBindingStore.shared
-    private var currentBoundSessionId: String?
     private var globalBinarySubscription: AnyCancellable?
     private var binarySubscriptionDeviceId: UUID?
     private var firstResizeCompleted = Set<String>()
@@ -589,9 +588,9 @@ public class TerminalDataService: ObservableObject {
     ///
     /// - Parameters:
     ///   - jobId: The terminal job ID
-    ///   - includeSnapshot: Whether to include ring buffer snapshot in the bind call (default true)
+    ///   - includeSnapshot: Ignored. Always passes false to sendBinaryBind.
     public func attachLiveBinary(for jobId: String, includeSnapshot: Bool = true) {
-        guard let sessionId = jobToSessionId[jobId] else {
+        guard let sessionId = resolveSessionId(for: jobId) else {
             self.logger.warning("Cannot attach: no session for job \(jobId)")
             return
         }
@@ -606,24 +605,23 @@ public class TerminalDataService: ObservableObject {
             outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
 
-        bindBinary(to: sessionId, includeSnapshot: includeSnapshot)
+        bindBinary(to: sessionId)
 
-        self.logger.info("Attached binary stream for session \(sessionId) with includeSnapshot=\(includeSnapshot)")
+        self.logger.info("Attached binary stream for session \(sessionId)")
     }
 
-    private func bindBinary(to sessionId: String, includeSnapshot: Bool) {
+    private func bindBinary(to sessionId: String) {
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {
             self.logger.warning("Cannot bind: no active relay connection")
             return
         }
 
-        currentBoundSessionId = sessionId
         ensureGlobalBinarySubscription(relayClient: relayClient, deviceId: deviceId)
 
         Task {
             do {
-                try await relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, sessionId: sessionId, includeSnapshot: includeSnapshot)
+                try await relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, sessionId: sessionId, includeSnapshot: false)
                 await MainActor.run {
                     self.handleBindAck(sessionId: sessionId)
                 }
@@ -632,6 +630,13 @@ public class TerminalDataService: ObservableObject {
             }
         }
         self.logger.info("Bound binary stream to session: \(sessionId)")
+    }
+
+    private func resolveSessionId(for jobId: String) -> String? {
+        if let sid = jobToSessionId[jobId] {
+            return sid
+        }
+        return jobId
     }
 
     /// Handle bind acknowledgement and reissue last-known size
@@ -663,10 +668,7 @@ public class TerminalDataService: ObservableObject {
     }
 
     private func handleTerminalBytes(_ event: ServerRelayClient.TerminalBytesEvent) {
-        self.logger.debug("handleTerminalBytes: received \(event.data.count) bytes, event.sessionId=\(event.sessionId ?? "nil")")
-
-        guard let sessionId = event.sessionId ?? currentBoundSessionId else {
-            self.logger.warning("handleTerminalBytes: dropping \(event.data.count) bytes - no sessionId (event.sessionId=\(event.sessionId ?? "nil"), currentBoundSessionId=\(self.currentBoundSessionId ?? "nil"))")
+        guard let sessionId = event.sessionId, !sessionId.isEmpty else {
             return
         }
 
@@ -675,12 +677,9 @@ public class TerminalDataService: ObservableObject {
         }
         outputRings[sessionId]!.append(event.data)
 
-        let bytesPublisher = outputBytesPublishers[sessionId] ?? ensureBytesPublisher(for: sessionId)
-        let hasSubscribers = outputBytesPublishers[sessionId] != nil
-        if !hasSubscribers {
-            self.logger.warning("handleTerminalBytes: no subscribers for session \(sessionId) - data may be lost")
+        if let bytesPublisher = outputBytesPublishers[sessionId] {
+            bytesPublisher.send(event.data)
         }
-        bytesPublisher.send(event.data)
 
         lastActivityBySession[sessionId] = event.timestamp
 
@@ -722,11 +721,7 @@ public class TerminalDataService: ObservableObject {
         boundSessions.remove(sessionId)
         firstResizeCompleted.remove(sessionId)
         readinessBySession.removeValue(forKey: sessionId)
-        if currentBoundSessionId == sessionId {
-            currentBoundSessionId = nil
-        }
 
-        // Clean up ring buffers and tracking data
         outputRings.removeValue(forKey: sessionId)
         lastActivityBySession.removeValue(forKey: sessionId)
         lastKnownSizeBySession.removeValue(forKey: sessionId)
@@ -862,14 +857,10 @@ public class TerminalDataService: ObservableObject {
             return live.eraseToAnyPublisher()
         }
 
-        // Emit chunks with small delays to allow SwiftTerm to process each chunk
-        // and calculate scroll positions before the next chunk arrives.
-        // This prevents the "fighting loop" where layout updates trigger scroll
-        // corrections that trigger new layout passes.
         let chunkedPublisher = Publishers.Sequence(sequence: chunks)
             .flatMap(maxPublishers: .max(1)) { chunk in
                 Just(chunk)
-                    .delay(for: .milliseconds(8), scheduler: DispatchQueue.main)
+                    .delay(for: .milliseconds(12), scheduler: DispatchQueue.main)
             }
             .eraseToAnyPublisher()
 
@@ -1039,7 +1030,6 @@ public class TerminalDataService: ObservableObject {
         outputRings.removeAll()
 
         boundSessions.removeAll()
-        currentBoundSessionId = nil
 
         pendingUnbindTasks.values.forEach { $0.cancel() }
         pendingUnbindTasks.removeAll()

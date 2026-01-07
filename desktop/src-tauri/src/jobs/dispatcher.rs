@@ -409,7 +409,7 @@ async fn handle_job_success(
                     .inner()
                     .clone();
                 let session_repo = SessionRepository::new(pool.clone());
-                if let Ok(Some(outcome)) = auto_apply_files_for_job(
+                if let Ok(Some(_outcome)) = auto_apply_files_for_job(
                     &pool,
                     &session_repo,
                     app_handle,
@@ -420,17 +420,17 @@ async fn handle_job_success(
                 )
                 .await
                 {
-                    if !outcome.applied_files.is_empty() {
-                        // Fetch fresh session state from DB after auto-apply commit
-                        if let Ok(Some(updated_session)) = session_repo.get_session_by_id(&completed_job.session_id).await {
-                            // Emit unified session-files-updated event with fresh state
-                            let _ = session_events::emit_session_files_updated(
-                                app_handle,
-                                &completed_job.session_id,
-                                &updated_session.included_files,
-                                &updated_session.force_excluded_files,
-                            );
-                        }
+                    // Always emit session-files-updated after successful auto-apply
+                    // Even if no new files were applied, normalization/dedup may have changed the state
+                    // Fetch fresh session state from DB after auto-apply commit
+                    if let Ok(Some(updated_session)) = session_repo.get_session_by_id(&completed_job.session_id).await {
+                        // Emit unified session-files-updated event with fresh state
+                        let _ = session_events::emit_session_files_updated(
+                            app_handle,
+                            &completed_job.session_id,
+                            &updated_session.included_files,
+                            &updated_session.force_excluded_files,
+                        );
                     }
                 }
             }

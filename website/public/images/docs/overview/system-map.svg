@@ -1,0 +1,269 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="reactGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="rustGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="sqliteGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="serverGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="100%" style="stop-color:#9333ea"/>
+    </linearGradient>
+    <linearGradient id="providerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#64748b"/>
+      <stop offset="100%" style="stop-color:#475569"/>
+    </linearGradient>
+    <!-- Drop shadow filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-opacity="0.3"/>
+    </filter>
+    <!-- Glow filter -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="650" fill="url(#bgGrad)"/>
+
+  <!-- Grid pattern -->
+  <g opacity="0.05">
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="900" height="650" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">PlanToCode System Architecture</text>
+
+  <!-- Layer 1: Desktop Frontend -->
+  <g transform="translate(50, 55)">
+    <rect x="0" y="0" width="800" height="100" rx="12" fill="url(#reactGrad)" filter="url(#shadow)" opacity="0.95"/>
+    <text x="20" y="28" fill="white" font-size="14" font-weight="600">Desktop Frontend</text>
+    <text x="20" y="46" fill="rgba(255,255,255,0.7)" font-size="11">React + Next.js in Tauri Shell</text>
+
+    <!-- Components -->
+    <g transform="translate(20, 58)">
+      <rect x="0" y="0" width="140" height="32" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="70" y="20" text-anchor="middle" fill="white" font-size="11">Plan Viewer</text>
+    </g>
+    <g transform="translate(170, 58)">
+      <rect x="0" y="0" width="140" height="32" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="70" y="20" text-anchor="middle" fill="white" font-size="11">Terminal Panel</text>
+    </g>
+    <g transform="translate(320, 58)">
+      <rect x="0" y="0" width="140" height="32" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="70" y="20" text-anchor="middle" fill="white" font-size="11">Session Manager</text>
+    </g>
+    <g transform="translate(470, 58)">
+      <rect x="0" y="0" width="140" height="32" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="70" y="20" text-anchor="middle" fill="white" font-size="11">Workflow Tracker</text>
+    </g>
+    <g transform="translate(620, 58)">
+      <rect x="0" y="0" width="160" height="32" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="80" y="20" text-anchor="middle" fill="white" font-size="11">Voice Transcription</text>
+    </g>
+  </g>
+
+  <!-- Arrow: Frontend to Rust -->
+  <g>
+    <path d="M 450 160 L 450 185" stroke="#60a5fa" stroke-width="2" fill="none" marker-end="url(#arrowBlue)"/>
+    <text x="465" y="175" fill="#94a3b8" font-size="10">invoke()</text>
+  </g>
+  <defs>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#60a5fa"/>
+    </marker>
+    <marker id="arrowOrange" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#fb923c"/>
+    </marker>
+    <marker id="arrowGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#4ade80"/>
+    </marker>
+    <marker id="arrowPurple" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#c084fc"/>
+    </marker>
+  </defs>
+
+  <!-- Layer 2: Rust Backend -->
+  <g transform="translate(50, 190)">
+    <rect x="0" y="0" width="800" height="130" rx="12" fill="url(#rustGrad)" filter="url(#shadow)" opacity="0.95"/>
+    <text x="20" y="28" fill="white" font-size="14" font-weight="600">Rust Backend</text>
+    <text x="20" y="46" fill="rgba(255,255,255,0.7)" font-size="11">Tauri v2 Commands + Job Processing</text>
+
+    <!-- Components Row 1 -->
+    <g transform="translate(20, 58)">
+      <rect x="0" y="0" width="180" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="90" y="18" text-anchor="middle" fill="white" font-size="10">WorkflowOrchestrator</text>
+    </g>
+    <g transform="translate(210, 58)">
+      <rect x="0" y="0" width="180" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="90" y="18" text-anchor="middle" fill="white" font-size="10">TerminalSessionManager</text>
+    </g>
+    <g transform="translate(400, 58)">
+      <rect x="0" y="0" width="180" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="90" y="18" text-anchor="middle" fill="white" font-size="10">JobProcessors</text>
+    </g>
+    <g transform="translate(590, 58)">
+      <rect x="0" y="0" width="190" height="28" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="95" y="18" text-anchor="middle" fill="white" font-size="10">EventEmitter</text>
+    </g>
+
+    <!-- Components Row 2 - Job Processors -->
+    <g transform="translate(20, 94)">
+      <rect x="0" y="0" width="120" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="60" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">FileFinderWorkflow</text>
+    </g>
+    <g transform="translate(150, 94)">
+      <rect x="0" y="0" width="120" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="60" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">ImplPlanProcessor</text>
+    </g>
+    <g transform="translate(280, 94)">
+      <rect x="0" y="0" width="120" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="60" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">TextImprovement</text>
+    </g>
+    <g transform="translate(410, 94)">
+      <rect x="0" y="0" width="120" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="60" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">WebSearchWorkflow</text>
+    </g>
+    <g transform="translate(540, 94)">
+      <rect x="0" y="0" width="120" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="60" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">VideoAnalysis</text>
+    </g>
+    <g transform="translate(670, 94)">
+      <rect x="0" y="0" width="110" height="24" rx="5" fill="rgba(0,0,0,0.2)"/>
+      <text x="55" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="9">PlanMerge</text>
+    </g>
+  </g>
+
+  <!-- Arrow: Rust to SQLite -->
+  <g>
+    <path d="M 250 325 L 250 355" stroke="#4ade80" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+    <text x="265" y="345" fill="#94a3b8" font-size="10">read/write</text>
+  </g>
+
+  <!-- Arrow: Rust to Server -->
+  <g>
+    <path d="M 650 325 L 650 355" stroke="#c084fc" stroke-width="2" fill="none" marker-end="url(#arrowPurple)"/>
+    <text x="665" y="345" fill="#94a3b8" font-size="10">HTTPS</text>
+  </g>
+
+  <!-- Layer 3: Split - SQLite and Server -->
+  <!-- SQLite -->
+  <g transform="translate(50, 360)">
+    <rect x="0" y="0" width="380" height="110" rx="12" fill="url(#sqliteGrad)" filter="url(#shadow)" opacity="0.95"/>
+    <text x="20" y="28" fill="white" font-size="14" font-weight="600">SQLite Persistence</text>
+    <text x="20" y="46" fill="rgba(255,255,255,0.7)" font-size="11">Local Database (WAL Mode)</text>
+
+    <g transform="translate(20, 58)">
+      <rect x="0" y="0" width="100" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="18" text-anchor="middle" fill="white" font-size="10">sessions</text>
+      <text x="50" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">task context</text>
+    </g>
+    <g transform="translate(130, 58)">
+      <rect x="0" y="0" width="110" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="55" y="18" text-anchor="middle" fill="white" font-size="10">background_jobs</text>
+      <text x="55" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">LLM operations</text>
+    </g>
+    <g transform="translate(250, 58)">
+      <rect x="0" y="0" width="115" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="57" y="18" text-anchor="middle" fill="white" font-size="10">terminal_sessions</text>
+      <text x="57" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">PTY output logs</text>
+    </g>
+  </g>
+
+  <!-- Server -->
+  <g transform="translate(470, 360)">
+    <rect x="0" y="0" width="380" height="110" rx="12" fill="url(#serverGrad)" filter="url(#shadow)" opacity="0.95"/>
+    <text x="20" y="28" fill="white" font-size="14" font-weight="600">Server Proxy</text>
+    <text x="20" y="46" fill="rgba(255,255,255,0.7)" font-size="11">Actix-Web + PostgreSQL</text>
+
+    <g transform="translate(20, 58)">
+      <rect x="0" y="0" width="100" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="18" text-anchor="middle" fill="white" font-size="10">Auth</text>
+      <text x="50" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">Auth0 PKCE</text>
+    </g>
+    <g transform="translate(130, 58)">
+      <rect x="0" y="0" width="110" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="55" y="18" text-anchor="middle" fill="white" font-size="10">LLM Proxy</text>
+      <text x="55" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">provider routing</text>
+    </g>
+    <g transform="translate(250, 58)">
+      <rect x="0" y="0" width="115" height="40" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="57" y="18" text-anchor="middle" fill="white" font-size="10">Usage Tracking</text>
+      <text x="57" y="32" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">tokens + cost</text>
+    </g>
+  </g>
+
+  <!-- Arrow: Server to Providers -->
+  <g>
+    <path d="M 660 475 L 660 505" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#arrowGray)"/>
+    <text x="675" y="495" fill="#94a3b8" font-size="10">route()</text>
+  </g>
+  <defs>
+    <marker id="arrowGray" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Layer 4: External Providers -->
+  <g transform="translate(50, 510)">
+    <rect x="0" y="0" width="800" height="80" rx="12" fill="url(#providerGrad)" filter="url(#shadow)" opacity="0.95"/>
+    <text x="20" y="28" fill="white" font-size="14" font-weight="600">External LLM Providers</text>
+    <text x="20" y="46" fill="rgba(255,255,255,0.7)" font-size="11">Requires API Keys</text>
+
+    <g transform="translate(200, 20)">
+      <rect x="0" y="0" width="100" height="50" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="50" y="30" text-anchor="middle" fill="white" font-size="11">OpenAI</text>
+    </g>
+    <g transform="translate(320, 20)">
+      <rect x="0" y="0" width="100" height="50" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="50" y="30" text-anchor="middle" fill="white" font-size="11">Anthropic</text>
+    </g>
+    <g transform="translate(440, 20)">
+      <rect x="0" y="0" width="100" height="50" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="50" y="30" text-anchor="middle" fill="white" font-size="11">Google</text>
+    </g>
+    <g transform="translate(560, 20)">
+      <rect x="0" y="0" width="100" height="50" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="50" y="30" text-anchor="middle" fill="white" font-size="11">OpenRouter</text>
+    </g>
+    <g transform="translate(680, 20)">
+      <rect x="0" y="0" width="100" height="50" rx="8" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+      <text x="50" y="30" text-anchor="middle" fill="white" font-size="11">X.AI</text>
+    </g>
+  </g>
+
+  <!-- Event flow arrow (right side) -->
+  <g>
+    <path d="M 870 300 L 870 160 L 855 160" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-dasharray="4,3" marker-end="url(#arrowBlueSmall)"/>
+    <text x="875" y="230" fill="#60a5fa" font-size="9" transform="rotate(90, 875, 230)">events / SSE</text>
+  </g>
+  <defs>
+    <marker id="arrowBlueSmall" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#60a5fa"/>
+    </marker>
+  </defs>
+
+  <!-- Legend -->
+  <g transform="translate(50, 605)">
+    <text x="0" y="12" fill="#94a3b8" font-size="10">Data flows down through layers • Events stream back up via Tauri/SSE • All state persists locally in SQLite</text>
+  </g>
+</svg>

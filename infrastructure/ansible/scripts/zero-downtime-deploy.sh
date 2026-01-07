@@ -6,7 +6,7 @@ set -e
 
 # Configuration
 NGINX_UPSTREAM_CONF="/etc/nginx/conf.d/plantocode-upstream.conf"
-DEPLOY_STATUS_FILE="/var/run/plantocode-deployment.status"
+ACTIVE_COLOR_FILE="/opt/plantocode/config/active-color"
 HEALTH_CHECK_URL="http://127.0.0.1"
 HEALTH_CHECK_RETRIES=30
 HEALTH_CHECK_DELAY=2
@@ -260,8 +260,9 @@ deploy() {
         log_info "$current_color instance stopped"
     fi
 
-    # Step 7: Update deployment status
-    echo "$new_color" > "$DEPLOY_STATUS_FILE"
+    # Step 7: Persist active color state (survives reboot)
+    mkdir -p "$(dirname "$ACTIVE_COLOR_FILE")"
+    echo "$new_color" > "$ACTIVE_COLOR_FILE"
 
     log_info "Deployment completed successfully! Active: $new_color"
 }
@@ -288,7 +289,8 @@ rollback() {
     # Stop current instance
     systemctl stop plantocode-$current_color
 
-    echo "$previous_color" > "$DEPLOY_STATUS_FILE"
+    mkdir -p "$(dirname "$ACTIVE_COLOR_FILE")"
+    echo "$previous_color" > "$ACTIVE_COLOR_FILE"
     log_info "Rollback completed"
 }
 

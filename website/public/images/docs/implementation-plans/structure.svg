@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="planGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="sectionGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="stepGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="opsGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="600" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="900" height="600" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">Implementation Plan Structure</text>
+  <text x="450" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">XML-based plan format streamed from LLM</text>
+
+  <!-- Plan Root -->
+  <g transform="translate(50, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="800" height="60" rx="10" fill="url(#planGrad)"/>
+    <text x="400" y="28" text-anchor="middle" fill="white" font-size="16" font-weight="600">&lt;StructuredImplementationPlan&gt;</text>
+    <text x="400" y="48" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="11">Root element containing agent instructions and steps</text>
+  </g>
+
+  <!-- Agent Instructions Section -->
+  <g transform="translate(70, 160)" filter="url(#shadow)">
+    <rect x="0" y="0" width="280" height="100" rx="8" fill="url(#sectionGrad)"/>
+    <text x="140" y="26" text-anchor="middle" fill="white" font-size="13" font-weight="600">&lt;agent_instructions&gt;</text>
+    <text x="140" y="42" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="9">(Optional)</text>
+    <line x1="20" y1="52" x2="260" y2="52" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+    <g fill="rgba(255,255,255,0.85)" font-size="10">
+      <text x="20" y="72">Instructions for AI agents</text>
+      <text x="20" y="88">executing this plan</text>
+    </g>
+  </g>
+
+  <!-- Steps Section -->
+  <g transform="translate(370, 160)" filter="url(#shadow)">
+    <rect x="0" y="0" width="460" height="100" rx="8" fill="rgba(34, 197, 94, 0.15)" stroke="#22c55e" stroke-width="1"/>
+    <text x="230" y="26" text-anchor="middle" fill="#22c55e" font-size="13" font-weight="600">&lt;steps&gt;</text>
+    <line x1="20" y1="36" x2="440" y2="36" stroke="rgba(34, 197, 94, 0.3)" stroke-width="1"/>
+    <g fill="rgba(255,255,255,0.85)" font-size="10">
+      <text x="20" y="56">Vec&lt;StructuredImplementationPlanStep&gt;</text>
+      <text x="20" y="76">Ordered list of implementation steps</text>
+      <text x="20" y="92">Each step defines a discrete unit of work</text>
+    </g>
+  </g>
+
+  <!-- Steps Detail Section -->
+  <g transform="translate(70, 280)" filter="url(#shadow)">
+    <rect x="0" y="0" width="760" height="220" rx="10" fill="rgba(34, 197, 94, 0.1)" stroke="#22c55e" stroke-width="1"/>
+    <text x="380" y="24" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="600">&lt;step&gt; Structure</text>
+
+    <!-- Step fields -->
+    <g transform="translate(20, 40)">
+      <rect x="0" y="0" width="220" height="165" rx="6" fill="url(#stepGrad)"/>
+      <text x="110" y="22" text-anchor="middle" fill="white" font-size="11" font-weight="600">Step Fields</text>
+      <line x1="10" y1="30" x2="210" y2="30" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+      <g fill="rgba(255,255,255,0.85)" font-size="9">
+        <text x="10" y="48">&lt;number&gt; (Optional)</text>
+        <text x="10" y="64">&lt;title&gt; - Step heading</text>
+        <text x="10" y="80">&lt;description&gt; - Details</text>
+        <text x="10" y="96">&lt;file_operations&gt; (Optional)</text>
+        <text x="10" y="112">&lt;bash_commands&gt; (Optional)</text>
+        <text x="10" y="128">&lt;exploration_commands&gt;</text>
+        <text x="20" y="144">(Optional)</text>
+      </g>
+    </g>
+
+    <!-- File Operations -->
+    <g transform="translate(260, 40)">
+      <rect x="0" y="0" width="240" height="165" rx="6" fill="url(#opsGrad)"/>
+      <text x="120" y="22" text-anchor="middle" fill="white" font-size="11" font-weight="600">&lt;file_operations&gt;</text>
+      <line x1="10" y1="30" x2="230" y2="30" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+      <g fill="rgba(255,255,255,0.85)" font-size="9">
+        <text x="10" y="48">Vec&lt;StepOperation&gt;</text>
+        <text x="10" y="68">Each operation contains:</text>
+        <text x="10" y="88">  &lt;type&gt; create|modify|delete</text>
+        <text x="10" y="108">  &lt;path&gt; File path</text>
+        <text x="10" y="128">  &lt;changes&gt; (Optional)</text>
+        <text x="20" y="148">Description of changes</text>
+      </g>
+    </g>
+
+    <!-- Example step -->
+    <g transform="translate(520, 40)">
+      <rect x="0" y="0" width="220" height="165" rx="6" fill="rgba(59, 130, 246, 0.3)" stroke="#3b82f6" stroke-width="1"/>
+      <text x="110" y="22" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="600">Example Step</text>
+      <line x1="10" y1="30" x2="210" y2="30" stroke="rgba(59, 130, 246, 0.3)" stroke-width="1"/>
+      <g fill="rgba(255,255,255,0.7)" font-size="8" font-family="monospace">
+        <text x="10" y="46">&lt;step&gt;</text>
+        <text x="20" y="60">&lt;number&gt;1&lt;/number&gt;</text>
+        <text x="20" y="74">&lt;title&gt;Add API&lt;/title&gt;</text>
+        <text x="20" y="88">&lt;description&gt;...</text>
+        <text x="20" y="102">&lt;file_operations&gt;</text>
+        <text x="30" y="116">&lt;operation&gt;</text>
+        <text x="40" y="130">&lt;type&gt;create&lt;/type&gt;</text>
+        <text x="40" y="144">&lt;path&gt;src/api.rs&lt;/path&gt;</text>
+        <text x="10" y="158">...</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Monaco Viewer note -->
+  <g transform="translate(70, 520)">
+    <rect x="0" y="0" width="350" height="36" rx="6" fill="rgba(59, 130, 246, 0.15)" stroke="#3b82f6" stroke-width="1"/>
+    <text x="175" y="22" text-anchor="middle" fill="#93c5fd" font-size="10">Rendered in Monaco Editor with XML syntax highlighting</text>
+  </g>
+
+  <!-- Streaming note -->
+  <g transform="translate(450, 520)">
+    <rect x="0" y="0" width="380" height="36" rx="6" fill="rgba(139, 92, 246, 0.15)" stroke="#8b5cf6" stroke-width="1"/>
+    <text x="190" y="22" text-anchor="middle" fill="#c4b5fd" font-size="10">Streamed via SSE from ImplementationPlanProcessor</text>
+  </g>
+
+  <!-- Connection lines -->
+  <g stroke="#4b5563" stroke-width="1" stroke-dasharray="4,4" fill="none">
+    <path d="M 210 260 L 210 280"/>
+    <path d="M 600 260 L 600 280"/>
+  </g>
+</svg>

@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="stage1Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
+    </linearGradient>
+    <linearGradient id="stage2Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="stage3Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="stage4Grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L10,4 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="480" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1000" height="480" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="500" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">File Discovery Pipeline</text>
+  <text x="500" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">FileFinderWorkflow: 4-stage LLM-assisted file selection</text>
+
+  <!-- Input -->
+  <g transform="translate(30, 140)" filter="url(#shadow)">
+    <rect x="0" y="0" width="100" height="80" rx="8" fill="rgba(148, 163, 184, 0.2)" stroke="#64748b" stroke-width="1"/>
+    <text x="50" y="30" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="500">Input</text>
+    <text x="50" y="48" text-anchor="middle" fill="#94a3b8" font-size="9">Task description</text>
+    <text x="50" y="62" text-anchor="middle" fill="#94a3b8" font-size="9">+ Project path</text>
+  </g>
+
+  <!-- Stage 1: Root Folder Selection -->
+  <g transform="translate(160, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="160" rx="10" fill="url(#stage1Grad)"/>
+    <text x="90" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Stage 1</text>
+    <text x="90" y="46" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11">RootFolderSelection</text>
+    <line x1="20" y1="56" x2="160" y2="56" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 66)" fill="rgba(255,255,255,0.85)" font-size="9">
+      <text x="0" y="0">Input: directory tree</text>
+      <text x="0" y="16">LLM analyzes structure</text>
+      <text x="0" y="32">Output: relevant roots</text>
+    </g>
+
+    <rect x="15" y="115" width="150" height="35" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="132" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="8">RootFolderSelectionProcessor</text>
+    <text x="90" y="144" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="7">→ src/, lib/, components/</text>
+  </g>
+
+  <!-- Stage 2: Regex Filter -->
+  <g transform="translate(370, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="160" rx="10" fill="url(#stage2Grad)"/>
+    <text x="90" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Stage 2</text>
+    <text x="90" y="46" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11">RegexFileFilter</text>
+    <line x1="20" y1="56" x2="160" y2="56" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 66)" fill="rgba(255,255,255,0.85)" font-size="9">
+      <text x="0" y="0">LLM generates patterns</text>
+      <text x="0" y="16">Applies git ls-files</text>
+      <text x="0" y="32">Output: filtered paths</text>
+    </g>
+
+    <rect x="15" y="115" width="150" height="35" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="132" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="8">RegexFileFilterProcessor</text>
+    <text x="90" y="144" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="7">→ *.tsx, *Controller.ts</text>
+  </g>
+
+  <!-- Stage 3: Relevance Assessment -->
+  <g transform="translate(580, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="160" rx="10" fill="url(#stage3Grad)"/>
+    <text x="90" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Stage 3</text>
+    <text x="90" y="46" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11">FileRelevanceAssessment</text>
+    <line x1="20" y1="56" x2="160" y2="56" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 66)" fill="rgba(255,255,255,0.85)" font-size="9">
+      <text x="0" y="0">Chunks file contents</text>
+      <text x="0" y="16">LLM filters relevant files</text>
+      <text x="0" y="32">Token budget tracking</text>
+    </g>
+
+    <rect x="15" y="115" width="150" height="35" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="132" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="8">FileRelevanceAssessmentProcessor</text>
+    <text x="90" y="144" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="7">→ relevant file paths</text>
+  </g>
+
+  <!-- Stage 4: Extended Path Finder -->
+  <g transform="translate(790, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="180" height="160" rx="10" fill="url(#stage4Grad)"/>
+    <text x="90" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Stage 4</text>
+    <text x="90" y="46" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11">ExtendedPathFinder</text>
+    <line x1="20" y1="56" x2="160" y2="56" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 66)" fill="rgba(255,255,255,0.85)" font-size="9">
+      <text x="0" y="0">Reads file contents</text>
+      <text x="0" y="16">LLM finds related files</text>
+      <text x="0" y="32">Validates on filesystem</text>
+    </g>
+
+    <rect x="15" y="115" width="150" height="35" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <text x="90" y="132" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="8">ExtendedPathFinderProcessor</text>
+    <text x="90" y="144" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="7">→ additional file paths</text>
+  </g>
+
+  <!-- Arrows between stages -->
+  <g stroke="#64748b" stroke-width="2" fill="none">
+    <path d="M130 180 L150 180" marker-end="url(#arrow)"/>
+    <path d="M340 180 L360 180" marker-end="url(#arrow)"/>
+    <path d="M550 180 L570 180" marker-end="url(#arrow)"/>
+    <path d="M760 180 L780 180" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Output -->
+  <g transform="translate(50, 320)" filter="url(#shadow)">
+    <rect x="0" y="0" width="900" height="100" rx="10" fill="rgba(34, 197, 94, 0.1)" stroke="#22c55e" stroke-width="1"/>
+    <text x="450" y="28" text-anchor="middle" fill="#22c55e" font-size="14" font-weight="600">Output: WorkflowIntermediateData</text>
+
+    <g transform="translate(30, 45)">
+      <rect x="0" y="0" width="200" height="44" rx="4" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="100" y="18" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="500">AI Filtered Files</text>
+      <text x="100" y="34" text-anchor="middle" fill="#86efac" font-size="9">From FileRelevanceAssessment</text>
+    </g>
+
+    <g transform="translate(260, 45)">
+      <rect x="0" y="0" width="200" height="44" rx="4" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="100" y="18" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="500">Extended Paths</text>
+      <text x="100" y="34" text-anchor="middle" fill="#86efac" font-size="9">From ExtendedPathFinder</text>
+    </g>
+
+    <g transform="translate(490, 45)">
+      <rect x="0" y="0" width="200" height="44" rx="4" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="100" y="18" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="500">Selected Root Dirs</text>
+      <text x="100" y="34" text-anchor="middle" fill="#86efac" font-size="9">From RootFolderSelection</text>
+    </g>
+
+    <g transform="translate(720, 45)">
+      <rect x="0" y="0" width="150" height="44" rx="4" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="75" y="18" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="500">Token Estimate</text>
+      <text x="75" y="34" text-anchor="middle" fill="#86efac" font-size="9">ai_filtered_files_token_count</text>
+    </g>
+  </g>
+
+  <!-- Footer -->
+  <g transform="translate(50, 450)">
+    <text x="0" y="0" fill="#64748b" font-size="10">Each stage runs as a background_job with status tracking. Results persist to SQLite for reuse across sessions.</text>
+  </g>
+</svg>

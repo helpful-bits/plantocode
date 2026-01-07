@@ -45,12 +45,17 @@ public final class MultiConnectionManager: ObservableObject {
     private var healthGraceTask: Task<Void, Never>?
     private let healthGraceDelay: TimeInterval = 12.0
 
+    /// Tracks last connectivity state for rising-edge detection (disconnected -> connected)
+    private var lastActiveDeviceConnected: Bool = false
+
     private struct ReconnectPolicy {
         let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
         let backgroundRetryInterval: TimeInterval = 120
         let maxAggressiveAttempts: Int = 8
         let maxAggressiveWindowSeconds: TimeInterval = 90
         let jitterFactor: Double = 0.15
+        /// Time connection must remain stable before resetting backoff state
+        let stabilityPeriodSeconds: TimeInterval = 5.0
     }
 
     private struct DeviceReconnectState {
@@ -61,6 +66,10 @@ public final class MultiConnectionManager: ObservableObject {
         var currentTask: Task<Void, Never>?
         var lastError: Error?
         var backgroundCycles: Int = 0
+        /// Timestamp when connection became established (for stability tracking)
+        var connectionEstablishedAt: Date?
+        /// Task that clears reconnect state after stability period
+        var stabilityTask: Task<Void, Never>?
     }
 
     public enum ReconnectReason {
@@ -68,6 +77,8 @@ public final class MultiConnectionManager: ObservableObject {
         case networkChange(NWPath)
         case connectionLoss(UUID)
         case authRefreshed
+        /// Network interface switched (e.g., WiFi → Cellular) - requires proactive reconnection
+        case interfaceSwitch(NetworkInterfaceChange)
     }
 
     public enum HardResetReason {
@@ -85,6 +96,8 @@ public final class MultiConnectionManager: ObservableObject {
     private var lastAddConnectionAt: [UUID: Date] = [:]
     private var pathObserverCancellable: AnyCancellable?
     private var lastPath: NWPath?
+    /// Cooldown timestamp to prevent repeated interface-switch handling within a short window
+    private var lastInterfaceSwitchHandledAt: Date?
 
     private var connectedDeviceIds: [UUID] {
         connectionStates.filter { _, state in
@@ -137,6 +150,18 @@ public final class MultiConnectionManager: ObservableObject {
             }
             .store(in: &globalCancellables)
 
+        // Subscribe to interface changes (WiFi ↔ Cellular) for proactive reconnection
+        // When the underlying transport changes, the old TCP connection MUST break.
+        // Proactively disconnect and reconnect rather than waiting for socket timeout.
+        NetworkPathObserver.shared.interfaceChangePublisher
+            .sink { [weak self] change in
+                guard let self = self else { return }
+                Task { @MainActor in
+                    await self.handleInterfaceSwitch(change)
+                }
+            }
+            .store(in: &globalCancellables)
+
         NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
@@ -144,6 +169,17 @@ public final class MultiConnectionManager: ObservableObject {
         ) { [weak self] _ in
             guard let self = self else { return }
             self.triggerAggressiveReconnect(reason: .appForeground)
+
+            // Trigger jobs reconciliation on foreground resume regardless of connectivity state.
+            // This ensures jobs completed while backgrounded are reflected immediately.
+            // Note: AppState.handleAppDidBecomeActive() also triggers this, but having it here
+            // ensures reconciliation happens even if AppState handler is not called.
+            Task { @MainActor in
+                guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
+                    return
+                }
+                await jobsService.reconcileJobs(reason: .foregroundResume)
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -457,6 +493,22 @@ public final class MultiConnectionManager: ObservableObject {
                 )
                 relayClient.allowInternalReconnect = false
 
+                // Wire up network-awareness providers for smarter connection behavior
+                relayClient.isNetworkOnline = { NetworkPathObserver.shared.isOnline }
+                relayClient.activeSessionIdProvider = {
+                    PlanToCodeCore.shared.dataServices?.jobsService.activeSessionId
+                }
+
+                // Wire up callback for relay registration/resume to trigger jobs reconciliation
+                relayClient.onRegisteredOrResumed = { [weak self] in
+                    Task { @MainActor in
+                        guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
+                            return
+                        }
+                        await jobsService.reconcileJobs(reason: .relayRegistered)
+                    }
+                }
+
                 try await relayClient.connect(jwtToken: authToken).asyncValue()
 
                 await MainActor.run {
@@ -514,12 +566,22 @@ public final class MultiConnectionManager: ObservableObject {
                                     self.updateConnectionHealth(for: deviceId, state: .reconnecting)
                                     self.verifyingDevices.insert(deviceId)
                                 case .failed(let e):
+                                    // Cancel stability task - connection failed before becoming stable
+                                    self.reconnectStates[deviceId]?.stabilityTask?.cancel()
+                                    self.reconnectStates[deviceId]?.stabilityTask = nil
+                                    self.reconnectStates[deviceId]?.connectionEstablishedAt = nil
+
                                     self.connectionStates[deviceId] = .failed(e)
                                     self.updateConnectionHealth(for: deviceId, state: .failed(e))
                                     self.verifyingDevices.remove(deviceId)
                                     self.triggerAuthRefreshIfNeeded(e)
                                     self.triggerAggressiveReconnect(reason: .connectionLoss(deviceId), deviceIds: [deviceId])
                                 case .disconnected:
+                                    // Cancel stability task - connection dropped before becoming stable
+                                    self.reconnectStates[deviceId]?.stabilityTask?.cancel()
+                                    self.reconnectStates[deviceId]?.stabilityTask = nil
+                                    self.reconnectStates[deviceId]?.connectionEstablishedAt = nil
+
                                     self.connectionStates[deviceId] = .disconnected
                                     self.updateConnectionHealth(for: deviceId, state: .disconnected)
                                     self.verifyingDevices.remove(deviceId)
@@ -596,6 +658,13 @@ public final class MultiConnectionManager: ObservableObject {
 
         verifyingDevices.remove(deviceId)
         relayHandshakeByDevice.removeValue(forKey: deviceId)
+
+        // Cancel any pending stability task and clear reconnect state
+        reconnectStates[deviceId]?.stabilityTask?.cancel()
+        reconnectStates[deviceId]?.currentTask?.cancel()
+        reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+        reconnectStates.removeValue(forKey: deviceId)
+
         // Disconnect and remove relay connection
         if let relayClient = storage[deviceId] {
             relayClient.disconnect()
@@ -862,9 +931,63 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
+    // MARK: - Proactive Interface Switch Handling
+
+    /// Handles network interface switches (e.g., WiFi → Cellular) by proactively
+    /// disconnecting existing connections and triggering immediate reconnection.
+    /// This avoids waiting for socket timeouts which can take several seconds.
+    @MainActor
+    private func handleInterfaceSwitch(_ change: NetworkInterfaceChange) async {
+        // Only act on real interface switches (WiFi ↔ Cellular, etc.)
+        guard change.isInterfaceSwitch else { return }
+
+        // Debounce repeated switches within a short window (1.5s)
+        let now = Date()
+        if let last = lastInterfaceSwitchHandledAt,
+           now.timeIntervalSince(last) < 1.5 {
+            return
+        }
+        lastInterfaceSwitchHandledAt = now
+
+        // If there are no known devices, nothing to do
+        guard !storage.isEmpty else { return }
+
+        for (deviceId, relay) in storage {
+            // Cancel any pending stability task and reset reconnect saga
+            if var state = reconnectStates[deviceId] {
+                state.stabilityTask?.cancel()
+                state.stabilityTask = nil
+                // Treat interface switch as a fresh connectivity episode
+                state.backgroundCycles = 0
+                state.attempts = 0
+                reconnectStates[deviceId] = state
+            }
+
+            // Clear verifying state so UI doesn't get stuck "verifying"
+            verifyingDevices.remove(deviceId)
+
+            let currentState = connectionStates[deviceId]
+
+            // Only disconnect sockets in connected or transient connection states
+            if currentState?.isConnectedOrConnecting == true {
+                // Non user initiated: preserve resume tokens
+                relay.disconnect(isUserInitiated: false)
+                connectionStates[deviceId] = .disconnected
+                updateConnectionHealth(for: deviceId, state: .disconnected)
+            }
+        }
+
+        // Small delay to allow the new interface to be ready
+        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+
+        // Trigger aggressive reconnect for all known devices
+        triggerAggressiveReconnect(reason: .interfaceSwitch(change))
+    }
+
     // MARK: - Aggressive Reconnection Policy
 
     private func clearReconnectState(for deviceId: UUID) {
+        reconnectStates[deviceId]?.stabilityTask?.cancel()
         reconnectStates.removeValue(forKey: deviceId)
     }
 
@@ -889,6 +1012,18 @@ public final class MultiConnectionManager: ObservableObject {
         }
 
         for deviceId in candidates {
+            // Skip if we don't know this device anymore
+            guard storage[deviceId] != nil else { continue }
+
+            // If there's a pending stability check and the connection is currently
+            // connected or connecting, do not start a new aggressive loop
+            if let state = reconnectStates[deviceId],
+               state.stabilityTask != nil,
+               let conn = connectionStates[deviceId],
+               conn.isConnectedOrConnecting {
+                continue
+            }
+
             // Guard against redundant reconnection attempts
             if let st = connectionStates[deviceId] {
                 if st.isConnected || st == .connecting || st == .handshaking || st == .reconnecting {
@@ -972,19 +1107,66 @@ public final class MultiConnectionManager: ObservableObject {
 
         switch result {
         case .success:
+            // Stop any pending aggressive reconnect task or background retry timer
             reconnectStates[deviceId]?.currentTask?.cancel()
+            reconnectStates[deviceId]?.currentTask = nil
             reconnectStates[deviceId]?.backgroundTimer?.invalidate()
-            reconnectStates.removeValue(forKey: deviceId)
+            reconnectStates[deviceId]?.backgroundTimer = nil
+
+            // Don't immediately clear reconnect state - wait for stability period
+            // This prevents rapid cycling if connection repeatedly fails immediately after establishment
+            scheduleStabilityCheck(for: deviceId)
 
             lastConnectedServerURL = Config.serverURL
             UserDefaults.standard.set(lastConnectedServerURL, forKey: serverContextKey)
 
         case .failure(let error):
+            // Cancel any pending stability task since connection failed
+            reconnectStates[deviceId]?.stabilityTask?.cancel()
+            reconnectStates[deviceId]?.stabilityTask = nil
+            reconnectStates[deviceId]?.connectionEstablishedAt = nil
+
             reconnectStates[deviceId]?.lastError = error
             reconnectStates[deviceId]?.attempts += 1
 
             await scheduleNextReconnectAttempt(for: deviceId)
         }
+    }
+
+    /// Schedules a stability check that clears reconnect state only after the connection
+    /// has remained stable for the configured stability period.
+    private func scheduleStabilityCheck(for deviceId: UUID) {
+        // Cancel any existing stability task
+        reconnectStates[deviceId]?.stabilityTask?.cancel()
+
+        // Record when connection was established
+        reconnectStates[deviceId]?.connectionEstablishedAt = Date()
+        reconnectStates[deviceId]?.isAggressiveActive = false
+
+        let stabilityPeriod = reconnectPolicy.stabilityPeriodSeconds
+
+        let task = Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            // Wait for stability period
+            try? await Task.sleep(nanoseconds: UInt64(stabilityPeriod * 1_000_000_000))
+
+            guard !Task.isCancelled else { return }
+
+            // Verify connection is still healthy after stability period
+            if let state = self.connectionStates[deviceId], state.isConnected {
+                // Connection is stable - fully clear reconnect state
+                self.reconnectStates.removeValue(forKey: deviceId)
+
+                // If this is the active device, ensure UI marks it as fully connected
+                if deviceId == self.activeDeviceId {
+                    self.isActivelyReconnecting = false
+                }
+            }
+            // If not connected, the reconnect logic will handle it
+        }
+
+        reconnectStates[deviceId]?.stabilityTask = task
     }
 
     private func triggerAuthRefreshIfNeeded(_ error: Error) {
@@ -1091,6 +1273,7 @@ public final class MultiConnectionManager: ObservableObject {
         for (_, state) in self.reconnectStates {
             state.currentTask?.cancel()
             state.backgroundTimer?.invalidate()
+            state.stabilityTask?.cancel()
         }
         reconnectStates.removeAll()
     }
@@ -1174,6 +1357,16 @@ public final class MultiConnectionManager: ObservableObject {
     private func updateConnectionHealth(for deviceId: UUID, state: ConnectionState) {
         guard deviceId == activeDeviceId else { return }
 
+        // Detect rising-edge: was disconnected, now connected
+        let isConnectedNow = state.isConnected
+        let wasConnected = lastActiveDeviceConnected
+        lastActiveDeviceConnected = isConnectedNow
+
+        if isConnectedNow && !wasConnected {
+            // Rising edge: connectivity restored - trigger jobs reconciliation
+            handleConnectivityRestored()
+        }
+
         switch state {
         case .connected:
             healthGraceTask?.cancel()
@@ -1209,6 +1402,17 @@ public final class MultiConnectionManager: ObservableObject {
                     }
                 }
             }
+        }
+    }
+
+    /// Called when connectivity is restored after being disconnected.
+    /// Triggers jobs reconciliation to sync any missed updates.
+    private func handleConnectivityRestored() {
+        Task { @MainActor in
+            guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
+                return
+            }
+            await jobsService.reconcileJobs(reason: .connectivityReconnected)
         }
     }
 }

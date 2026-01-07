@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { DocsArticle } from '@/components/docs/DocsArticle';
 import { DocsMediaBlock } from '@/components/docs/DocsMediaBlock';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
 import { loadMessages, type Locale } from '@/lib/i18n';
 import { locales } from '@/i18n/config';
@@ -28,26 +27,25 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
   const { locale } = await params;
   const t = await loadMessages(locale);
 
-  // Supported providers
+  // Supported providers - all routed through single endpoint based on model ID
   const providers = [
-    { name: 'OpenAI', endpoint: '/api/llm/openai', models: 'GPT-4o, GPT-4o-mini, o1, o1-mini, o3-mini' },
-    { name: 'Anthropic', endpoint: '/api/llm/anthropic', models: 'Claude 3.5 Sonnet, Claude 3 Opus, Claude 3 Haiku' },
-    { name: 'Google', endpoint: '/api/llm/google', models: 'Gemini 2.0 Flash, Gemini 1.5 Pro, Gemini 1.5 Flash' },
-    { name: 'X.AI', endpoint: '/api/llm/xai', models: 'Grok-2, Grok-2-vision' },
-    { name: 'DeepSeek', endpoint: '/api/llm/deepseek', models: 'DeepSeek-V3, DeepSeek-R1' },
-    { name: 'OpenRouter', endpoint: '/api/llm/openrouter', models: 'Fallback aggregator for all providers' },
+    { name: 'OpenAI', routing: 'Direct', models: 'GPT-5.2, GPT-5.2-Pro, GPT-5-mini, o3, GPT-4o-transcribe' },
+    { name: 'Anthropic', routing: 'Direct (non-streaming), OpenRouter (streaming)', models: 'Claude Opus 4.5, Claude Sonnet 4.5' },
+    { name: 'Google', routing: 'Direct', models: 'Gemini 3 Pro, Gemini 3 Flash, Gemini 2.5 Pro' },
+    { name: 'X.AI', routing: 'Direct', models: 'Grok-4' },
+    { name: 'DeepSeek', routing: 'Via OpenRouter', models: 'DeepSeek-R1' },
+    { name: 'OpenRouter', routing: 'Direct', models: 'Fallback aggregator for all providers' },
   ];
 
   // Usage tracking fields
   const usageFields = [
-    { field: 'tokens_sent', description: 'Prompt tokens consumed by the request' },
-    { field: 'tokens_received', description: 'Completion tokens generated in response' },
-    { field: 'cache_read', description: 'Tokens served from provider cache (Anthropic)' },
-    { field: 'cache_write', description: 'Tokens written to provider cache' },
-    { field: 'actual_cost', description: 'Computed cost based on model pricing' },
-    { field: 'model_id', description: 'Exact model identifier used for the request' },
-    { field: 'provider', description: 'Provider that handled the request' },
-    { field: 'request_id', description: 'Provider-assigned request ID for debugging' },
+    { field: 'tokens_input', description: 'Prompt tokens consumed by the request' },
+    { field: 'tokens_output', description: 'Completion tokens generated in response' },
+    { field: 'cache_read_tokens', description: 'Tokens served from provider cache (Anthropic)' },
+    { field: 'cache_write_tokens', description: 'Tokens written to provider cache' },
+    { field: 'cost', description: 'Computed cost based on model pricing' },
+    { field: 'service_name', description: 'Model identifier used for the request (e.g., anthropic/claude-opus-4-5)' },
+    { field: 'request_id', description: 'Server-generated UUID for request tracking' },
   ];
 
   return (
@@ -69,7 +67,7 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
         className="mb-12"
         title={t['providerRouting.visuals.routingMap.title'] || 'Provider routing map'}
         description={t['providerRouting.visuals.routingMap.description'] || 'Diagram of how requests flow from the desktop app to the proxy and out to providers.'}
-        imageSrc={t['providerRouting.visuals.routingMap.imageSrc'] || '/images/docs/provider-routing/routing-map.png'}
+        imageSrc={t['providerRouting.visuals.routingMap.imageSrc'] || '/images/docs/provider-routing/routing-map.svg'}
         imageAlt={t['providerRouting.visuals.routingMap.imageAlt'] || 'Diagram of provider routing flow from desktop to external providers'}
         caption={t['providerRouting.visuals.routingMap.caption']}
       />
@@ -108,7 +106,8 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
         <h2 className="text-2xl font-bold">Supported Providers</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            The routing layer supports multiple LLM providers with automatic request transformation and response normalization.
+            All requests go through a single endpoint: <code className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">/api/llm/chat/completions</code>.
+            The router determines the appropriate provider based on the model ID in the request payload.
             Each provider has dedicated handlers in <code className="px-1.5 py-0.5 rounded bg-muted text-sm font-mono">server/src/handlers/proxy/</code>.
           </p>
           <div className="overflow-x-auto mt-4">
@@ -116,7 +115,7 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-semibold">Provider</th>
-                  <th className="text-left py-3 px-4 font-semibold">Endpoint</th>
+                  <th className="text-left py-3 px-4 font-semibold">Routing</th>
                   <th className="text-left py-3 px-4 font-semibold">Models</th>
                 </tr>
               </thead>
@@ -125,7 +124,7 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
                   <tr key={provider.name} className="border-b border-border/50">
                     <td className="py-3 px-4 font-medium">{provider.name}</td>
                     <td className="py-3 px-4">
-                      <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">{provider.endpoint}</code>
+                      <span className="text-sm text-muted-foreground">{provider.routing}</span>
                     </td>
                     <td className="py-3 px-4 text-muted-foreground">{provider.models}</td>
                   </tr>
@@ -148,12 +147,12 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
             <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Normalized request from desktop
 {
-  "model": "claude-3-5-sonnet-latest",
+  "model": "anthropic/claude-opus-4-5-20251101",
   "messages": [
     { "role": "system", "content": "..." },
     { "role": "user", "content": "..." }
   ],
-  "max_tokens": 8192,
+  "max_tokens": 16384,
   "temperature": 0.7,
   "stream": true,
   "metadata": {
@@ -165,10 +164,10 @@ export default async function ProviderRoutingDocPage({ params }: { params: Promi
 
 // Transformed for Anthropic
 {
-  "model": "claude-3-5-sonnet-latest",
+  "model": "claude-opus-4-5-20251101",
   "system": "...",
   "messages": [{ "role": "user", "content": "..." }],
-  "max_tokens": 8192,
+  "max_tokens": 16384,
   "stream": true
 }`}</code></pre>
           </div>
@@ -242,7 +241,7 @@ async fn handle_stream(
             When a primary provider fails (rate limit, outage, or error), the routing layer can automatically retry through OpenRouter
             as a fallback aggregator. This provides resilience without requiring user intervention.
           </p>
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4 mt-4">
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">Fallback Behavior</h4>
             <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
               <li>• Primary provider failure triggers OpenRouter retry</li>
@@ -263,16 +262,15 @@ async fn handle_stream(
             when available, with fallback to tiktoken-based estimation.
           </p>
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Usage record stored per job
+            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Usage record stored per request
 {
-  "tokens_sent": 4521,
-  "tokens_received": 2847,
-  "cache_read": 1200,      // Anthropic prompt caching
-  "cache_write": 0,
-  "actual_cost": 0.0234,   // USD based on model pricing
-  "model_id": "claude-3-5-sonnet-latest",
-  "provider": "anthropic",
-  "request_id": "req_abc123..."
+  "tokens_input": 4521,
+  "tokens_output": 2847,
+  "cache_read_tokens": 1200,   // Anthropic prompt caching
+  "cache_write_tokens": 0,
+  "cost": 0.0234,              // USD based on model pricing
+  "service_name": "anthropic/claude-opus-4-5-20251101",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"  // Server-generated UUID
 }`}</code></pre>
           </div>
           <div className="mt-6">
@@ -312,10 +310,10 @@ async fn handle_stream(
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Vision-Capable Models</h4>
               <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• GPT-4o, GPT-4o-mini</li>
-                <li>• Claude 3.5 Sonnet, Claude 3 Opus</li>
-                <li>• Gemini 2.0 Flash, Gemini 1.5 Pro</li>
-                <li>• Grok-2-vision</li>
+                <li>• GPT-5.2, GPT-5-mini</li>
+                <li>• Claude Opus 4.5, Claude Sonnet 4.5</li>
+                <li>• Gemini 3 Pro, Gemini 3 Flash, Gemini 2.5 Pro</li>
+                <li>• Grok-4</li>
               </ul>
             </div>
           </div>
@@ -331,15 +329,15 @@ async fn handle_stream(
             Users can retry or run the job with another model instead of relying on silent fallbacks.
           </p>
           <div className="space-y-3 mt-4">
-            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/30 rounded-lg p-4">
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">Rate Limit Errors</h4>
               <p className="text-sm text-red-700 dark:text-red-300">Retry-After header respected, user notified of wait time</p>
             </div>
-            <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800/30 rounded-lg p-4">
+            <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">Authentication Errors</h4>
               <p className="text-sm text-yellow-700 dark:text-yellow-300">API key validation failed, check provider configuration</p>
             </div>
-            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-4">
+            <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200">Context Length Errors</h4>
               <p className="text-sm text-blue-700 dark:text-blue-300">Prompt exceeds model limit, suggest smaller context or different model</p>
             </div>
@@ -368,42 +366,26 @@ async fn handle_stream(
 
       {/* Build Your Own Section */}
       <section className="space-y-6 mb-12">
-        <h2 className="text-2xl font-bold">Build a Similar Proxy</h2>
+        <h2 className="text-2xl font-bold">Building a Similar Proxy (Conceptual)</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            If you are replicating the architecture, start with a proxy that normalizes payloads, streams responses, and logs usage
-            metadata with job identifiers. Keep provider keys off the client, and require explicit user approval before sending file content.
+            If you are building a similar architecture, the key components to implement are:
           </p>
-          <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Minimal proxy handler structure
-pub struct LLMProxy {
-    providers: HashMap<String, Box<dyn ProviderClient>>,
-    transformer: RequestTransformer,
-    stream_handler: ModernStreamHandler,
-    usage_tracker: UsageTracker,
-}
-
-impl LLMProxy {
-    pub async fn handle_request(
-        &self,
-        req: NormalizedRequest,
-    ) -> Result<StreamResponse> {
-        // 1. Transform to provider format
-        let provider_req = self.transformer.transform(&req)?;
-
-        // 2. Route to appropriate provider
-        let provider = self.providers.get(&req.provider)?;
-        let response = provider.send(provider_req).await?;
-
-        // 3. Stream response back to client
-        let result = self.stream_handler.process(response).await?;
-
-        // 4. Track usage for billing
-        self.usage_tracker.record(&req.job_id, &result.usage);
-
-        Ok(result)
-    }
-}`}</code></pre>
+          <div className="bg-muted/30 rounded-lg p-4 mt-4">
+            <ul className="text-sm text-muted-foreground space-y-2">
+              <li><strong>Model-based routing:</strong> Look up the model ID to determine which provider to use, then route internally</li>
+              <li><strong>Request transformation:</strong> Convert normalized requests to provider-specific formats (e.g., extract system messages for Anthropic)</li>
+              <li><strong>Streaming handlers:</strong> Process SSE chunks from providers and forward to clients with consistent event format</li>
+              <li><strong>Usage tracking:</strong> Record input/output tokens, cache usage, and costs per request with server-generated request IDs</li>
+              <li><strong>Fallback routing:</strong> Route certain providers through aggregators (e.g., Anthropic streaming via OpenRouter)</li>
+            </ul>
+          </div>
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
+            <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">Implementation Note</h4>
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              The actual implementation uses Actix-web handlers with provider-specific modules in <code className="px-1 py-0.5 rounded bg-amber-200/50 dark:bg-amber-800 text-xs">server/src/handlers/proxy/providers/</code>.
+              See <code className="px-1 py-0.5 rounded bg-amber-200/50 dark:bg-amber-800 text-xs">router.rs</code> for the main routing logic.
+            </p>
           </div>
         </GlassCard>
       </section>
@@ -411,17 +393,17 @@ impl LLMProxy {
       {/* CTA Section */}
       <div className="mt-16">
         <GlassCard className="p-6" highlighted>
-          <h2 className="text-xl font-semibold mb-3">Continue into model configuration</h2>
+          <h2 className="text-xl font-semibold mb-3">{t['providerRouting.cta.heading']}</h2>
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Model configuration explains how allowed lists and token guardrails are exposed to the UI.
+            {t['providerRouting.cta.description']}
           </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Button asChild size="lg">
-              <Link href="/docs/model-configuration">Model configuration</Link>
-            </Button>
-            <Button asChild variant="outline" size="lg">
-              <Link href="/docs/runtime-walkthrough">Runtime walkthrough</Link>
-            </Button>
+          <div className="flex flex-col sm:flex-row gap-4 text-sm">
+            <Link href="/docs/model-configuration" className="text-primary hover:underline font-medium">
+              {t['providerRouting.cta.links.modelConfiguration']} →
+            </Link>
+            <Link href="/docs/runtime-walkthrough" className="text-primary hover:underline font-medium">
+              {t['providerRouting.cta.links.runtimeWalkthrough']} →
+            </Link>
           </div>
         </GlassCard>
       </div>

@@ -5,6 +5,9 @@ import Combine
 public final class AppContainer: ObservableObject {
     private let manager: DataServicesManager
 
+    /// Centralized badge coordinator - single source of truth for app badge
+    public let jobsBadgeCoordinator: JobsBadgeCoordinator
+
     public var filesService: FilesDataService {
         manager.filesService
     }
@@ -71,6 +74,10 @@ public final class AppContainer: ObservableObject {
             // Fallback: create new manager if core not initialized yet
             self.manager = DataServicesManager(baseURL: baseURL, deviceId: deviceId)
         }
+
+        // Initialize badge coordinator and configure it with the jobs service
+        self.jobsBadgeCoordinator = JobsBadgeCoordinator()
+        self.jobsBadgeCoordinator.configure(jobsDataService: manager.jobsService)
 
         manager.$connectionStatus
             .receive(on: DispatchQueue.main)

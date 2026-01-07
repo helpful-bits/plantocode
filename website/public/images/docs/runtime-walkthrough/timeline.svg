@@ -1,0 +1,279 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 520" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="inputGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
+    </linearGradient>
+    <linearGradient id="refineGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="discoveryGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="planGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="reviewGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <linearGradient id="executeGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.25"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrowWhite" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="rgba(255,255,255,0.6)"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1100" height="520" fill="url(#bgGrad)"/>
+
+  <!-- Grid pattern -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1100" height="520" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="550" y="32" text-anchor="middle" fill="#f8fafc" font-size="18" font-weight="600">Runtime Walkthrough: Task to Execution</text>
+  <text x="550" y="52" text-anchor="middle" fill="#94a3b8" font-size="12">End-to-end timeline of a planning task through the system</text>
+
+  <!-- Main timeline line -->
+  <line x1="50" y1="260" x2="1050" y2="260" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Stage 1: Task Capture -->
+  <g transform="translate(70, 100)">
+    <rect x="0" y="0" width="130" height="120" rx="10" fill="url(#inputGrad)" filter="url(#shadow)"/>
+    <text x="65" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">1. CAPTURE</text>
+    <line x1="15" y1="34" x2="115" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 44)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Text Input</text>
+    </g>
+    <g transform="translate(15, 70)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Voice Dictation</text>
+    </g>
+    <g transform="translate(15, 96)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Video Analysis</text>
+    </g>
+
+    <!-- Connector to timeline -->
+    <line x1="65" y1="120" x2="65" y2="140" stroke="#06b6d4" stroke-width="2"/>
+    <circle cx="65" cy="160" r="8" fill="#06b6d4" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Stage 2: Refinement -->
+  <g transform="translate(220, 100)">
+    <rect x="0" y="0" width="130" height="120" rx="10" fill="url(#refineGrad)" filter="url(#shadow)"/>
+    <text x="65" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">2. REFINE</text>
+    <line x1="15" y1="34" x2="115" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(10, 44)">
+      <text x="55" y="12" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="9">text_improvement</text>
+      <text x="55" y="26" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">job type</text>
+    </g>
+    <g transform="translate(15, 72)">
+      <rect x="0" y="0" width="100" height="20" rx="4" fill="rgba(0,0,0,0.2)"/>
+      <text x="50" y="14" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="8">TextImprovement</text>
+    </g>
+    <g transform="translate(15, 96)">
+      <rect x="0" y="0" width="100" height="20" rx="4" fill="rgba(0,0,0,0.2)"/>
+      <text x="50" y="14" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="8">Processor</text>
+    </g>
+
+    <line x1="65" y1="120" x2="65" y2="140" stroke="#8b5cf6" stroke-width="2"/>
+    <circle cx="65" cy="160" r="8" fill="#8b5cf6" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Stage 3: File Discovery (larger) -->
+  <g transform="translate(370, 80)">
+    <rect x="0" y="0" width="200" height="140" rx="10" fill="url(#discoveryGrad)" filter="url(#shadow)"/>
+    <text x="100" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">3. FILE DISCOVERY</text>
+    <line x1="15" y1="34" x2="185" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <!-- 4 stages of discovery (FileFinderWorkflow) -->
+    <g transform="translate(10, 44)">
+      <rect x="0" y="0" width="85" height="40" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="42" y="16" text-anchor="middle" fill="white" font-size="8" font-weight="500">Stage 1</text>
+      <text x="42" y="30" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="7">RootFolderSelection</text>
+    </g>
+    <g transform="translate(105, 44)">
+      <rect x="0" y="0" width="85" height="40" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="42" y="16" text-anchor="middle" fill="white" font-size="8" font-weight="500">Stage 2</text>
+      <text x="42" y="30" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="7">RegexFileFilter</text>
+    </g>
+    <g transform="translate(10, 90)">
+      <rect x="0" y="0" width="85" height="40" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="42" y="16" text-anchor="middle" fill="white" font-size="8" font-weight="500">Stage 3</text>
+      <text x="42" y="30" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="7">FileRelevance</text>
+    </g>
+    <g transform="translate(105, 90)">
+      <rect x="0" y="0" width="85" height="40" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="42" y="16" text-anchor="middle" fill="white" font-size="8" font-weight="500">Stage 4</text>
+      <text x="42" y="30" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="7">ExtendedPathFinder</text>
+    </g>
+
+    <!-- Internal flow arrows: 1→2→3→4 -->
+    <path d="M95 64 L105 64" stroke="rgba(255,255,255,0.4)" stroke-width="1" marker-end="url(#arrowWhite)"/>
+    <path d="M147 84 Q100 100 52 90" stroke="rgba(255,255,255,0.4)" stroke-width="1" fill="none" marker-end="url(#arrowWhite)"/>
+    <path d="M95 110 L105 110" stroke="rgba(255,255,255,0.4)" stroke-width="1" marker-end="url(#arrowWhite)"/>
+
+    <line x1="100" y1="140" x2="100" y2="160" stroke="#f97316" stroke-width="2"/>
+    <circle cx="100" cy="180" r="8" fill="#f97316" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Stage 4: Plan Generation -->
+  <g transform="translate(590, 100)">
+    <rect x="0" y="0" width="130" height="120" rx="10" fill="url(#planGrad)" filter="url(#shadow)"/>
+    <text x="65" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">4. GENERATE</text>
+    <line x1="15" y1="34" x2="115" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(10, 44)">
+      <text x="55" y="12" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="9">implementation_plan</text>
+      <text x="55" y="26" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="8">job type</text>
+    </g>
+    <g transform="translate(15, 70)">
+      <rect x="0" y="0" width="100" height="44" rx="4" fill="rgba(0,0,0,0.2)"/>
+      <text x="50" y="16" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="8">XML Plan Stream</text>
+      <text x="50" y="30" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="7">→ Monaco Viewer</text>
+    </g>
+
+    <line x1="65" y1="120" x2="65" y2="140" stroke="#3b82f6" stroke-width="2"/>
+    <circle cx="65" cy="160" r="8" fill="#3b82f6" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Stage 5: Review & Merge -->
+  <g transform="translate(740, 100)">
+    <rect x="0" y="0" width="130" height="120" rx="10" fill="url(#reviewGrad)" filter="url(#shadow)"/>
+    <text x="65" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">5. REVIEW</text>
+    <line x1="15" y1="34" x2="115" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 44)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Edit Plan</text>
+    </g>
+    <g transform="translate(15, 70)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Merge Plans</text>
+    </g>
+    <g transform="translate(15, 96)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Approve / Reject</text>
+    </g>
+
+    <line x1="65" y1="120" x2="65" y2="140" stroke="#22c55e" stroke-width="2"/>
+    <circle cx="65" cy="160" r="8" fill="#22c55e" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Stage 6: Execute -->
+  <g transform="translate(890, 100)">
+    <rect x="0" y="0" width="130" height="120" rx="10" fill="url(#executeGrad)" filter="url(#shadow)"/>
+    <text x="65" y="24" text-anchor="middle" fill="white" font-size="12" font-weight="600">6. EXECUTE</text>
+    <line x1="15" y1="34" x2="115" y2="34" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 44)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Terminal PTY</text>
+    </g>
+    <g transform="translate(15, 70)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">Copy Templates</text>
+    </g>
+    <g transform="translate(15, 96)">
+      <rect x="0" y="0" width="100" height="22" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="50" y="15" text-anchor="middle" fill="white" font-size="9">External Export</text>
+    </g>
+
+    <line x1="65" y1="120" x2="65" y2="140" stroke="#ef4444" stroke-width="2"/>
+    <circle cx="65" cy="160" r="8" fill="#ef4444" stroke="#0f172a" stroke-width="2"/>
+  </g>
+
+  <!-- Flow arrows on timeline -->
+  <g>
+    <path d="M143 260 L212 260" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M293 260 L362 260" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M478 260 L582 260" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M663 260 L732 260" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M813 260 L882 260" stroke="#64748b" stroke-width="2" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Bottom: Persistence Layer -->
+  <g transform="translate(70, 300)">
+    <rect x="0" y="0" width="950" height="80" rx="8" fill="rgba(34, 197, 94, 0.1)" stroke="rgba(34, 197, 94, 0.3)" stroke-width="1"/>
+    <text x="20" y="24" fill="#22c55e" font-size="11" font-weight="600">SQLite Persistence Layer</text>
+
+    <g transform="translate(20, 38)">
+      <rect x="0" y="0" width="140" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="70" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">sessions</text>
+      <text x="70" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">task context</text>
+    </g>
+    <g transform="translate(180, 38)">
+      <rect x="0" y="0" width="140" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="70" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">background_jobs</text>
+      <text x="70" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">all job records</text>
+    </g>
+    <g transform="translate(340, 38)">
+      <rect x="0" y="0" width="140" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="70" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">terminal_sessions</text>
+      <text x="70" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">PTY output logs</text>
+    </g>
+    <g transform="translate(500, 38)">
+      <rect x="0" y="0" width="140" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="70" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">task_desc_history</text>
+      <text x="70" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">version tracking</text>
+    </g>
+    <g transform="translate(660, 38)">
+      <rect x="0" y="0" width="140" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="70" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">file_selection_history</text>
+      <text x="70" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">discovery results</text>
+    </g>
+    <g transform="translate(820, 38)">
+      <rect x="0" y="0" width="110" height="32" rx="5" fill="rgba(34, 197, 94, 0.15)"/>
+      <text x="55" y="14" text-anchor="middle" fill="#22c55e" font-size="9" font-weight="500">error_logs</text>
+      <text x="55" y="26" text-anchor="middle" fill="rgba(34, 197, 94, 0.7)" font-size="8">audit trail</text>
+    </g>
+  </g>
+
+  <!-- Top: LLM Provider calls indicator -->
+  <g transform="translate(220, 70)">
+    <text x="0" y="0" fill="#a855f7" font-size="9">↑ LLM</text>
+  </g>
+  <g transform="translate(410, 60)">
+    <text x="0" y="0" fill="#f97316" font-size="9">↑ LLM (4 calls)</text>
+  </g>
+  <g transform="translate(620, 70)">
+    <text x="0" y="0" fill="#3b82f6" font-size="9">↑ LLM</text>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(70, 400)">
+    <text x="0" y="12" fill="#64748b" font-size="10">Each stage persists artifacts to SQLite • LLM calls stream responses via SSE • Human review required before execution</text>
+  </g>
+
+  <!-- Time indicator -->
+  <g transform="translate(50, 440)">
+    <line x1="0" y1="0" x2="1000" y2="0" stroke="#334155" stroke-width="1" stroke-dasharray="4,4"/>
+    <text x="0" y="16" fill="#64748b" font-size="9">Task Start</text>
+    <text x="500" y="16" text-anchor="middle" fill="#64748b" font-size="9">← Processing Time (varies by task complexity) →</text>
+    <text x="1000" y="16" text-anchor="end" fill="#64748b" font-size="9">Execution Complete</text>
+  </g>
+</svg>

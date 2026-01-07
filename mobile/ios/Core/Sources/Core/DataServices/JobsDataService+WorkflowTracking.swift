@@ -57,49 +57,7 @@ extension JobsDataService {
         return isImplementationPlan(job)
     }
 
-    // MARK: - Workflow Count Management
-
-    func bumpWorkflowCount(sessionId: String, delta: Int) {
-        let current = activeWorkflowJobsBySession[sessionId] ?? 0
-        var next = current + delta
-        if next < 0 { next = 0 }
-
-        if next > 10 {
-            next = 10
-            activeWorkflowJobsBySession[sessionId] = next
-            if activeSessionId == sessionId {
-                sessionActiveWorkflowJobs = next
-            }
-            scheduleCoalescedListJobsForActiveSession()
-            return
-        }
-
-        activeWorkflowJobsBySession[sessionId] = next
-        if activeSessionId == sessionId {
-            sessionActiveWorkflowJobs = next
-        }
-    }
-
-    func bumpImplementationPlanCount(sessionId: String, delta: Int) {
-        let current = activeImplementationPlansBySession[sessionId] ?? 0
-        var next = current + delta
-        if next < 0 { next = 0 }
-
-        if next > 10 {
-            next = 10
-            activeImplementationPlansBySession[sessionId] = next
-            if activeSessionId == sessionId {
-                sessionActiveImplementationPlans = next
-            }
-            scheduleCoalescedListJobsForActiveSession()
-            return
-        }
-
-        activeImplementationPlansBySession[sessionId] = next
-        if activeSessionId == sessionId {
-            sessionActiveImplementationPlans = next
-        }
-    }
+    // MARK: - Session Count Recomputation
 
     func recomputeSessionWorkflowCount(for sessionId: String?) {
         guard let sessionId = sessionId else {

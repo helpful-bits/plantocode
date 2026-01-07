@@ -165,10 +165,17 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig, strict_rate_limiter: RateL
     );
 
     // Audio transcription routes (/api/audio/*) - mimics OpenAI API structure
-    cfg.service(web::scope("/audio").route(
-        "/transcriptions",
-        web::post().to(handlers::proxy_handlers::transcription_handler),
-    ));
+    cfg.service(
+        web::scope("/audio")
+            .route(
+                "/transcriptions",
+                web::post().to(handlers::proxy_handlers::transcription_handler),
+            )
+            .route(
+                "/transcriptions/stream",
+                web::post().to(handlers::proxy_handlers::streaming_transcription_handler),
+            ),
+    );
 
     // System prompts routes (/api/system-prompts/*)
     cfg.service(

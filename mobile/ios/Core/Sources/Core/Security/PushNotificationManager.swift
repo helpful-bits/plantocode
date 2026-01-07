@@ -333,6 +333,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
                 isTokenRegistered = true
                 pushTokenSyncState = .synced
                 pendingPushToken = nil
+                lastError = nil
                 logger.info("Successfully synced push token with server")
             } catch {
                 pushTokenSyncState = .failed
@@ -390,6 +391,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
             isTokenRegistered = true
             pushTokenSyncState = .synced
             pendingPushToken = nil
+            lastError = nil
             logger.info("Successfully synced push token with server")
         } catch {
             pushTokenSyncState = .failed
@@ -495,6 +497,7 @@ public class PushNotificationManager: NSObject, ObservableObject {
             // Handle various type formats
             let fileFinderTypes = ["file_finder_complete", "file_finder.completed", "fileFinder.completed", "find_files.completed"]
             let planTypes = ["implementation_plan_complete", "implementation_plan.completed", "plan.completed"]
+            let jobRefreshTypes = ["job_completed", "job_failed", "file_finder_complete", "implementation_plan_complete"]
 
             if fileFinderTypes.contains(type) {
                 await ensureSessionLoaded(sessionId: sessionId, projectDirectory: projectDirectory)
@@ -503,12 +506,14 @@ public class PushNotificationManager: NSObject, ObservableObject {
                 await ensureSessionLoaded(sessionId: sessionId, projectDirectory: projectDirectory)
                 AppState.shared.deepLinkRoute = .openPlan(sessionId: sessionId, projectDirectory: projectDirectory, jobId: jobId)
             }
+
+            // Set flag for job-related notifications to trigger refresh when app becomes active
+            if jobRefreshTypes.contains(type) {
+                AppState.shared.needsJobsRefreshOnNextActive = true
+            }
         }
 
-        // Update app badge if provided
-        if let badge = data.badge {
-            UIApplication.shared.applicationIconBadgeNumber = badge
-        }
+        // Badge is now managed centrally by JobsBadgeCoordinator - no direct manipulation here
     }
 
     private func handleJobCompletedNotification(_ data: PushNotificationData) async {

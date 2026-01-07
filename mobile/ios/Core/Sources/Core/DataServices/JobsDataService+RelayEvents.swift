@@ -7,22 +7,46 @@ extension JobsDataService {
 
     // MARK: - Job Lookup & Mutation Helpers
 
+    /// Look up a job by ID from the canonical store
     func job(byId jobId: String) -> BackgroundJob? {
-        guard let index = jobsIndex[jobId] else { return nil }
-        return jobs[index]
+        return jobsById[jobId]
     }
 
+    /// Insert or replace a job through the canonical reducer
     func insertOrReplace(job: BackgroundJob) {
-        guard shouldIgnore(job: job) == false else { return }
+        reduceJobs([job], source: .event)
+    }
 
-        mutateJobs {
-            if let index = jobsIndex[job.id] {
-                jobs[index] = job
-            } else {
-                jobs.append(job)
-                jobsIndex[job.id] = jobs.count - 1
+    /// Handle DeviceLinkEvent for job lifecycle routing through reducer
+    func handleDeviceLinkEvent(_ event: RelayEvent) {
+        let payload = event.data.mapValues { $0.value }
+
+        switch event.eventType {
+        case "job:created":
+            if let jobData = extractJobDataFromPayload(payload),
+               let job = decodeJob(from: jobData) {
+                handleJobCreated(job)
             }
-            lastAccumulatedLengths[job.id] = job.response?.count ?? 0
+        case "job:status-changed":
+            if let jobData = extractJobDataFromPayload(payload),
+               let job = decodeJob(from: jobData) {
+                handleJobStatusChanged(job)
+            }
+        case "job:finalized":
+            if let jobData = extractJobDataFromPayload(payload),
+               let job = decodeJob(from: jobData) {
+                handleJobFinalized(job)
+            }
+        case "job:deleted":
+            if let jobId = extractJobIdFromPayload(payload) {
+                handleJobDeleted(jobId: jobId)
+            }
+        case "jobs:list-invalidated":
+            Task {
+                await self.reconcileJobs(reason: .listInvalidated)
+            }
+        default:
+            break
         }
     }
 
@@ -76,7 +100,8 @@ extension JobsDataService {
     // MARK: - Job Hydration
 
     func hydrateJob(jobId: String, force: Bool, onReady: (() -> Void)?) {
-        if !force, jobsIndex[jobId] != nil {
+        // Check canonical store for job presence
+        if !force, jobsById[jobId] != nil {
             onReady?()
             return
         }
@@ -113,8 +138,8 @@ extension JobsDataService {
                         }
                     }
                     guard let job = self.decodeJob(from: jobDict) else { return }
-                    self.insertOrReplace(job: job)
-                    self.lastAccumulatedLengths[jobId] = job.response?.count ?? 0
+                    // Route through canonical reducer
+                    self.reduceJobs([job], source: .event)
                 }
             )
             .store(in: &cancellables)
@@ -122,7 +147,8 @@ extension JobsDataService {
 
     @discardableResult
     func ensureJobPresent(jobId: String, onReady: (() -> Void)? = nil) -> Bool {
-        if jobsIndex[jobId] != nil {
+        // Check canonical store for job presence
+        if jobsById[jobId] != nil {
             return true
         }
         hydrateJob(jobId: jobId, force: false, onReady: onReady)
@@ -155,18 +181,14 @@ extension JobsDataService {
                     pageSize: 100
                 )
 
+                // Route through listJobsViaRPC which uses the canonical reducer
+                // bypassCache == true -> shouldReplace = true -> .snapshot source
+                // bypassCache == false -> shouldReplace = false -> .event source
                 self.listJobsViaRPC(request: request, shouldReplace: bypassCache)
                     .sink(
                         receiveCompletion: { _ in },
-                        receiveValue: { [weak self] response in
-                            guard let self = self else { return }
-                            if bypassCache {
-                                self.replaceJobsArray(with: response.jobs)
-                            } else {
-                                self.mergeJobs(fetchedJobs: response.jobs)
-                            }
-                            self.updateWorkflowCountsFromJobs(self.jobs)
-                            self.updateImplementationPlanCountsFromJobs(self.jobs)
+                        receiveValue: { _ in
+                            // State already updated via reducer in listJobsViaRPC
                         }
                     )
                     .store(in: &self.cancellables)
@@ -177,23 +199,6 @@ extension JobsDataService {
 
         coalescedResyncWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-    }
-
-    // MARK: - Jobs Array Mutation
-
-    // Centralized publisher for in-place mutations
-    func mutateJobs(_ block: () -> Void) {
-        self.objectWillChange.send()
-        block()
-    }
-
-    /// Atomically replace jobs array with minimal UI disruption
-    func replaceJobsArray(with newJobs: [BackgroundJob]) {
-        mutateJobs {
-            self.jobs = newJobs
-            self.jobsIndex = Dictionary(uniqueKeysWithValues: newJobs.enumerated().map { ($1.id, $0) })
-            self.lastAccumulatedLengths = Dictionary(uniqueKeysWithValues: newJobs.map { ($0.id, $0.response?.count ?? 0) })
-        }
     }
 
     // MARK: - Payload Extraction Helpers
@@ -233,153 +238,6 @@ extension JobsDataService {
         return extractJobIdFromPayload(payload)
     }
 
-    // MARK: - Workflow Job Count Updates from Events
-
-    func updateWorkflowJobCounts(from event: RelayEvent) {
-        let payload = event.data.mapValues { $0.value }
-
-        switch event.eventType {
-        case "job:created":
-            if let jobData = extractJobDataFromPayload(payload), let job = decodeJob(from: jobData) {
-                let isUmbrella = isWorkflowUmbrella(job)
-                let isActive = isActiveStatus(job.jobStatus)
-
-                if isUmbrella {
-                    // Only bump count if this is a NEW job (not already in cache)
-                    let isNewJob = workflowJobsCache[job.id] == nil
-                    workflowJobsCache[job.id] = job
-                    if isNewJob && isActive {
-                        bumpWorkflowCount(sessionId: job.sessionId, delta: +1)
-                    }
-                }
-            } else {
-                scheduleCoalescedListJobsForActiveSession()
-            }
-
-        case "job:status-changed", "job:finalized":
-            guard let jobId = extractJobIdFromPayload(payload) else { return }
-
-            guard let job = workflowJobsCache[jobId] else {
-                hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
-                    guard let self = self else { return }
-                    if let hydratedJob = self.job(byId: jobId), self.isWorkflowUmbrella(hydratedJob) {
-                        self.workflowJobsCache[jobId] = hydratedJob
-                        self.updateWorkflowJobCounts(from: event)
-                    }
-                })
-                return
-            }
-
-            if let statusString = extractStatusFromPayload(payload),
-               let newStatus = JobStatus(rawValue: statusString) {
-                let newActive = isActiveStatus(newStatus)
-                let oldActive = isActiveStatus(job.jobStatus)
-                if newActive != oldActive {
-                    bumpWorkflowCount(sessionId: job.sessionId, delta: newActive ? +1 : -1)
-                    // When workflow completes (transitions from active to inactive), notify to refresh session
-                    if !newActive && job.taskType == "file_finder_workflow" {
-                        NotificationCenter.default.post(
-                            name: Notification.Name("workflow-completed"),
-                            object: nil,
-                            userInfo: ["sessionId": job.sessionId, "taskType": job.taskType]
-                        )
-                    }
-                }
-                var updatedJob = job
-                updatedJob.status = statusString
-                workflowJobsCache[jobId] = updatedJob
-            }
-
-        case "job:deleted":
-            guard let jobId = extractJobIdFromPayload(payload) else { return }
-
-            guard let job = workflowJobsCache[jobId] else {
-                logger.debug("Workflow job \(jobId) not in cache during deletion - already removed or never tracked")
-                return
-            }
-
-            if isActiveStatus(job.jobStatus) {
-                bumpWorkflowCount(sessionId: job.sessionId, delta: -1)
-            }
-            workflowJobsCache.removeValue(forKey: jobId)
-
-        default:
-            break
-        }
-    }
-
-    // MARK: - Implementation Plan Count Updates from Events
-
-    func updateImplementationPlanCounts(from event: RelayEvent) {
-        let payload = event.data.mapValues { $0.value }
-
-        switch event.eventType {
-        case "job:created":
-            if let jobData = extractJobDataFromPayload(payload), let job = decodeJob(from: jobData) {
-                let isPlan = isImplementationPlan(job)
-                let isActive = isActiveStatus(job.jobStatus)
-
-                if isPlan {
-                    // Only bump count if this is a NEW job (not already in cache)
-                    let isNewJob = implementationPlanCache[job.id] == nil
-                    implementationPlanCache[job.id] = job
-                    if isNewJob && isActive {
-                        bumpImplementationPlanCount(sessionId: job.sessionId, delta: +1)
-                    }
-                }
-            }
-
-        case "job:status-changed", "job:finalized":
-            guard let jobId = extractJobIdFromPayload(payload) else { return }
-
-            guard let job = implementationPlanCache[jobId] else {
-                // Try to hydrate and re-check if it's an implementation plan
-                hydrateJob(jobId: jobId, force: true, onReady: { [weak self] in
-                    guard let self = self else { return }
-                    if let hydratedJob = self.job(byId: jobId), self.isImplementationPlan(hydratedJob) {
-                        self.implementationPlanCache[jobId] = hydratedJob
-                        self.updateImplementationPlanCounts(from: event)
-                    }
-                })
-                return
-            }
-
-            if let statusString = extractStatusFromPayload(payload),
-               let newStatus = JobStatus(rawValue: statusString) {
-                let newActive = isActiveStatus(newStatus)
-                let oldActive = isActiveStatus(job.jobStatus)
-                if newActive != oldActive {
-                    bumpImplementationPlanCount(sessionId: job.sessionId, delta: newActive ? +1 : -1)
-
-                    // Auto-trigger markdown conversion when implementation plan completes (active → inactive transition)
-                    if oldActive == true && newActive == false {
-                        Task {
-                            await triggerMarkdownConversionIfNeeded(jobId: jobId)
-                        }
-                    }
-                }
-                var updatedJob = job
-                updatedJob.status = statusString
-                implementationPlanCache[jobId] = updatedJob
-            }
-
-        case "job:deleted":
-            guard let jobId = extractJobIdFromPayload(payload) else { return }
-
-            guard let job = implementationPlanCache[jobId] else {
-                return
-            }
-
-            if isActiveStatus(job.jobStatus) {
-                bumpImplementationPlanCount(sessionId: job.sessionId, delta: -1)
-            }
-            implementationPlanCache.removeValue(forKey: jobId)
-
-        default:
-            break
-        }
-    }
-
     // MARK: - Main Relay Event Handler
 
     @MainActor
@@ -387,11 +245,8 @@ extension JobsDataService {
         // Handle job:* events and plan events
         guard event.eventType.hasPrefix("job:") || event.eventType == "PlanCreated" || event.eventType == "PlanModified" || event.eventType == "PlanDeleted" else { return }
 
-        // Update job counters (only for job:* events)
-        if event.eventType.hasPrefix("job:") {
-            updateWorkflowJobCounts(from: event)
-            updateImplementationPlanCounts(from: event)
-        }
+        // All job state changes flow through the reducer which calls recomputeDerivedState()
+        // This ensures consistent badge counts and workflow/implementation plan tracking
 
         // Early guard: coalesced fallback for job:* events missing jobId
         if event.eventType.hasPrefix("job:"),
@@ -411,8 +266,8 @@ extension JobsDataService {
             // Attempt to decode job from payload using shared helper
             if let jobData = extractJobDataFromPayload(payload),
                let job = decodeJob(from: jobData) {
-                insertOrReplace(job: job)
-                // Job is now in the array - no need to refetch
+                // Route through reducer (immediate publish for structural changes)
+                reduceJobs([job], source: .event)
             } else {
                 // Payload missing or decode failed - hydrate by jobId
                 guard let jobIdToHydrate = jobId else {
@@ -422,20 +277,13 @@ extension JobsDataService {
                     return
                 }
 
-                // Hydrate the job - it will be added to the array via insertOrReplace
+                // Hydrate the job - it will be added via reducer
                 hydrateJob(jobId: jobIdToHydrate, force: false, onReady: nil)
             }
 
         case "job:deleted":
             guard let jobId = jobId else { return }
-            if let index = jobsIndex[jobId] {
-                mutateJobs {
-                    lastAccumulatedLengths.removeValue(forKey: jobId)
-                    jobs.remove(at: index)
-                    jobsIndex.removeValue(forKey: jobId)
-                    jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
-                }
-            }
+            handleJobDeleted(jobId: jobId)
 
         case "job:metadata-updated":
             guard let jobId = jobId else { return }
@@ -444,8 +292,7 @@ extension JobsDataService {
             }) == false {
                 return
             }
-            guard let index = jobsIndex[jobId] else { return }
-            var job = jobs[index]
+            guard var job = jobsById[jobId] else { return }
             guard shouldIgnore(job: job) == false else { return }
 
             // Desktop sends metadataPatch nested under payload.payload
@@ -478,19 +325,17 @@ extension JobsDataService {
 
                     if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
                        let updatedString = String(data: updatedData, encoding: .utf8) {
-                        mutateJobs {
-                            job.metadata = updatedString
-                            job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                            jobs[index] = job
-                        }
+                        job.metadata = updatedString
+                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                        // Route through reducer
+                        reduceJobs([job], source: .event)
                     }
                 } else if let patchData = try? JSONSerialization.data(withJSONObject: metadataPatch),
                           let patchString = String(data: patchData, encoding: .utf8) {
-                    mutateJobs {
-                        job.metadata = patchString
-                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                        jobs[index] = job
-                    }
+                    job.metadata = patchString
+                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    // Route through reducer
+                    reduceJobs([job], source: .event)
                 }
             }
 
@@ -501,9 +346,11 @@ extension JobsDataService {
             }) == false {
                 return
             }
-            guard let index = jobsIndex[jobId] else { return }
-            var job = jobs[index]
+            guard var job = jobsById[jobId] else { return }
             guard shouldIgnore(job: job) == false else { return }
+
+            // Track status transition for side effects
+            let wasActive = job.jobStatus.isActive
 
             if let status = payload["status"] as? String {
                 job.status = status
@@ -542,61 +389,56 @@ extension JobsDataService {
                 job.durationMs = Int32(duration)
             }
 
-            mutateJobs {
-                if event.eventType == "job:finalized" {
-                    lastAccumulatedLengths.removeValue(forKey: jobId)
-                    if let response = payload["response"] as? String {
-                        job.response = response
-                        lastAccumulatedLengths[jobId] = response.count
-                    } else {
-                        // No response in finalized event - may be truncated, refresh to get full content
-                        Task { @MainActor [weak self] in
-                            self?.refreshJob(jobId: jobId)
-                        }
+            if event.eventType == "job:finalized" {
+                lastAccumulatedLengths.removeValue(forKey: jobId)
+                if let response = payload["response"] as? String {
+                    job.response = response
+                    lastAccumulatedLengths[jobId] = response.count
+                } else {
+                    // No response in finalized event - may be truncated, refresh to get full content
+                    Task { @MainActor [weak self] in
+                        self?.refreshJob(jobId: jobId)
                     }
                 }
-                jobs[index] = job
+            }
+
+            // Route through reducer (immediate publish for structural changes)
+            reduceJobs([job], source: .event)
+
+            // Handle side effects after reducing
+            let isNowActive = job.jobStatus.isActive
+            if wasActive && !isNowActive {
+                // Post workflow completion notification if transitioning from active to inactive
+                if isWorkflowUmbrella(job) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("workflow-completed"),
+                        object: nil,
+                        userInfo: ["sessionId": job.sessionId, "taskType": job.taskType]
+                    )
+                }
+
+                // Trigger markdown conversion for completed implementation plans
+                if isImplementationPlan(job) {
+                    Task {
+                        await triggerMarkdownConversionIfNeeded(jobId: job.id)
+                    }
+                }
+
+                // Trigger session refresh for completed file-finding tasks
+                if job.jobStatus == .completed && JobTypeFilters.isFileFinderTask(job) {
+                    NotificationCenter.default.post(
+                        name: Notification.Name("file-finding-job-completed"),
+                        object: nil,
+                        userInfo: ["sessionId": job.sessionId, "jobId": job.id, "taskType": job.taskType]
+                    )
+                }
             }
 
         case "job:response-appended":
-            guard let jobId = jobId else { return }
-            guard let chunk = payload["chunk"] as? String else { return }
-            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
-                self?.applyRelayEvent(event)
-            }) == false {
-                return
-            }
-            guard let index = jobsIndex[jobId] else { return }
-            var job = jobs[index]
-            guard shouldIgnore(job: job) == false else { return }
-
-            guard let accumulatedLength = intValue(from: payload["accumulatedLength"]) ??
-                intValue(from: payload["accumulated_length"]) else {
-                refreshJob(jobId: jobId)
-                return
-            }
-
-            let currentResponse = job.response ?? ""
-            let lastKnownLength = lastAccumulatedLengths[jobId] ?? 0
-
-            if accumulatedLength <= lastKnownLength {
-                return
-            }
-
-            if lastKnownLength + chunk.count == accumulatedLength {
-                // NOTE: PlanDetailView assumes job.response length is monotonically non-decreasing
-                // while streaming. When accumulatedLength increases and matches lastKnownLength + chunk.count,
-                // we append chunk to the current response so observers can trust growing response.count.
-                mutateJobs {
-                    job.response = currentResponse + chunk
-                    lastAccumulatedLengths[jobId] = accumulatedLength
-                    job.updatedAt = intValue(from: payload["updatedAt"]).map(Int64.init) ?? job.updatedAt
-                    jobs[index] = job
-                }
-            } else {
-                lastAccumulatedLengths[jobId] = accumulatedLength
-                refreshJob(jobId: jobId)
-            }
+            // Mobile doesn't display streaming response content - it shows a spinner during streaming
+            // and only displays the final response after job:finalized. So we just ignore these events.
+            // The full response will be fetched when the job is finalized.
+            break
 
         case "job:stream-progress":
             guard let jobId = jobId else { return }
@@ -605,8 +447,7 @@ extension JobsDataService {
             }) == false {
                 return
             }
-            guard let index = jobsIndex[jobId] else { return }
-            var job = jobs[index]
+            guard var job = jobsById[jobId] else { return }
             guard shouldIgnore(job: job) == false else { return }
 
             if let existingMetadata = job.metadata,
@@ -629,11 +470,10 @@ extension JobsDataService {
 
                 if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
                    let updatedString = String(data: updatedData, encoding: .utf8) {
-                    mutateJobs {
-                        job.metadata = updatedString
-                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
-                        jobs[index] = job
-                    }
+                    job.metadata = updatedString
+                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    // Route through reducer with high-frequency debounce
+                    reduceJobs([job], source: .event, isHighFrequency: true)
                 }
             }
 
@@ -644,6 +484,104 @@ extension JobsDataService {
 
         default:
             break
+        }
+    }
+
+    // MARK: - Canonical Event Handlers (Reducer-Based)
+
+    /// Handle job:created event through canonical reducer
+    func handleJobCreated(_ job: BackgroundJob) {
+        reduceJobs([job], source: .event)
+    }
+
+    /// Handle job:status-changed event through canonical reducer
+    /// Also handles side effects like workflow completion notifications
+    func handleJobStatusChanged(_ job: BackgroundJob) {
+        // Check for status transition side effects before reducing
+        let oldJob = self.job(byId: job.id)
+        let wasActive = oldJob?.jobStatus.isActive ?? true
+        let isNowActive = job.jobStatus.isActive
+
+        reduceJobs([job], source: .event)
+
+        // Post workflow completion notification if transitioning from active to inactive
+        if wasActive && !isNowActive && isWorkflowUmbrella(job) {
+            NotificationCenter.default.post(
+                name: Notification.Name("workflow-completed"),
+                object: nil,
+                userInfo: ["sessionId": job.sessionId, "taskType": job.taskType]
+            )
+        }
+
+        // Trigger markdown conversion for completed implementation plans
+        if wasActive && !isNowActive && isImplementationPlan(job) {
+            Task {
+                await triggerMarkdownConversionIfNeeded(jobId: job.id)
+            }
+        }
+
+        // Trigger session refresh for completed file-finding tasks
+        // This ensures mobile has latest file selections even if relay event is delayed
+        if wasActive && !isNowActive && job.jobStatus == .completed && JobTypeFilters.isFileFinderTask(job) {
+            NotificationCenter.default.post(
+                name: Notification.Name("file-finding-job-completed"),
+                object: nil,
+                userInfo: ["sessionId": job.sessionId, "jobId": job.id, "taskType": job.taskType]
+            )
+        }
+    }
+
+    /// Handle job:finalized event through canonical reducer
+    /// Also handles side effects like workflow completion notifications
+    func handleJobFinalized(_ job: BackgroundJob) {
+        // Check for status transition side effects before reducing
+        let oldJob = self.job(byId: job.id)
+        let wasActive = oldJob?.jobStatus.isActive ?? true
+        let isNowActive = job.jobStatus.isActive
+
+        reduceJobs([job], source: .event)
+
+        // Post workflow completion notification if transitioning from active to inactive
+        if wasActive && !isNowActive && isWorkflowUmbrella(job) {
+            NotificationCenter.default.post(
+                name: Notification.Name("workflow-completed"),
+                object: nil,
+                userInfo: ["sessionId": job.sessionId, "taskType": job.taskType]
+            )
+        }
+
+        // Trigger markdown conversion for completed implementation plans
+        if wasActive && !isNowActive && isImplementationPlan(job) {
+            Task {
+                await triggerMarkdownConversionIfNeeded(jobId: job.id)
+            }
+        }
+
+        // Trigger session refresh for completed file-finding tasks
+        // This ensures mobile has latest file selections even if relay event is delayed
+        if wasActive && !isNowActive && job.jobStatus == .completed && JobTypeFilters.isFileFinderTask(job) {
+            NotificationCenter.default.post(
+                name: Notification.Name("file-finding-job-completed"),
+                object: nil,
+                userInfo: ["sessionId": job.sessionId, "jobId": job.id, "taskType": job.taskType]
+            )
+        }
+    }
+
+    /// Handle job:deleted event - removes job from canonical store and recomputes derived state
+    func handleJobDeleted(jobId: String) {
+        // Remove from canonical store (single source of truth)
+        jobsById.removeValue(forKey: jobId)
+        lastAccumulatedLengths.removeValue(forKey: jobId)
+
+        // Recompute derived state (will update jobs array and jobsIndex)
+        recomputeDerivedState()
+    }
+
+    /// Handle jobs:list-invalidated event - triggers reconciliation
+    func handleJobsListInvalidatedEvent(sessionId: String?) {
+        Task {
+            await self.reconcileJobs(reason: .pushHint)
         }
     }
 

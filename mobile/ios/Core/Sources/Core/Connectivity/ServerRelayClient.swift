@@ -103,6 +103,16 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var isDisconnecting = false
 
+    /// Callback invoked when relay session is registered or resumed.
+    /// Used by MultiConnectionManager to trigger jobs reconciliation on successful handshake.
+    public var onRegisteredOrResumed: (() -> Void)?
+
+    /// Provider to check if network is online. Used to skip futile connection attempts when offline.
+    public var isNetworkOnline: (() -> Bool)?
+
+    /// Provider to get current active session ID for heartbeat payloads.
+    public var activeSessionIdProvider: (() -> String?)?
+
     // MARK: - Public Interface
 
     /// Stream of incoming events from the relay
@@ -349,6 +359,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         registrationTimer?.invalidate()
         registrationTimer = nil
 
+        // Only clear session credentials on user-initiated disconnect
         if isUserInitiated {
             self.sessionId = nil
             self.resumeToken = nil
@@ -357,17 +368,23 @@ public class ServerRelayClient: NSObject, ObservableObject {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
 
-        executeSafelyOnRpcQueue {
-            let pendingIds = Array(self.pendingRPCCalls.keys)
-            let subjects = Array(self.pendingRPCCalls.values)
+        if isUserInitiated {
+            // User explicitly disconnected: clear queues and fail all pending calls
+            executeSafelyOnRpcQueue {
+                let pendingIds = Array(self.pendingRPCCalls.keys)
+                let subjects = Array(self.pendingRPCCalls.values)
 
-            for (id, subject) in zip(pendingIds, subjects) {
-                subject.send(completion: .failure(.disconnected))
-                self.removePendingCall(id: id)
+                for (id, subject) in zip(pendingIds, subjects) {
+                    subject.send(completion: .failure(.disconnected))
+                    self.removePendingCall(id: id)
+                }
             }
-        }
 
-        pendingMessageQueue.removeAll()
+            pendingMessageQueue.removeAll()
+        }
+        // Non-user disconnect (e.g., network change / transient outage):
+        // - Keep pendingMessageQueue so it can be flushed on reconnect.
+        // - Keep pendingRPCCalls so invoke() timeouts handle failures if reconnect never happens.
     }
 
     // MARK: - RPC Calls
@@ -541,8 +558,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 do {
                     // Wait for connection if not already connected
                     if case .disconnected = self.connectionState {
-                        // Not connected, initiate connection if we have a token
-                        if let token = self.jwtToken {
+                        // Check network status before attempting connection
+                        if let isNetworkOnline = self.isNetworkOnline, !isNetworkOnline() {
+                            // Network is offline; skip connection attempt.
+                            // Message will be queued and MultiConnectionManager will reconnect when online.
+                        } else if let token = self.jwtToken {
+                            // Network is online or status unknown, initiate connection
                             _ = self.connect(jwtToken: token)
                         }
                     }
@@ -836,18 +857,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     /// Send control message to unbind binary terminal output
-    public func sendBinaryUnbind(sessionId: String? = nil) {
+    public func sendBinaryUnbind(sessionId: String) {
         Task { [weak self] in
             guard let self = self else { return }
             do {
-                let payload = sessionId.map { ["sessionId": $0] }
-                try await self.sendMessage(type: "terminal.binary.unbind", payload: payload)
+                try await self.sendMessage(type: "terminal.binary.unbind", payload: ["sessionId": sessionId])
 
-                if let current = self.currentBinaryBind, let sid = sessionId {
-                    if current.sessionId == sid {
-                        self.currentBinaryBind = nil
-                    }
-                } else {
+                if let current = self.currentBinaryBind, current.sessionId == sessionId {
                     self.currentBinaryBind = nil
                 }
             } catch {
@@ -901,34 +917,21 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private func handleWebSocketMessage(_ message: URLSessionWebSocketTask.Message) {
         switch message {
         case .string(let text):
-            // In receive loop (text-only), route by root["type"]
             handleTextMessage(text)
         case .data(let data):
-            // Check for framed terminal event with explicit sessionId
-            if let framed = parseFramedTerminalEvent(data) {
-                logger.debug("WebSocket framed binary received: \(framed.payload.count) bytes, sessionId=\(framed.sessionId)")
-                publishOnMain {
-                    self.terminalBytesSubject.send(
-                        TerminalBytesEvent(
-                            data: framed.payload,
-                            timestamp: Date(),
-                            sessionId: framed.sessionId
-                        )
+            guard let framed = parseFramedTerminalEvent(data) else {
+                logger.debug("Dropping unframed binary data: \(data.count) bytes")
+                return
+            }
+            logger.debug("WebSocket framed binary received: \(framed.payload.count) bytes, sessionId=\(framed.sessionId)")
+            publishOnMain {
+                self.terminalBytesSubject.send(
+                    TerminalBytesEvent(
+                        data: framed.payload,
+                        timestamp: Date(),
+                        sessionId: framed.sessionId
                     )
-                }
-            } else {
-                // Legacy: Binary frames are raw terminal output - use currentBinaryBind sessionId
-                let sessionId = self.currentBinaryBind?.sessionId
-                logger.debug("WebSocket binary frame received: \(data.count) bytes, currentBinaryBind=\(sessionId ?? "nil")")
-                publishOnMain {
-                    self.terminalBytesSubject.send(
-                        TerminalBytesEvent(
-                            data: data,
-                            timestamp: Date(),
-                            sessionId: sessionId
-                        )
-                    )
-                }
+                )
             }
         @unknown default:
             break
@@ -1051,6 +1054,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         publishOnMain {
             self.connectionState = .connected(handshake)
             self.isConnected = true
+            self.lastError = nil
         }
         startHeartbeat()
         startWatchdog()
@@ -1061,6 +1065,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
         // Complete registration promise
         registrationPromise?(.success(()))
         registrationPromise = nil
+
+        // Notify listeners that registration completed successfully
+        onRegisteredOrResumed?()
     }
 
     private func handleResumedMessage(_ json: [String: Any]) {
@@ -1112,6 +1119,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         publishOnMain {
             self.connectionState = .connected(handshake)
             self.isConnected = true
+            self.lastError = nil
         }
         startHeartbeat()
         startWatchdog()
@@ -1122,6 +1130,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
         // Complete the registration promise
         registrationPromise?(.success(()))
         registrationPromise = nil
+
+        // Notify listeners that resume completed successfully
+        onRegisteredOrResumed?()
     }
 
     private func handleSessionMessage(_ json: [String: Any]) {
@@ -1414,7 +1425,11 @@ public class ServerRelayClient: NSObject, ObservableObject {
         Task { [weak self] in
             guard let self = self else { return }
             do {
-                try await self.sendMessage(type: "heartbeat", payload: nil)
+                var payload: [String: Any]?
+                if let activeSessionId = self.activeSessionIdProvider?() {
+                    payload = ["activeSessionId": activeSessionId]
+                }
+                try await self.sendMessage(type: "heartbeat", payload: payload)
             } catch {
                 logger.error("Failed to send heartbeat: \(error)")
             }

@@ -82,8 +82,11 @@ export default async function DataModelDocPage({ params }: { params: Promise<{ l
                 <p>id TEXT PRIMARY KEY</p>
                 <p>name, project_directory, project_hash</p>
                 <p>task_description, search_term, model_used</p>
+                <p>search_selected_files_only INTEGER (0/1)</p>
+                <p>video_analysis_prompt, merge_instructions</p>
                 <p>included_files, force_excluded_files (JSON)</p>
                 <p>task_history_version, file_history_version</p>
+                <p>task_history_current_index, file_history_current_index</p>
                 <p>created_at, updated_at (Unix timestamps)</p>
               </div>
             </div>
@@ -92,10 +95,11 @@ export default async function DataModelDocPage({ params }: { params: Promise<{ l
               <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground">
                 <p>id TEXT PRIMARY KEY, session_id FK</p>
                 <p>task_type, status (with CHECK constraint)</p>
-                <p>prompt TEXT, response TEXT</p>
+                <p>prompt TEXT, response TEXT, error_message TEXT</p>
                 <p>tokens_sent, tokens_received, cache_*_tokens</p>
                 <p>model_used, actual_cost REAL</p>
                 <p>metadata JSON, system_prompt_template</p>
+                <p>is_finalized INTEGER (0/1 flag)</p>
                 <p>start_time, end_time, server_request_id</p>
               </div>
             </div>
@@ -104,11 +108,35 @@ export default async function DataModelDocPage({ params }: { params: Promise<{ l
               <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground">
                 <p>id TEXT PRIMARY KEY, job_id FK (optional)</p>
                 <p>session_id TEXT UNIQUE</p>
-                <p>status (idle, running, completed, failed, ...)</p>
+                <p>status: idle, starting, initializing, running, completed, failed, agent_requires_attention, recovering, disconnected, stuck, restored</p>
                 <p>process_pid, exit_code</p>
                 <p>working_directory, environment_vars JSON</p>
                 <p>output_log TEXT (accumulated PTY output)</p>
                 <p>last_output_at, started_at, ended_at</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-foreground">migrations table</h4>
+              <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground">
+                <p>id INTEGER PRIMARY KEY AUTOINCREMENT</p>
+                <p>name TEXT NOT NULL</p>
+                <p>applied_at INTEGER (Unix timestamp)</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-foreground">db_diagnostic_logs table</h4>
+              <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground">
+                <p>id INTEGER PRIMARY KEY AUTOINCREMENT</p>
+                <p>timestamp INTEGER, error_type TEXT</p>
+                <p>error_message TEXT, additional_info TEXT</p>
+              </div>
+            </div>
+            <div>
+              <h4 className="text-sm font-semibold mb-2 text-foreground">app_settings table</h4>
+              <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground">
+                <p>key TEXT PRIMARY KEY</p>
+                <p>value TEXT NOT NULL, description TEXT</p>
+                <p>created_at, updated_at (Unix timestamps)</p>
               </div>
             </div>
           </div>
@@ -173,7 +201,7 @@ export default async function DataModelDocPage({ params }: { params: Promise<{ l
           <ul className="space-y-2 font-mono text-sm text-muted-foreground ml-6 list-disc">
             <li>desktop/src-tauri/migrations/consolidated_schema.sql - Full schema</li>
             <li>desktop/src-tauri/src/db_utils/mod.rs - Repository exports</li>
-            <li>desktop/src-tauri/src/db_utils/background_job_repository.rs - Job CRUD</li>
+            <li>desktop/src-tauri/src/db_utils/background_job_repository/ - Job CRUD (directory with base.rs, worker.rs, metadata.rs, cleanup.rs)</li>
             <li>desktop/src-tauri/src/db_utils/session_repository.rs - Session management</li>
             <li>desktop/src-tauri/src/db_utils/terminal_repository.rs - Terminal persistence</li>
             <li>desktop/src-tauri/src/db_utils/settings_repository.rs - App settings</li>

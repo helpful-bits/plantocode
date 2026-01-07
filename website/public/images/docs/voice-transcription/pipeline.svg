@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 950 420" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="micGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ef4444"/>
+      <stop offset="100%" style="stop-color:#dc2626"/>
+    </linearGradient>
+    <linearGradient id="processGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="gpt4oGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="outputGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="950" height="420" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="950" height="420" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="475" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">Voice Transcription Pipeline</text>
+  <text x="475" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">Audio capture → GPT-4o Transcription → Task description or terminal command</text>
+
+  <!-- Stage 1: Audio Capture -->
+  <g transform="translate(40, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="160" height="180" rx="10" fill="url(#micGrad)"/>
+    <text x="80" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Audio Capture</text>
+    <line x1="15" y1="40" x2="145" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <!-- Mic icon -->
+    <g transform="translate(55, 55)">
+      <rect x="15" y="0" width="20" height="35" rx="10" fill="rgba(255,255,255,0.3)"/>
+      <path d="M10 30 L10 45 L40 45 L40 30" stroke="rgba(255,255,255,0.5)" stroke-width="2" fill="none"/>
+      <line x1="25" y1="45" x2="25" y2="55" stroke="rgba(255,255,255,0.5)" stroke-width="2"/>
+    </g>
+
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 125)">
+      <text x="0" y="0">MediaRecorder API</text>
+      <text x="0" y="16">48kHz sample rate</text>
+      <text x="0" y="32">WebM/MP4 format</text>
+      <text x="0" y="48">Push-to-talk mode</text>
+    </g>
+  </g>
+
+  <!-- Stage 2: Audio Processing -->
+  <g transform="translate(240, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="160" height="180" rx="10" fill="url(#processGrad)"/>
+    <text x="80" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Processing</text>
+    <line x1="15" y1="40" x2="145" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 55)">
+      <rect x="0" y="0" width="130" height="24" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="65" y="16" text-anchor="middle">Noise suppression</text>
+    </g>
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 85)">
+      <rect x="0" y="0" width="130" height="24" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="65" y="16" text-anchor="middle">Echo cancellation</text>
+    </g>
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 115)">
+      <rect x="0" y="0" width="130" height="24" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="65" y="16" text-anchor="middle">File validation</text>
+    </g>
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 145)">
+      <rect x="0" y="0" width="130" height="24" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="65" y="16" text-anchor="middle">Multipart upload</text>
+    </g>
+  </g>
+
+  <!-- Stage 3: GPT-4o Transcription -->
+  <g transform="translate(440, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="160" height="180" rx="10" fill="url(#gpt4oGrad)"/>
+    <text x="80" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">GPT-4o Transcribe</text>
+    <line x1="15" y1="40" x2="145" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g fill="rgba(255,255,255,0.85)" font-size="9" transform="translate(15, 55)">
+      <text x="0" y="0">gpt-4o-transcribe</text>
+      <text x="0" y="18">Multi-language support</text>
+      <text x="0" y="36">Context-aware output</text>
+    </g>
+
+    <rect x="15" y="105" width="130" height="60" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <g fill="rgba(255,255,255,0.7)" font-size="8" transform="translate(25, 120)">
+      <text x="0" y="0">Features:</text>
+      <text x="0" y="14">Streaming transcription</text>
+      <text x="0" y="28">Server-side VAD</text>
+      <text x="0" y="42">25MB file limit</text>
+    </g>
+  </g>
+
+  <!-- Stage 4: Output Routing -->
+  <g transform="translate(640, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="260" height="220" rx="10" fill="url(#outputGrad)"/>
+    <text x="130" y="28" text-anchor="middle" fill="white" font-size="13" font-weight="600">Output Routing</text>
+    <line x1="15" y1="40" x2="245" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <!-- Task Description output -->
+    <g transform="translate(15, 55)">
+      <rect x="0" y="0" width="230" height="70" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="20" text-anchor="middle" fill="white" font-size="10" font-weight="500">→ Task Description</text>
+      <g fill="rgba(255,255,255,0.75)" font-size="8">
+        <text x="10" y="40">Populates task input field</text>
+        <text x="10" y="54">Ready for improvement/planning</text>
+      </g>
+    </g>
+
+    <!-- Terminal Command output -->
+    <g transform="translate(15, 135)">
+      <rect x="0" y="0" width="230" height="70" rx="6" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="20" text-anchor="middle" fill="white" font-size="10" font-weight="500">→ Terminal Command</text>
+      <g fill="rgba(255,255,255,0.75)" font-size="8">
+        <text x="10" y="40">Sends to active PTY session</text>
+        <text x="10" y="54">Voice-driven shell control</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Arrows -->
+  <g stroke="#64748b" stroke-width="2" fill="none">
+    <path d="M200 190 L230 190" marker-end="url(#arrow)"/>
+    <path d="M400 190 L430 190" marker-end="url(#arrow)"/>
+    <path d="M600 190 L630 190" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Footer -->
+  <g transform="translate(40, 340)">
+    <rect x="0" y="0" width="400" height="50" rx="6" fill="rgba(34, 197, 94, 0.1)" stroke="#22c55e" stroke-width="1"/>
+    <text x="200" y="22" text-anchor="middle" fill="#22c55e" font-size="10" font-weight="500">iOS Companion App</text>
+    <text x="200" y="38" text-anchor="middle" fill="#64748b" font-size="9">Mobile recording syncs to desktop via WebSocket</text>
+  </g>
+
+  <g transform="translate(460, 340)">
+    <rect x="0" y="0" width="440" height="50" rx="6" fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" stroke-width="1"/>
+    <text x="220" y="22" text-anchor="middle" fill="#93c5fd" font-size="10" font-weight="500">Real-time Streaming</text>
+    <text x="220" y="38" text-anchor="middle" fill="#64748b" font-size="9">Partial results displayed as audio is processed (< 500ms latency)</text>
+  </g>
+</svg>

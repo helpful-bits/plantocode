@@ -305,11 +305,11 @@ WHERE status IN ('Running', 'Suspended');`}</code></pre>
             the system progressively alerts you to check what has happened:
           </p>
           <div className="space-y-3 mt-4">
-            <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800/30 rounded-lg p-4">
+            <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">Level 1 (30 seconds)</h4>
               <p className="text-sm text-yellow-700 dark:text-yellow-300">Agent idle - may have completed task. Yellow indicator displayed.</p>
             </div>
-            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/30 rounded-lg p-4">
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">Level 2 (2 minutes)</h4>
               <p className="text-sm text-red-700 dark:text-red-300">Agent requires attention - check terminal. Red indicator and desktop notification.</p>
             </div>

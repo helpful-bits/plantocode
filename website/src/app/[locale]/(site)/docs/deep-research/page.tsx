@@ -197,7 +197,7 @@ await invoke("start_web_search_workflow", {
             <p className="text-muted-foreground leading-relaxed mb-4">
               {t['deepResearch.costs.rateLimiting.description']}
             </p>
-            <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4 mt-4">
+            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
               <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">{t['deepResearch.costs.rateLimiting.guidelinesHeading']}</h4>
               <ul className="text-sm text-amber-700 dark:text-amber-300 space-y-1">
                 <li>• {t['deepResearch.costs.rateLimiting.personal']}</li>
@@ -266,15 +266,15 @@ Results integrated as:
               {t['deepResearch.troubleshooting.commonIssues.description']}
             </p>
             <div className="space-y-3 mt-4">
-              <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/30 rounded-lg p-3">
+              <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3">
                 <h4 className="text-sm font-semibold text-red-800 dark:text-red-200">{t['deepResearch.troubleshooting.commonIssues.rateLimit']}</h4>
                 <p className="text-sm text-red-700 dark:text-red-300">{t['deepResearch.troubleshooting.commonIssues.rateLimitSolution']}</p>
               </div>
-              <div className="bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800/30 rounded-lg p-3">
+              <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
                 <h4 className="text-sm font-semibold text-yellow-800 dark:text-yellow-200">{t['deepResearch.troubleshooting.commonIssues.noResults']}</h4>
                 <p className="text-sm text-yellow-700 dark:text-yellow-300">{t['deepResearch.troubleshooting.commonIssues.noResultsSolution']}</p>
               </div>
-              <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-3">
+              <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
                 <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200">{t['deepResearch.troubleshooting.commonIssues.geographic']}</h4>
                 <p className="text-sm text-blue-700 dark:text-blue-300">{t['deepResearch.troubleshooting.commonIssues.geographicSolution']}</p>
               </div>

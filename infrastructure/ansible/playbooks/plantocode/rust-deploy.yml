@@ -317,9 +317,13 @@
           debug:
             msg: "{{ deploy_result.stdout_lines }}"
 
+        - name: Get active deployment port
+          shell: "/usr/local/bin/plantocode-zero-downtime status | grep 'Active deployment' | awk '{print $NF}'"
+          register: active_color
+
         - name: Verify deployment health
           uri:
-            url: "http://localhost:{{ app_port }}/health"
+            url: "http://localhost:{{ '8080' if active_color.stdout == 'blue' else '8081' }}/health"
             status_code: 200
           register: health_check
           until: health_check.status == 200
@@ -382,6 +386,25 @@
             active_color: "blue"
             preferred_color: "blue"
           notify: reload nginx
+
+        - name: Copy boot sync script
+          copy:
+            src: "{{ playbook_dir }}/../../scripts/plantocode-boot-sync.sh"
+            dest: /usr/local/bin/plantocode-boot-sync
+            mode: "0755"
+
+        - name: Install boot sync service
+          template:
+            src: "{{ playbook_dir }}/../../templates/plantocode-boot-sync.service.j2"
+            dest: /etc/systemd/system/plantocode-boot-sync.service
+            mode: "0644"
+          notify: reload systemd
+
+        - name: Enable boot sync service
+          systemd:
+            name: plantocode-boot-sync
+            enabled: yes
+            daemon_reload: yes
 
   handlers:
     - name: reload systemd

@@ -99,9 +99,15 @@ pub struct GoogleGenerationConfig {
 
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "camelCase")]
 pub struct GoogleThinkingConfig {
+    /// Budget for thinking tokens (legacy parameter)
     pub thinking_budget: Option<i32>,
+    /// Thinking level: "none", "minimal", "low", "medium", "high"
+    /// Use "minimal" for fastest responses (disables reasoning)
+    pub thinking_level: Option<String>,
+    /// Whether to include thinking content in response
+    pub include_thoughts: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -713,6 +719,8 @@ impl GoogleClient {
                     // Set default thinking budget if not already configured
                     generation_config.thinking_config = Some(GoogleThinkingConfig {
                         thinking_budget: Some(10000), // Default thinking budget
+                        thinking_level: None,
+                        include_thoughts: None,
                     });
                     debug!("Automatically enabled thinking configuration with budget: 10000");
                 }
@@ -1457,7 +1465,8 @@ impl GoogleClient {
             ..Default::default()
         };
 
-        // Create generation config
+        // Create generation config with minimal thinking for fastest response
+        // thinkingLevel: "minimal" disables the reasoning engine for lower latency
         let generation_config = Some(GoogleGenerationConfig {
             temperature: temperature,
             top_p: None,
@@ -1465,7 +1474,11 @@ impl GoogleClient {
             max_output_tokens: Some(8192), // Allow longer transcriptions
             candidate_count: None,
             stop_sequences: None,
-            thinking_config: None,
+            thinking_config: Some(GoogleThinkingConfig {
+                thinking_budget: None,
+                thinking_level: Some("minimal".to_string()),
+                include_thoughts: Some(false),
+            }),
         });
 
         let request_payload = GoogleChatRequest {
@@ -1527,6 +1540,199 @@ impl GoogleClient {
         );
 
         Ok((transcript_text, usage))
+    }
+
+    #[instrument(skip(self, model, audio_data), fields(model = %model.resolved_model_id))]
+    pub async fn stream_transcription(
+        &self,
+        model: &ModelWithProvider,
+        user_id: &str,
+        audio_data: &[u8],
+        filename: &str,
+        mime_type: &str,
+        prompt: Option<String>,
+        temperature: Option<f32>,
+    ) -> Result<
+        Pin<Box<dyn Stream<Item = Result<web::Bytes, AppError>> + Send + 'static>>,
+        AppError,
+    > {
+        let request_id = self.get_next_request_id().await;
+        info!(
+            "Google streaming transcription request {} for model {}",
+            request_id, model.resolved_model_id
+        );
+
+        let encoded_audio = general_purpose::STANDARD.encode(audio_data);
+
+        let audio_part = GooglePart {
+            inline_data: Some(GoogleBlob {
+                mime_type: mime_type.to_string(),
+                data: encoded_audio,
+            }),
+            ..Default::default()
+        };
+
+        let transcription_instruction = if let Some(ref vocab_prompt) = prompt {
+            format!(
+                "Transcribe the following audio accurately. Use the vocabulary hints provided below to improve accuracy for domain-specific terms.\n\n<vocabulary_hints>\n{}\n</vocabulary_hints>\n\nProvide only the transcription text, no additional commentary.",
+                vocab_prompt
+            )
+        } else {
+            "Transcribe the following audio accurately. Provide only the transcription text, no additional commentary.".to_string()
+        };
+
+        let text_part = GooglePart {
+            text: Some(transcription_instruction),
+            ..Default::default()
+        };
+
+        let generation_config = Some(GoogleGenerationConfig {
+            temperature,
+            top_p: None,
+            top_k: None,
+            max_output_tokens: Some(8192),
+            candidate_count: None,
+            stop_sequences: None,
+            thinking_config: Some(GoogleThinkingConfig {
+                thinking_budget: None,
+                thinking_level: Some("minimal".to_string()),
+                include_thoughts: Some(false),
+            }),
+        });
+
+        let request_payload = GoogleChatRequest {
+            contents: vec![GoogleContent {
+                role: "user".to_string(),
+                parts: vec![audio_part, text_part],
+            }],
+            system_instruction: None,
+            generation_config,
+            safety_settings: None,
+            stream: None, // Streaming is indicated by the endpoint URL, not the body
+        };
+
+        let sticky_index = self.get_sticky_key_index(user_id);
+        let api_key = self.api_keys[sticky_index].clone();
+        let resolved_model_id = model.resolved_model_id.clone();
+        let client = self.client.clone();
+        let base_url = self.base_url.clone();
+
+        let url = format!(
+            "{}/models/{}:streamGenerateContent?alt=sse",
+            base_url, resolved_model_id
+        );
+
+        info!("Sending streaming request to Google: {}", url);
+
+        let response = client
+            .post(&url)
+            .header("x-goog-api-key", &api_key)
+            .header("Content-Type", "application/json")
+            .header("X-Request-ID", request_id.to_string())
+            .json(&request_payload)
+            .send()
+            .await
+            .map_err(|e| {
+                error!("Google streaming request failed to send: {}", e);
+                AppError::External(format!("Google streaming request failed: {}", e))
+            })?;
+
+        let status = response.status();
+        info!("Google streaming response status: {}", status);
+
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            error!("Google streaming transcription failed with status {}: {}", status, error_text);
+            return Err(AppError::External(format!(
+                "Google streaming transcription failed with status {}: {}",
+                status, error_text
+            )));
+        }
+
+        info!("Google streaming response OK, setting up stream");
+
+        // Use shared buffer to handle incomplete UTF-8 sequences across chunks
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+
+        let stream = response.bytes_stream().map(move |result| {
+            match result {
+                Ok(bytes) => {
+                    let mut buf = buffer.lock().unwrap();
+                    buf.extend_from_slice(&bytes);
+
+                    // Try to decode as UTF-8, keeping incomplete sequences for next chunk
+                    let (valid_str, remaining) = match String::from_utf8(buf.clone()) {
+                        Ok(s) => {
+                            buf.clear();
+                            (s, Vec::new())
+                        }
+                        Err(e) => {
+                            // Find the valid UTF-8 prefix
+                            let valid_up_to = e.utf8_error().valid_up_to();
+                            let valid_str =
+                                String::from_utf8_lossy(&buf[..valid_up_to]).into_owned();
+                            let remaining = buf[valid_up_to..].to_vec();
+                            buf.clear();
+                            buf.extend_from_slice(&remaining);
+                            (valid_str, remaining)
+                        }
+                    };
+
+                    let mut text_chunks = Vec::new();
+
+                    for line in valid_str.lines() {
+                        if let Some(json_str) = line.strip_prefix("data: ") {
+                            if let Ok(json) = serde_json::from_str::<Value>(json_str) {
+                                if let Some(text) = json
+                                    .get("candidates")
+                                    .and_then(|c| c.get(0))
+                                    .and_then(|c| c.get("content"))
+                                    .and_then(|c| c.get("parts"))
+                                    .and_then(|p| p.get(0))
+                                    .and_then(|p| p.get("text"))
+                                    .and_then(|t| t.as_str())
+                                {
+                                    if !text.is_empty() {
+                                        text_chunks.push(text.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if text_chunks.is_empty() {
+                        Ok(web::Bytes::new())
+                    } else {
+                        let sse_data = text_chunks
+                            .iter()
+                            .map(|chunk| {
+                                format!(
+                                    "data: {}\n\n",
+                                    serde_json::json!({"text": chunk, "done": false})
+                                )
+                            })
+                            .collect::<String>();
+                        Ok(web::Bytes::from(sse_data))
+                    }
+                }
+                Err(e) => Err(AppError::External(format!(
+                    "Google streaming error: {}",
+                    e
+                ))),
+            }
+        });
+
+        let filtered_stream = stream.filter_map(|result| async move {
+            match result {
+                Ok(bytes) if bytes.is_empty() => None,
+                other => Some(other),
+            }
+        });
+
+        Ok(Box::pin(filtered_stream))
     }
 }
 

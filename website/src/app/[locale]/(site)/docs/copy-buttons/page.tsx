@@ -79,7 +79,7 @@ export default async function CopyButtonsDocPage({ params }: { params: Promise<{
         className="mb-12"
         title={t['copyButtonsDoc.visuals.templateFlow.title'] || 'Template resolution flow'}
         description={t['copyButtonsDoc.visuals.templateFlow.description'] || 'How button templates pull task context, plan XML, and model settings before handoff.'}
-        imageSrc={t['copyButtonsDoc.visuals.templateFlow.imageSrc'] || '/images/docs/copy-buttons/template-flow.png'}
+        imageSrc={t['copyButtonsDoc.visuals.templateFlow.imageSrc'] || '/images/docs/copy-buttons/templates.svg'}
         imageAlt={t['copyButtonsDoc.visuals.templateFlow.imageAlt'] || 'Flow showing copy button template resolution'}
         caption={t['copyButtonsDoc.visuals.templateFlow.caption']}
       />
@@ -198,7 +198,7 @@ Session: {{SESSION_ID}}`}</code></pre>
               </div>
             </div>
           </div>
-          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 rounded-lg p-4 mt-4">
+          <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">Large Plan Chunking</h4>
             <p className="text-sm text-amber-700 dark:text-amber-300">
               Plans exceeding 100KB are automatically chunked into sequential segments with clear boundaries to avoid
@@ -406,7 +406,7 @@ ORDER BY created_at DESC;`}</code></pre>
               </p>
             </div>
           </div>
-          <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/30 rounded-lg p-4 mt-4">
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-blue-800 dark:text-blue-200 mb-2">Disabled State</h4>
             <p className="text-sm text-blue-700 dark:text-blue-300">
               Buttons are disabled when required context is missing (e.g., no active plan, missing session). Tooltips explain

@@ -33,6 +33,7 @@ public final class SessionDataService: ObservableObject {
     private var lastKnownDeviceId: String? // Stable device ID for cache key
     private var sessionFetchInFlight: [String: Task<Session?, Error>] = [:]
     private var historyStateObserver: NSObjectProtocol?
+    private var fileFinderJobCompletionObserver: NSObjectProtocol?
 
     /// Stable device key that persists across connection transitions
     /// Uses the last known device ID to prevent cache key changes during reconnection
@@ -75,6 +76,35 @@ public final class SessionDataService: ObservableObject {
     public init() {
         self.currentSessionId = "mobile-session-\(UUID().uuidString)"
         setupHistoryStateListener()
+        setupFileFinderJobCompletionListener()
+    }
+
+    /// Setup listener for file-finding job completion notifications
+    /// This triggers a session refresh to ensure mobile has latest file selections
+    private func setupFileFinderJobCompletionListener() {
+        fileFinderJobCompletionObserver = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("file-finding-job-completed"),
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+
+            guard let userInfo = notification.userInfo,
+                  let sessionId = userInfo["sessionId"] as? String else {
+                return
+            }
+
+            // Only refresh if this is the current session
+            guard self.currentSession?.id == sessionId else {
+                return
+            }
+
+            // Refresh the session to get latest file selections
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                _ = try? await self.getSession(id: sessionId)
+            }
+        }
     }
 
     /// Setup listener for history-state-changed events from relay
@@ -134,27 +164,14 @@ public final class SessionDataService: ObservableObject {
                     }
 
                     // Parse included_files and force_excluded_files from entry
-                    // These are stored as JSON-serialized arrays (e.g. "[\"file1.txt\", \"file2.txt\"]")
-                    let includedText = entryDict["included_files"] as? String ?? "[]"
-                    let excludedText = entryDict["force_excluded_files"] as? String ?? "[]"
+                    // These may arrive as JSON-serialized arrays (e.g. "[\"file1.txt\", \"file2.txt\"]")
+                    // or as actual arrays or strings - use JSONSanitizer to handle all cases
+                    let includedRaw = entryDict["included_files"] ?? "[]"
+                    let excludedRaw = entryDict["force_excluded_files"] ?? "[]"
 
-                    // Heavy JSON decoding in background
-                    let includedFiles: [String]
-                    let forceExcludedFiles: [String]
-
-                    if let data = includedText.data(using: .utf8),
-                       let arr = try? JSONDecoder().decode([String].self, from: data) {
-                        includedFiles = arr
-                    } else {
-                        includedFiles = []
-                    }
-
-                    if let data = excludedText.data(using: .utf8),
-                       let arr = try? JSONDecoder().decode([String].self, from: data) {
-                        forceExcludedFiles = arr
-                    } else {
-                        forceExcludedFiles = []
-                    }
+                    // Use JSONSanitizer to handle stringified arrays, nested arrays, and edge cases
+                    let includedFiles = JSONSanitizer.ensureUniqueStringArray(includedRaw)
+                    let forceExcludedFiles = JSONSanitizer.ensureUniqueStringArray(excludedRaw)
 
                     // Update state on main actor
                     await MainActor.run { [weak self] in
@@ -1341,6 +1358,11 @@ public final class SessionDataService: ObservableObject {
             return
         }
 
+        // Sanitize and deduplicate file arrays using JSONSanitizer
+        // This handles nested arrays, stringified JSON, and preserves stable order
+        let sanitizedIncluded = JSONSanitizer.ensureUniqueStringArray(includedFiles)
+        let sanitizedExcluded = JSONSanitizer.ensureUniqueStringArray(forceExcludedFiles)
+
         // Create new Session instance with updated file lists
         let updatedSession = Session(
             id: cs.id,
@@ -1350,8 +1372,8 @@ public final class SessionDataService: ObservableObject {
             mergeInstructions: cs.mergeInstructions,
             createdAt: cs.createdAt,
             updatedAt: cs.updatedAt,
-            includedFiles: includedFiles,
-            forceExcludedFiles: forceExcludedFiles
+            includedFiles: sanitizedIncluded,
+            forceExcludedFiles: sanitizedExcluded
         )
         self.currentSession = updatedSession
 
@@ -1551,11 +1573,19 @@ public final class SessionDataService: ObservableObject {
     }
 
     private func handleSessionFilesUpdated(dict: [String: Any]) {
-        guard let sessionId = dict["sessionId"] as? String,
-              let includedFiles = dict["includedFiles"] as? [String],
-              let forceExcludedFiles = dict["forceExcludedFiles"] as? [String] else {
+        guard let sessionId = dict["sessionId"] as? String else {
             return
         }
+
+        // Sanitize incoming files using JSONSanitizer to handle:
+        // - Stringified JSON arrays (e.g., "[\"file1.txt\"]")
+        // - Actual string arrays
+        // - Nested arrays
+        // - Empty/invalid values
+        let includedRaw = dict["includedFiles"] ?? []
+        let excludedRaw = dict["forceExcludedFiles"] ?? []
+        let includedFiles = JSONSanitizer.ensureUniqueStringArray(includedRaw)
+        let forceExcludedFiles = JSONSanitizer.ensureUniqueStringArray(excludedRaw)
 
         // Update currentSession even if not in sessionsIndex
         if currentSession?.id == sessionId {
@@ -1700,6 +1730,9 @@ public final class SessionDataService: ObservableObject {
 
     deinit {
         if let observer = historyStateObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = fileFinderJobCompletionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         // Cancel all pending retry tasks

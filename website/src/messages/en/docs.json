@@ -54,16 +54,16 @@
     "apiIntegration": {
       "heading": "API Integration Details",
       "pipeline": {
-        "description": "Retrieved content passes through a standardized processing pipeline that extracts meaningful information while preserving formatting and context. The pipeline handles various content types including documentation, code repositories, and technical discussions.",
+        "description": "Research findings pass through a standardized processing pipeline that extracts meaningful information while preserving formatting and context. The pipeline handles various content types and synthesizes findings into actionable insights for development workflows.",
         "heading": "Content Processing Pipeline"
       },
       "providerConfig": {
-        "description": "The system integrates with multiple search providers to ensure comprehensive coverage and redundancy. Provider selection is automatic based on query type, geographic restrictions, and availability. API keys and rate limiting are managed transparently within the application configuration.",
-        "heading": "Search Provider Configuration"
+        "description": "The system uses AI language models via OpenRouter to perform intelligent web research. The LLM generates targeted research queries based on your task context and synthesizes findings from its training data and web search capabilities. Model selection and configuration are managed through the application settings.",
+        "heading": "AI Research Configuration"
       }
     },
     "architecture": {
-      "description": "The web search system operates as a pipeline: query generation, search execution, result processing, and integration. Each stage is designed for reliability, cost efficiency, and contextual relevance. The architecture supports both standalone research tasks and integrated development workflows.",
+      "description": "The deep research system operates as a two-stage workflow: (1) WebSearchPromptsGeneration - AI analyzes your task and project context to generate targeted research queries, and (2) WebSearchExecution - the LLM executes research prompts in parallel and synthesizes findings. Each stage is designed for reliability, cost efficiency, and contextual relevance.",
       "heading": "Architecture Overview"
     },
     "bestPractices": {
@@ -95,58 +95,62 @@
     "configuration": {
       "heading": "Configuration and Customization",
       "preferences": {
-        "description": "Users can customize search behavior through preference settings that control result filtering, source prioritization, and integration depth. These settings are project-aware and can be configured per workspace to match team preferences and project requirements.",
-        "filters": "Language and framework-specific search filters",
-        "heading": "Search Preferences",
-        "limits": "Result count and processing depth limits",
+        "description": "Research behavior is configured through model selection and task settings. Choose your preferred AI model for research tasks, configure timeouts, and select which files to include for context.",
+        "filters": "Model selection determines research quality and cost",
+        "heading": "Research Settings",
+        "limits": "Maximum 12 research prompts generated per task",
         "optionsHeading": "Configurable Options",
-        "patterns": "Integration patterns for different file types",
-        "sources": "Preferred documentation sources and authorities",
-        "triggers": "Automatic vs. manual search trigger modes"
+        "patterns": "Include relevant project files for better context",
+        "sources": "Project directory and file selection for context",
+        "triggers": "Start research manually via the workflow command"
       },
       "projectSettings": {
-        "description": "Search configuration can be tailored to specific projects and technologies. The system automatically detects project frameworks, languages, and dependencies to optimize search parameters. Custom domain filters and source preferences can be configured per project to ensure relevant results.",
+        "description": "Research configuration is session-aware. The system uses the current session's project directory and included files to provide context. Excluded paths (like node_modules, dist) are automatically filtered from the directory tree shown to the AI.",
         "heading": "Project-Specific Settings"
       }
     },
     "costs": {
-      "heading": "Cost Considerations and Limits",
+      "heading": "Cost Considerations",
       "optimization": {
-        "description": "Multiple strategies are employed to optimize search costs without compromising functionality. These include intelligent query batching, result caching, provider fallbacks, and user education about efficient search patterns. Cost monitoring and alerting help teams stay within budget limits.",
+        "description": "Research costs are managed through intelligent prompt generation - the system limits research prompts to a maximum of 12 per task. Parallel execution minimizes wall-clock time. Each job tracks token usage and estimated costs in its metadata for full transparency.",
         "heading": "Cost Optimization"
       },
       "rateLimiting": {
-        "cacheFirst": "Cache-first responses to minimize API calls",
-        "description": "The system implements intelligent rate limiting to manage API costs while ensuring search functionality remains available when needed. Rate limits are applied per user, per project, and globally, with automatic fallback to cached results when limits are approached.",
-        "guidelinesHeading": "Rate Limit Guidelines",
-        "heading": "Rate Limiting and Quotas",
-        "personal": "Personal usage: 100 searches per hour, 1000 per day",
-        "team": "Team workspaces: Shared quotas based on subscription tier",
-        "throttling": "Automatic throttling when approaching limits"
+        "cacheFirst": "Research results cached per session to avoid redundant queries",
+        "description": "Deep research uses your configured AI credits via OpenRouter. Each research task generates multiple parallel LLM calls, so costs scale with the number of research prompts generated. The system tracks token usage and costs per job for transparency.",
+        "guidelinesHeading": "Cost Management Tips",
+        "heading": "Usage and Costs",
+        "personal": "Token usage tracked per research job with detailed cost breakdown",
+        "team": "Costs managed through your OpenRouter or PlanToCode subscription credits",
+        "throttling": "Monitor job metadata for token counts and estimated costs"
       }
     },
     "cta": {
       "description": "The Deep Research and Web Search features are available in the PlanToCode desktop application. Download the build for your platform to start integrating web research into your development workflow.",
-      "heading": "Ready to use Deep Research?"
+      "heading": "Ready to use Deep Research?",
+      "links": {
+        "architecture": "View System Architecture",
+        "buildYourOwn": "Build Your Own Integration"
+      }
     },
     "date": "2025-09-20",
     "description": "How PlanToCode performs web searches, processes results, and integrates findings into development workflows.",
     "devIntegration": {
       "caching": {
-        "description": "Search results are intelligently cached to improve performance and reduce API costs. The caching system considers content freshness, query similarity, and usage patterns to provide fast responses while ensuring information accuracy. Cache invalidation occurs automatically based on content age and relevance decay.",
-        "heading": "Caching and Performance"
+        "description": "Research results are stored in job metadata and can be accessed through the job details panel. Results persist for the session duration and can be referenced when creating implementation plans or making coding decisions.",
+        "heading": "Result Storage"
       },
       "contextAware": {
-        "description": "Research requests are automatically enhanced with context from the current development session. The system analyzes open files, recent changes, error messages, and project dependencies to formulate more targeted search queries and filter results for maximum relevance.",
+        "description": "Research requests are automatically enhanced with context from your current session. The system includes your project's directory tree and selected file contents in the prompt generation phase, enabling the AI to formulate research queries that are specific to your codebase.",
         "heading": "Context-Aware Research"
       },
       "heading": "Development Workflow Integration",
       "resultIntegration": {
-        "description": "Search results are seamlessly integrated into the development workflow. Code snippets can be directly inserted, documentation links are preserved for reference, and key findings are summarized in context-appropriate formats. The integration respects existing code style and project conventions.",
+        "description": "Research findings can be used to inform implementation plans. When research tasks complete, findings are formatted as research_finding tags that can be incorporated into subsequent planning tasks, ensuring your implementation is guided by current best practices and accurate documentation.",
         "heading": "Result Integration"
       }
     },
-    "intro": "The Deep Research feature enables PlanToCode to perform intelligent web searches, gather up-to-date information, and integrate findings directly into development workflows. This system combines query optimization, result processing, and contextual integration to enhance code generation and problem-solving capabilities.",
+    "intro": "The Deep Research feature enables PlanToCode to perform intelligent AI-powered research, gather relevant information, and integrate findings directly into development workflows. This system uses large language models to generate targeted research queries based on your project context, execute parallel research tasks, and synthesize actionable insights to enhance code generation and problem-solving capabilities.",
     "metaDescription": "Technical documentation for the web search workflow: API integration, query optimization, result processing, and development workflow integration.",
     "metaTitle": "Deep research - PlanToCode",
     "ogDescription": "Understand how web search operates within PlanToCode: from query generation to result processing and integration with development workflows.",
@@ -155,52 +159,67 @@
     "title": "Deep Research & Web Search",
     "troubleshooting": {
       "commonIssues": {
-        "description": "Most web search issues stem from connectivity problems, rate limiting, or overly broad queries. The system provides clear error messages and suggested remediation steps for common failure scenarios.",
-        "geographic": "Geographic Restrictions",
-        "geographicSolution": "Search functionality limited to supported regions",
+        "description": "Most research issues stem from LLM API connectivity, insufficient credits, or prompts that are too broad. The system provides clear error messages and job status tracking for troubleshooting.",
+        "geographic": "Model Availability",
+        "geographicSolution": "Some models may have regional restrictions via OpenRouter",
         "heading": "Common Issues",
-        "noResults": "No Results Found",
-        "noResultsSolution": "Broaden query terms or check spelling",
-        "rateLimit": "Rate Limit Exceeded",
-        "rateLimitSolution": "Wait for reset period or try cached results"
+        "noResults": "No Research Prompts Generated",
+        "noResultsSolution": "Provide more specific task descriptions or include relevant files for context",
+        "rateLimit": "API Errors",
+        "rateLimitSolution": "Check OpenRouter API status and credit balance"
       },
       "heading": "Troubleshooting and Support",
       "performance": {
-        "description": "For optimal performance, the system monitors search patterns and suggests optimizations. This includes query refinement recommendations, cache hit rate improvements, and integration efficiency metrics.",
+        "description": "For optimal performance, provide clear and specific task descriptions. Include relevant project files to give the AI better context. The system executes research prompts in parallel to minimize total execution time.",
         "heading": "Performance Optimization"
       }
     },
     "workflow": {
       "execution": {
-        "blogs": "Blog posts from recognized technical authorities",
-        "description": "Web searches are performed through integrated search APIs that prioritize developer-focused content. The system automatically filters results to focus on technical documentation, official sources, and community discussions from platforms like GitHub, Stack Overflow, and official project documentation.",
-        "documentation": "Official project documentation and wikis",
-        "forums": "Technical forums and community Q&A sites",
-        "github": "GitHub repositories, issues, and discussions",
-        "heading": "Search Execution",
-        "releases": "Release notes and changelogs",
-        "sourcesHeading": "Search Sources"
+        "blogs": "Best practices and implementation patterns",
+        "description": "Research prompts are executed in parallel by AI language models. Each prompt is processed independently, allowing the system to gather information on multiple aspects of your task simultaneously. Results are synthesized into structured findings with titles and actionable insights.",
+        "documentation": "API documentation and technical specifications",
+        "forums": "Error resolution and troubleshooting approaches",
+        "github": "Code examples and implementation patterns",
+        "heading": "Research Execution",
+        "releases": "Version compatibility and migration guidance",
+        "sourcesHeading": "Research Focus Areas"
       },
-      "heading": "Search Workflow Stages",
+      "heading": "Research Workflow Stages",
       "processing": {
-        "deduplication": "Duplicate detection and content deduplication",
-        "description": "Search results undergo intelligent processing to extract relevant information, remove noise, and prioritize content based on recency, authority, and contextual relevance. The system converts web content into structured data that can be efficiently integrated into development workflows.",
-        "extraction": "Content extraction and HTML-to-markdown conversion",
-        "heading": "Result Processing & Filtering",
-        "scoring": "Relevance scoring based on query match and source authority",
-        "snippets": "Code snippet extraction and syntax validation",
+        "deduplication": "Findings consolidated across multiple research prompts",
+        "description": "Research findings are structured into JSON format with titles and detailed findings. The system aggregates results from parallel research tasks, tracks success and failure counts, and provides a summary of the research outcomes. Results are stored in job metadata for easy access.",
+        "extraction": "Key findings extracted and formatted for integration",
+        "heading": "Result Processing & Synthesis",
+        "scoring": "Results organized by research topic and relevance",
+        "snippets": "Actionable insights and recommendations highlighted",
         "stepsHeading": "Processing Steps",
-        "timestamp": "Timestamp analysis for content freshness"
+        "timestamp": "Research execution tracked with timing metrics"
       },
       "queryGeneration": {
-        "api": "API documentation searches for specific libraries or frameworks",
-        "compatibility": "Version compatibility and migration information",
-        "description": "Search queries are automatically generated based on the current development context, user intent, and task requirements. The system analyzes project files, active discussions, and error messages to formulate targeted search queries that prioritize recent documentation, technical discussions, and authoritative sources.",
-        "errors": "Error message resolution and troubleshooting guides",
-        "heading": "Query Generation & Optimization",
-        "practices": "Best practices and implementation patterns",
-        "security": "Security advisories and vulnerability reports",
-        "typesHeading": "Query Types"
+        "api": "API documentation and library-specific research",
+        "compatibility": "Version compatibility and migration paths",
+        "description": "Research prompts are automatically generated by AI based on your task description, project context, and included files. The system analyzes your codebase structure via directory tree and file contents to formulate targeted research queries. Up to 12 focused research prompts are generated per task.",
+        "errors": "Error resolution and debugging approaches",
+        "heading": "Prompt Generation",
+        "practices": "Best practices and recommended patterns",
+        "security": "Security considerations and vulnerability awareness",
+        "typesHeading": "Research Topics"
+      }
+    },
+    "visuals": {
+      "pipeline": {
+        "title": "Deep Research Pipeline",
+        "description": "The two-stage workflow: prompt generation and parallel research execution.",
+        "imageSrc": "/images/docs/deep-research/workflow.svg",
+        "imageAlt": "Deep research pipeline diagram showing prompt generation and execution stages",
+        "caption": "Deep research workflow showing prompt generation and parallel execution stages"
+      },
+      "workflow": {
+        "title": "Deep research workflow",
+        "description": "The two-stage workflow: prompt generation and parallel research execution.",
+        "imageSrc": "/images/docs/deep-research/workflow.svg",
+        "caption": "Deep research workflow showing all processing stages"
       }
     }
   },
@@ -224,7 +243,7 @@
       "featuresHeading": "Key Architecture Features:",
       "gitIntegration": "Git integration with fallback to directory traversal",
       "heading": "Workflow Architecture",
-      "overview": "The workflow operates as an orchestrated background job system with five distinct stages that execute sequentially. Each stage builds upon the previous stage's output, progressively refining the file selection based on task requirements."
+      "overview": "The workflow operates as an orchestrated background job system with four distinct stages that execute sequentially. Each stage builds upon the previous stage's output, progressively refining the file selection based on task requirements."
     },
     "category": "Technical Guide",
     "configuration": {
@@ -245,7 +264,11 @@
     },
     "cta": {
       "description": "The file discovery workflow runs inside the desktop client alongside implementation planning and terminal sessions.",
-      "heading": "Need the desktop app?"
+      "heading": "Need the desktop app?",
+      "links": {
+        "architecture": "Learn about architecture",
+        "buildYourOwn": "Build your own pipeline"
+      }
     },
     "date": "2025-09-21",
     "description": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution.",
@@ -309,25 +332,29 @@
     "stages": {
       "heading": "4-Stage Workflow Process",
       "stage1": {
-        "description": "Determines the project root directory and validates git repository status. This stage establishes the base directory for all subsequent file operations and configures exclusion patterns.",
+        "description": "Uses AI to intelligently select the most relevant root directories from a list of candidate paths based on the task description. The LLM analyzes the primary project directory and candidate roots to determine which directories are most likely to contain files relevant to the task.",
         "heading": "Stage 1: Root Folder Selection",
-        "technical": "Technical Details: Uses git detection with fallback to directory validation, applies user-defined exclusion patterns, and establishes the working directory context for the entire workflow."
+        "technical": "Technical Details: Receives candidate root directories (up to depth 2) and the task description. The LLM evaluates each path against the task context and returns a filtered list of root directories that will be searched in subsequent stages.",
+        "inputOutput": "Input/Output: Receives candidate_roots array and task_description. Returns root_directories array containing the AI-selected directories most relevant to the task."
       },
       "stage2": {
         "binaryDetection": "Binary Detection: Filters out files with binary extensions (.jpg, .png, .pdf, .exe, etc.) and uses content analysis to detect binary files by null bytes and non-printable character ratios.",
-        "description": "Generates intelligent regex patterns based on the task description to perform initial file filtering. This stage combines git ls-files output with binary file detection to create a preliminary file list.",
-        "gitIntegration": "Git Integration: Executes `git ls-files --cached --others --exclude-standard` to respect .gitignore rules while including both tracked and untracked files.",
-        "heading": "Stage 2: Regex File Filter"
+        "description": "Uses AI to generate intelligent regex pattern groups based on the task description and directory structure. Each pattern group can include path patterns (positive and negative) and content patterns. The processor then applies these patterns to filter files from each selected root directory.",
+        "gitIntegration": "Git Integration: Finds the git repository root for each selected directory and uses git_utils to get all non-ignored files, respecting .gitignore rules while including both tracked and untracked files.",
+        "heading": "Stage 2: Regex File Filter",
+        "technical": "Technical Details: Generates a directory tree for each root, calls the LLM to produce patternGroups with path_pattern, content_pattern, and negative_path_pattern fields. Uses fancy-regex for lookahead/lookbehind support. Processes roots in parallel with configurable concurrency."
       },
       "stage3": {
-        "aiProcessing": "AI Processing: Uses large language models to evaluate file content against task requirements, with intelligent batching to manage token limits and cost optimization.",
-        "description": "Employs AI models to analyze file content and assess relevance to the specific task description. This stage performs deep content analysis to identify files that are most likely to be useful for the given task.",
-        "heading": "Stage 3: AI File Relevance Assessment"
+        "aiProcessing": "AI Processing: Uses large language models to evaluate file content against task requirements, with intelligent chunking based on actual file sizes and token estimates to manage context windows efficiently.",
+        "description": "Employs AI models to analyze file content and assess relevance to the specific task description. This stage performs deep content analysis by reading file contents and having the LLM identify which files are most relevant to the task.",
+        "heading": "Stage 3: AI File Relevance Assessment",
+        "technical": "Technical Details: Estimates tokens per file using file-type-aware heuristics (code ~3 chars/token, structured data ~5 chars/token). Creates content-aware chunks to stay under the 90k token threshold. Processes chunks in parallel with streaming to avoid timeouts. Validates all LLM-suggested paths against the filesystem."
       },
       "stage4": {
-        "description": "Discovers additional relevant files through relationship analysis and dependency tracking. This stage identifies files that might not match initial patterns but are contextually important.",
+        "description": "Discovers additional relevant files by providing the LLM with the previously identified files and their contents, along with the directory tree. The AI analyzes imports, dependencies, and project structure to find related files that enhance the context for the task.",
         "heading": "Stage 4: Extended Path Finder",
-        "relationship": "Relationship Analysis: Analyzes import statements, configuration files, and project structure to find related files that enhance the context for the specific task."
+        "relationship": "Relationship Analysis: Reads content of all previously identified files and provides it to the LLM alongside the directory tree (scoped to selected roots if available). The AI identifies additional files based on imports, references, and structural relationships.",
+        "technical": "Technical Details: Generates a combined directory tree for selected root directories. Reads content of all initial_paths files. Uses streaming LLM calls to avoid Cloudflare timeouts. Validates discovered paths against the filesystem and normalizes to relative paths within the project."
       }
     },
     "stateManagement": {
@@ -345,7 +372,20 @@
         "heading": "State Transitions"
       }
     },
-    "title": "File Discovery Workflow"
+    "visuals": {
+      "pipeline": {
+        "title": "File discovery pipeline",
+        "description": "The 4-stage workflow: root folder selection, regex filtering, AI relevance assessment, and extended path discovery.",
+        "imageSrc": "/images/docs/file-discovery/pipeline.svg",
+        "caption": "File discovery pipeline showing all 4 stages",
+        "imageAlt": "Diagram showing the 4-stage file discovery workflow: Root Folder Selection, Regex File Filter, AI File Relevance Assessment, and Extended Path Finder"
+      }
+    },
+    "title": "File Discovery Workflow",
+    "sqliteStorage": {
+      "heading": "SQLite Storage",
+      "description": "All workflow state, intermediate results, and job metadata are persisted in SQLite. Each stage stores its output in the background_jobs table, enabling workflow resumption, debugging, and audit trails. The job records include token usage, cost tracking, and system prompt templates for each AI stage."
+    }
   },
   "hub": {
     "ctaDescription": "Download PlanToCode to access the implementation planner, model guardrails, terminal sessions, and transcription features described in this documentation.",
@@ -515,7 +555,13 @@
       "codexLink": "See Codex plan mode workflow",
       "cursorLink": "See Cursor plan mode workflow",
       "description": "Human-in-the-loop implementation plans are available inside the PlanToCode desktop application. Download the build for your platform to experience safe, governed AI-assisted development.",
-      "heading": "Ready to adopt AI coding agents safely?"
+      "heading": "Ready to adopt AI coding agents safely?",
+      "links": {
+        "architecture": "System Architecture",
+        "decisions": "Decisions & Tradeoffs",
+        "buildYourOwn": "Build Your Own Pipeline",
+        "fileDiscovery": "File Discovery Workflow"
+      }
     },
     "date": "2025-09-19",
     "description": "How PlanToCode enables confident adoption of AI coding agents through human-in-the-loop governance, granular file-by-file plans, and comprehensive review workflows.",
@@ -557,7 +603,10 @@
     "ogTitle": "Human-in-the-Loop Implementation Plans in PlanToCode",
     "plansOrigin": {
       "description": "Each plan corresponds to a background job in the current session. The panel subscribes to plan data, keeps track of which plan is currently open, and exposes navigation between earlier and newer jobs. This behaviour lives inside {code} and the surrounding panel component.",
-      "heading": "Where the plans come from"
+      "heading": "Where the plans come from",
+      "processor": "ImplementationPlanProcessor handles plan generation. It reads relevant files, optionally generates a directory tree based on selected root directories, and assembles a unified prompt for the LLM.",
+      "storage": "Plan responses are stored in the jobs table with metadata including planTitle, summary, sessionName, and token usage. The raw LLM response is preserved for audit.",
+      "streaming": "Plans stream via the LlmTaskRunner with real-time progress events. Token warnings are logged for prompts exceeding 100k tokens but processing continues with full content."
     },
     "readTime": "6 min",
     "reviewingPlans": {
@@ -565,7 +614,38 @@
       "heading": "Reviewing plans with Monaco",
       "opening": "When a plan is opened, the panel resolves the active plan by job identifier, passes the content to Monaco, and lets reviewers move between neighbouring jobs without losing the currently open modal."
     },
-    "title": "Implementation Plans"
+    "visuals": {
+      "structure": {
+        "title": "Implementation plan structure",
+        "description": "XML format for implementation plans with file-by-file granularity and metadata.",
+        "imageSrc": "/images/docs/implementation-plans/structure.svg",
+        "caption": "Plan structure showing steps, files, and dependency tracking"
+      }
+    },
+    "title": "Implementation Plans",
+    "planProcessor": {
+      "heading": "Plan Generation Pipeline",
+      "description": "The ImplementationPlanProcessor orchestrates plan generation by loading file contents, building context, and streaming results through the LLM task runner.",
+      "inputs": "Session context, task description, selected relevant files, optional directory tree (configurable via include_project_structure flag), and web search flag for external research.",
+      "prompt": "Uses prompt_utils::build_unified_prompt to combine task description, full file contents (no truncation), and directory tree into a model-specific format with estimated token counts.",
+      "output": "Raw LLM response stored as JobResultData::Text. Metadata includes planTitle, summary, token usage, cache statistics, and actual cost.",
+      "display": "Responses stream to the UI via progress events. Plans are rendered in a Monaco-based VirtualizedCodeViewer supporting syntax highlighting and copy actions."
+    },
+    "schema": {
+      "heading": "Plan Data Structure",
+      "description": "Implementation plans are stored as raw LLM responses with associated metadata. The response text is preserved exactly as generated, while structured metadata tracks the plan context and usage.",
+      "fieldsHeading": "Metadata Fields",
+      "fields": [
+        "planTitle - Generated or user-provided title for the plan",
+        "summary - Human-readable summary of the plan",
+        "sessionName - Name of the session that generated the plan",
+        "isStructured - Always true for completed plans",
+        "isStreaming - False for completed plans (true during generation)",
+        "planData - Contains agent_instructions (optional) and steps array"
+      ],
+      "exampleHeading": "Metadata Example",
+      "example": "{\n  \"planTitle\": \"Authentication System Refactor\",\n  \"summary\": \"Implementation plan generated\",\n  \"sessionName\": \"my-project\",\n  \"isStructured\": true,\n  \"isStreaming\": false,\n  \"planData\": {\n    \"agent_instructions\": null,\n    \"steps\": []\n  }\n}"
+    }
   },
   "modelConfiguration": {
     "meta": {
@@ -651,7 +731,7 @@
       "templateFlow": {
         "title": "Template resolution flow",
         "description": "This diagram shows the copy button execution pipeline. Stage 1 'Button Click': User clicks a copy button in the plan viewer or terminal header. The button configuration contains a label, template string, and target (terminal or clipboard). Stage 2 'Placeholder Extraction': The template processor scans for double-brace patterns like {{IMPLEMENTATION_PLAN}}, {{STEP_CONTENT}}, {{TASK_DESCRIPTION}}. Stage 3 'Context Resolution': The resolver queries job metadata for plan content, then session state for task description and selected files. Missing placeholders are preserved in output for debugging. Stage 4 'Target Delivery': For terminal targets, content is written to the PTY input buffer via master.take_writer(). For clipboard targets, content is copied via Tauri clipboard API. A toast notification confirms the action with content preview.",
-        "imageSrc": "/images/docs/copy-buttons/template-flow.png",
+        "imageSrc": "/images/docs/copy-buttons/templates.svg",
         "imageAlt": "Flow showing copy button template resolution",
         "caption": "Placeholder for a template resolution flow diagram."
       }
@@ -674,52 +754,20 @@
     },
     "placeholderResolution": {
       "heading": "Placeholder Resolution",
-      "description": "Templates use double-brace placeholders that are resolved against the active plan and session context at click time. The resolution engine supports nested context access and conditional sections.",
+      "description": "Templates use double-brace placeholders that are resolved against the active plan and session context at click time. The primary placeholders are {{IMPLEMENTATION_PLAN}} and {{TASK_DESCRIPTION}}.",
       "placeholdersHeading": "Available Placeholders",
       "placeholders": [
         {
           "placeholder": "{{IMPLEMENTATION_PLAN}}",
-          "description": "Full merged plan XML content"
-        },
-        {
-          "placeholder": "{{STEP_CONTENT}}",
-          "description": "Content of a specific plan step by index"
+          "description": "Full implementation plan content as generated by the LLM"
         },
         {
           "placeholder": "{{TASK_DESCRIPTION}}",
-          "description": "The refined task specification"
-        },
-        {
-          "placeholder": "{{PROJECT_CONTEXT}}",
-          "description": "File paths, directory structure, and repo summary"
-        },
-        {
-          "placeholder": "{{SELECTED_FILES}}",
-          "description": "List of files included in the plan"
-        },
-        {
-          "placeholder": "{{MODEL_NAME}}",
-          "description": "Currently selected model identifier"
-        },
-        {
-          "placeholder": "{{SESSION_ID}}",
-          "description": "Active session UUID for traceability"
-        },
-        {
-          "placeholder": "{{COMMANDS}}",
-          "description": "Extracted shell commands from plan steps"
-        },
-        {
-          "placeholder": "{{STEPS_SECTION}}",
-          "description": "Plan steps without agent instructions"
-        },
-        {
-          "placeholder": "{{REQUIREMENTS}}",
-          "description": "Task requirements and constraints"
+          "description": "The task description from the current session"
         }
       ],
       "resolutionOrder": "Resolution order: Job metadata first, then plan content, then session context. Undefined placeholders are preserved in the output for debugging.",
-      "exampleTemplate": "Example template:\n\nYou are an AI coding assistant. Execute the following plan:\n\n{{IMPLEMENTATION_PLAN}}\n\nWorking on task: {{TASK_DESCRIPTION}}\n\nSelected files for context:\n{{SELECTED_FILES}}\n\nModel: {{MODEL_NAME}}\nSession: {{SESSION_ID}}"
+      "exampleTemplate": "Example template:\n\n{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Analyze the architecture, data flows, and sequence of events.\n\nTask: {{TASK_DESCRIPTION}}"
     },
     "processingPipeline": {
       "heading": "Template Processing Pipeline",
@@ -781,24 +829,29 @@
       "buttonsHeading": "Built-in Buttons",
       "buttons": [
         {
-          "id": "use-full-plan",
-          "label": "Use Full Plan",
-          "description": "Copies the entire implementation plan XML content. Best for agents that accept structured plan input."
+          "id": "parallel-agents",
+          "label": "Parallel Claude Coding Agents",
+          "description": "Launches parallel Claude coding agents that execute simultaneously. Each agent receives explicit instructions about their responsibilities. Includes instructions to remove deprecated features completely."
         },
         {
-          "id": "use-step",
-          "label": "Use This Step",
-          "description": "Copies only the currently selected step content. Useful for incremental execution or reviewing specific changes."
+          "id": "investigate-results",
+          "label": "Investigate Results",
+          "description": "Reviews results from launched agents and verifies complete implementation. Performs self-check by reading modified files and analyzing changes without launching additional agents."
         },
         {
-          "id": "use-commands",
-          "label": "Use Commands",
-          "description": "Extracts and copies only the shell commands from the plan steps. Ideal for quick terminal execution."
+          "id": "task-only",
+          "label": "Task",
+          "description": "Copies just the task description for context. Uses {{TASK_DESCRIPTION}} placeholder."
         },
         {
-          "id": "use-steps-only",
-          "label": "Use Steps Only",
-          "description": "Copies the plan steps without agent instructions or metadata. Cleaner output for human review."
+          "id": "task-and-plan",
+          "label": "Task + Plan",
+          "description": "Combines task description and implementation plan. Useful for providing full context when the agent needs both the goal and the execution strategy."
+        },
+        {
+          "id": "plan-only",
+          "label": "Plan",
+          "description": "Copies only the implementation plan content. Best for agents that already have task context and just need execution instructions."
         }
       ]
     },
@@ -931,6 +984,14 @@
       "heading": "Voice transcription integration",
       "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcripts at the cursor inside the task description or terminal dictation buffer. The inserted text can immediately be highlighted and passed through the same improvement popover, and the original transcription job identifier is stored with the improvement payload for auditing.",
       "preferences": "Language, model, and temperature preferences persist at the project level, so teams get consistent transcription quality before refining the copy. Silence detection warns about bad audio levels, and a ten-minute cap prevents oversized recordings from blocking improvement jobs with large payloads."
+    },
+    "visuals": {
+      "popoverFlow": {
+        "title": "Text improvement flow",
+        "description": "Selection popover triggers improvement job and returns enhanced text.",
+        "imageSrc": "/images/docs/text-improvement/flow.svg",
+        "imageAlt": "Text improvement flow diagram"
+      }
     }
   },
   "voiceTranscription": {
@@ -943,7 +1004,8 @@
     "description": "Recording lifecycle, device management, and streaming behaviour for voice-driven prompts.",
     "deviceManagement": {
       "description": "The feature requests microphone permission, enumerates available audio inputs, and lets users switch devices during a session. Audio levels are monitored live so the UI can surface silence warnings if the microphone is muted or disconnected.",
-      "heading": "Device management"
+      "heading": "Device management",
+      "monitoring": "Real-time audio level monitoring displays visual feedback during recording. The system detects silence periods and warns users if the microphone appears muted or disconnected, preventing failed recordings before audio is sent for transcription."
     },
     "intro": "Voice transcription is available anywhere the desktop app exposes dictation controls, including the plan terminal and prompt editors. The feature records audio locally, sends chunks to the transcription service, and inserts recognised text into the active input field without blocking manual typing.",
     "metaDescription": "How PlanToCode records audio, streams real-time transcripts using gpt-4o-transcribe, manages permissions, project settings.",
@@ -952,22 +1014,103 @@
     "ogTitle": "Voice transcription - PlanToCode",
     "projectSettings": {
       "description": "When a recording session starts, the hook looks up the active project's transcription configuration. Language codes, preferred models, and other settings are retrieved before capturing audio so recordings follow the project's preferences.",
-      "heading": "Project-aware settings"
+      "heading": "Project-aware settings",
+      "storage": "Project-specific transcription preferences are stored in SQLite and include the preferred model (gpt-4o-transcribe or gpt-4o-mini-transcribe), language code, and temperature settings. These preferences persist across sessions and sync with the server for billing purposes."
     },
     "readTime": "5 min",
     "recordingWorkflow": {
       "description": "The recording hook keeps a state machine with idle, recording, processing, and error states. It tracks duration, manages silence detection, and ensures recordings stop automatically after ten minutes. Chunks are buffered and forwarded to the transcription action, which returns recognised text for insertion.",
-      "heading": "Recording workflow"
+      "heading": "Recording workflow",
+      "statesHeading": "Recording states",
+      "states": [
+        "idle: No recording in progress, microphone permissions may or may not be granted",
+        "recording: Actively capturing audio via MediaRecorder, duration tracked, visual feedback displayed",
+        "processing: Audio chunk sent to server, awaiting transcription response from gpt-4o-transcribe",
+        "error: Recording failed due to permission denial, device disconnection, or transcription API error"
+      ]
     },
     "routingBehavior": {
       "heading": "Multi-destination routing",
-      "description": "Transcribed text can be routed to multiple destinations: (1) Task description editors with cursor insertion and immediate text_improvement refinement, (2) Terminal dictation buffer for command execution (e.g., 'run npm test' → typed into PTY), (3) Meeting notes mode with accumulated buffer auto-saved to SQLite and task_refinement generating actionable tasks. The insertTranscript callback enables flexible routing without coupling. Routing destination is stored in job metadata for audit trails."
+      "description": "Transcribed text can be routed to multiple destinations based on the active context. The insertTranscript callback enables flexible routing without coupling. Routing destination is stored in job metadata for audit trails.",
+      "destinations": [
+        "Task description editors: Cursor insertion with optional immediate text_improvement refinement",
+        "Terminal dictation buffer: Command execution (e.g., 'run npm test' typed into PTY)",
+        "Meeting notes mode: Accumulated buffer auto-saved to SQLite with task_refinement generating actionable tasks",
+        "Prompt editors: Direct insertion into any text input field across the application"
+      ]
+    },
+    "pipeline": {
+      "heading": "Transcription pipeline",
+      "hook": "The {code} React hook manages the complete recording lifecycle. It initializes {code} for audio capture in WebM format with Opus codec, monitors audio levels, and handles device switching.",
+      "command": "The desktop app invokes {code} to send audio data to the server endpoint {code}. The command validates audio size (minimum 1KB, maximum 25MB), duration, temperature (0.0-1.0), and prompt length (max 1000 characters).",
+      "constraints": "Audio files must be between 1KB and 25MB. Supported formats: WAV, MP3, M4A, OGG, WebM, FLAC, AAC, and MP4. The transcription model must be specified explicitly - supported models are gpt-4o-transcribe and gpt-4o-mini-transcribe from OpenAI."
+    },
+    "serverProcessing": {
+      "heading": "Server-side processing",
+      "endpoint": "The server exposes {code} which accepts multipart form data. It routes requests to either OpenAI or Google based on the model's provider configuration, validates user credits, and calculates billing based on audio duration.",
+      "parametersHeading": "Request parameters",
+      "parameters": [
+        "file: Audio file data (required) - WAV, MP3, M4A, OGG, WebM, FLAC, AAC, or MP4",
+        "model: Transcription model ID (required) - openai/gpt-4o-transcribe or openai/gpt-4o-mini-transcribe",
+        "duration_ms: Recording duration in milliseconds (required for billing calculation)",
+        "language: ISO 639-1 language code (optional) - improves accuracy for specific languages",
+        "prompt: Context hint for transcription (optional, max 1000 characters) - helps with domain-specific vocabulary",
+        "temperature: Sampling temperature 0.0-1.0 (optional, default 0.0) - lower values produce more deterministic output"
+      ]
+    },
+    "dataFlow": {
+      "heading": "Data flow",
+      "description": "Audio data flows from the browser through the Tauri command layer to the server, which proxies requests to the appropriate transcription provider.",
+      "stepsHeading": "Processing steps",
+      "steps": [
+        "Browser MediaRecorder captures audio chunks in WebM/Opus format",
+        "useVoiceTranscription hook buffers chunks and monitors duration",
+        "On stop, audio blob is converted to bytes and sent via transcribe_audio_command",
+        "Tauri command validates audio size, duration, and parameters",
+        "Request sent to server /api/audio/transcriptions endpoint with auth token",
+        "Server validates user credits and routes to OpenAI or Google provider",
+        "Provider returns transcribed text, server logs usage and deducts credits",
+        "Transcribed text returned to desktop and inserted via callback"
+      ]
+    },
+    "keyFiles": {
+      "heading": "Key implementation files",
+      "items": [
+        "desktop/src/hooks/useVoiceTranscription.ts",
+        "desktop/src-tauri/src/commands/audio_commands.rs",
+        "server/src/handlers/proxy/specialized/transcription.rs",
+        "server/src/clients/openai/transcription.rs",
+        "server/src/clients/google/transcription.rs"
+      ]
     },
     "examples": {
       "heading": "Usage examples",
-      "description": "Common voice transcription workflows: Sprint planning (meeting recording → transcription → task_refinement → task descriptions), Terminal commands (dictation → transcription → terminal input → execution), Bug reports (verbal description → task editor → text_improvement → task_refinement), Architecture discussions (video + audio → vision analysis + transcription → combined text_improvement)."
+      "description": "Common voice transcription workflows demonstrate the flexibility of the system:",
+      "items": [
+        "Sprint planning: Meeting recording with transcription piped to task_refinement for generating task descriptions",
+        "Terminal commands: Dictation transcribed and typed directly into PTY for execution",
+        "Bug reports: Verbal description captured, refined with text_improvement, then processed by task_refinement",
+        "Architecture discussions: Video recording with audio track extracted for transcription, combined with vision analysis"
+      ]
     },
-    "title": "Voice Transcription"
+    "cta": {
+      "heading": "Continue exploring",
+      "description": "Learn how transcribed text can be refined and how meeting recordings are processed into actionable tasks.",
+      "links": {
+        "textImprovement": "Text Improvement",
+        "meetingIngestion": "Meeting Ingestion"
+      }
+    },
+    "title": "Voice Transcription",
+    "visuals": {
+      "recordingFlow": {
+        "title": "Voice transcription pipeline",
+        "description": "Audio capture, GPT-4o transcription processing, and text routing flow.",
+        "imageSrc": "/images/docs/voice-transcription/pipeline.svg",
+        "imageAlt": "Voice transcription pipeline diagram",
+        "caption": "Audio flows from browser capture through Tauri commands to server-side GPT-4o transcription."
+      }
+    }
   },
   "overview": {
     "meta": {
@@ -984,9 +1127,9 @@
       "systemMap": {
         "title": "System map",
         "description": "Map of the desktop app, the Rust core, local SQLite storage, and the server proxy.",
-        "imageSrc": "/images/docs/overview/system-map.png",
+        "imageSrc": "/images/docs/overview/system-map.svg",
         "imageAlt": "PlanToCode system map diagram",
-        "caption": "Placeholder for a system map diagram."
+        "caption": "Four-layer architecture with data flowing down and events streaming back up."
       }
     },
     "systemLayers": {
@@ -1088,9 +1231,9 @@
       "timeline": {
         "title": "Runtime timeline",
         "description": "Visual timeline showing task input, workflow stages, and plan output.",
-        "imageSrc": "/images/docs/runtime-walkthrough/timeline.png",
+        "imageSrc": "/images/docs/runtime-walkthrough/timeline.svg",
         "imageAlt": "Runtime timeline diagram",
-        "caption": "Placeholder for a runtime timeline diagram."
+        "caption": "Task execution flows through six stages, with all artifacts persisted to SQLite."
       },
       "walkthroughVideo": {
         "title": "Runtime walkthrough video",
@@ -1238,9 +1381,9 @@
       "shell": {
         "title": "Desktop shell overview",
         "description": "Screenshot showing the plan editor, terminal tabs, and job status sidebar.",
-        "imageSrc": "/images/docs/desktop-app/desktop-shell.png",
+        "imageSrc": "/assets/images/demo-implementation-plans.jpg",
         "imageAlt": "PlanToCode desktop shell",
-        "caption": "Placeholder for the desktop shell UI."
+        "caption": "The desktop app showing the implementation plans panel and sidebar."
       }
     },
     "projectLayout": {
@@ -1322,7 +1465,7 @@
     "inputStability": {
       "heading": "Task description stability",
       "description": "The task description editor includes safeguards to prevent cursor jumps:",
-      "guards": [
+      "items": [
         "Remote updates are queued while the user is typing and flushed on idle or blur.",
         "Selection state is tracked and restored after React re-renders.",
         "Background writers call sessionActions.updateCurrentSessionFields to coordinate updates.",
@@ -1359,7 +1502,7 @@
       "flow": {
         "title": "Server request flow",
         "description": "Diagram showing clients, API routes, and the LLM proxy.",
-        "imageSrc": "/images/docs/server-api/request-flow.png",
+        "imageSrc": "/images/docs/provider-routing/routing-map.svg",
         "imageAlt": "Server request flow diagram",
         "caption": "Placeholder for the server request flow."
       }
@@ -1497,7 +1640,7 @@
       "stateMachine": {
         "title": "Job state machine",
         "description": "Diagram showing job status transitions from created through completion or failure.",
-        "imageSrc": "/images/docs/background-jobs/state-machine.png",
+        "imageSrc": "/images/docs/background-jobs/state-machine.svg",
         "imageAlt": "Job state machine diagram",
         "caption": "Placeholder for job state machine diagram."
       }
@@ -1641,7 +1784,7 @@
       "pipelineMap": {
         "title": "Pipeline architecture map",
         "description": "Overview of the multi-stage pipeline from task input to plan output.",
-        "imageSrc": "/images/docs/build-your-own/pipeline-map.png",
+        "imageSrc": "/images/docs/overview/system-map.svg",
         "imageAlt": "Pipeline architecture diagram",
         "caption": "Placeholder for pipeline architecture diagram."
       }
@@ -1810,9 +1953,9 @@
       "tradeoffMatrix": {
         "title": "Tradeoff matrix",
         "description": "Visual comparison of technology choices with their benefits and costs.",
-        "imageSrc": "/images/docs/decisions-tradeoffs/tradeoff-matrix.png",
+        "imageSrc": "/images/docs/overview/system-map.svg",
         "imageAlt": "Technology tradeoff matrix",
-        "caption": "Placeholder for tradeoff matrix diagram."
+        "caption": "System architecture overview illustrating the technology stack decisions."
       }
     },
     "sections": {
@@ -1938,21 +2081,24 @@
     "entities": {
       "heading": "Core Entities",
       "items": [
-        "sessions: Project context with task description, file selections, model preferences",
-        "background_jobs: LLM-backed operations with prompt, response, tokens, cost",
+        "sessions: Project context with task description, file selections, model preferences, search settings, video/merge prompts, history indexes",
+        "background_jobs: LLM-backed operations with prompt, response, tokens, cost, is_finalized flag, error_message",
         "terminal_sessions: PTY sessions with output log, status, process info",
         "task_description_history: Version history for task descriptions",
         "file_selection_history: Version history for file selections",
         "project_system_prompts: Per-project prompt overrides",
         "key_value_store: App settings and configuration",
-        "error_logs: Client-side error tracking"
+        "error_logs: Client-side error tracking",
+        "migrations: Tracks applied database migrations with timestamps",
+        "db_diagnostic_logs: Records database diagnostic issues and errors",
+        "app_settings: Application configuration key-value pairs with descriptions"
       ]
     },
     "visuals": {
       "schema": {
         "title": "Entity relationship diagram",
         "description": "Visual representation of the SQLite schema and relationships.",
-        "imageSrc": "/images/docs/data-model/schema.png",
+        "imageSrc": "/images/docs/data-model/schema.svg",
         "imageAlt": "Database schema diagram",
         "caption": "Placeholder for database schema diagram."
       }
@@ -2541,7 +2687,7 @@
       "template": {
         "title": "Prompt assembly flow",
         "description": "How templates combine with user content to form complete prompts.",
-        "imageSrc": "/images/docs/prompt-types/template-flow.png",
+        "imageSrc": "/images/docs/implementation-plans/structure.svg",
         "imageAlt": "Prompt template assembly diagram",
         "caption": "Placeholder for prompt assembly diagram."
       }
@@ -2606,9 +2752,9 @@
     "intro": "When you have multiple implementation plans that need to be combined, the merge workflow lets you select plans, provide guidance, and generate a unified plan that incorporates the best elements from each source.",
     "processor": {
       "heading": "ImplementationPlanMergeProcessor",
-      "description": "The merge processor combines multiple source plans with user instructions to create a unified plan.",
-      "payload": "Accepts source plan IDs, merge instructions, and selected model.",
-      "storage": "Merged plan stored as a new background_job with references to source jobs in metadata."
+      "description": "The ImplementationPlanMergeProcessor fetches source plan responses, wraps them in XML-tagged sections, and streams the merged result through the LlmTaskRunner.",
+      "payload": "Accepts source_job_ids array, optional merge_instructions string, and inherits model configuration from the session.",
+      "storage": "Merged plan stored as JobResultData::Text with metadata including source_job_ids, merge_instructions, source_count, merged_at timestamp, and session context."
     },
     "inputs": {
       "heading": "Merge Inputs",
@@ -2621,8 +2767,8 @@
     },
     "xmlFormat": {
       "heading": "XML-Tagged Source Plans",
-      "description": "Source plans are wrapped in XML tags with identifiers for clear reference:",
-      "example": "<source_plans>\n  <plan id=\"plan_1\" title=\"API Implementation\">\n    [full plan content]\n  </plan>\n  <plan id=\"plan_2\" title=\"Database Schema\">\n    [full plan content]\n  </plan>\n</source_plans>\n\n<merge_instructions>\n  Prioritize plan_1 for API structure.\n  Use database schema from plan_2.\n  Resolve conflicts by preferring newer patterns.\n</merge_instructions>"
+      "description": "Source plans are wrapped in XML tags with sequential identifiers:",
+      "example": "<task_description>\n  [original task from session]\n</task_description>\n\n<source_plans>\n  <implementation_plan_1>\n    [full plan content from first source]\n  </implementation_plan_1>\n  <implementation_plan_2>\n    [full plan content from second source]\n  </implementation_plan_2>\n</source_plans>\n\n<user_instructions>\n  Prioritize API structure from plan 1.\n  Use database schema from plan 2.\n  Resolve conflicts by preferring newer patterns.\n</user_instructions>"
     },
     "prompt": {
       "heading": "Merge Prompt Structure",
@@ -2640,8 +2786,14 @@
         "title": "Merge workflow walkthrough",
         "description": "Video showing the complete merge process from selection to output.",
         "videoSrc": "/videos/docs/merge-instructions/walkthrough.mp4",
-        "posterSrc": "/images/docs/merge-instructions/poster.png",
+        "posterSrc": "/images/docs/merge-instructions/flow.svg",
         "caption": "Placeholder for merge walkthrough video."
+      },
+      "mergeFlow": {
+        "title": "Merge instructions flow",
+        "description": "Diagram showing multi-model merge workflow with XML-tagged source plans.",
+        "imageSrc": "/images/docs/merge-instructions/flow.svg",
+        "caption": "Merge flow showing source selection, instruction processing, and output generation"
       }
     },
     "rules": {
@@ -2657,9 +2809,9 @@
     },
     "output": {
       "heading": "Merged Output",
-      "description": "The merged plan follows the same XML structure as individual plans:",
+      "description": "The merged plan is returned as raw text from the LLM, following the same flexible format as individual plans.",
       "provenance": "Each section includes comments indicating which source plan contributed the content.",
-      "metadata": "source_plan_ids, merge_instructions, and merge_timestamp stored in job metadata."
+      "metadata": "source_job_ids, merge_instructions, source_count, merged_at timestamp, planTitle, summary, isStructured (false), and sessionName stored in job metadata."
     },
     "ui": {
       "heading": "UI Integration",
@@ -2690,7 +2842,7 @@
       "ingestionFlow": {
         "title": "Recording ingestion flow",
         "description": "How recordings flow through transcription and analysis.",
-        "imageSrc": "/images/docs/meeting-ingestion/flow.png",
+        "imageSrc": "/images/docs/deep-research/workflow.svg",
         "imageAlt": "Recording ingestion flow diagram",
         "caption": "Placeholder for ingestion flow diagram."
       }
@@ -2802,9 +2954,9 @@
       "frameNotes": {
         "title": "Video analysis pipeline",
         "description": "How frames flow through the analysis model.",
-        "imageSrc": "/images/docs/video-analysis/pipeline.png",
-        "imageAlt": "Video analysis pipeline diagram",
-        "caption": "Placeholder for video analysis pipeline."
+        "imageSrc": "/assets/images/demo-video-analysis.jpg",
+        "imageAlt": "Video analysis interface",
+        "caption": "The video analysis interface showing frame capture and analysis options."
       }
     },
     "apiEndpoint": {
@@ -2917,7 +3069,7 @@
       "app": {
         "title": "iOS app interface",
         "description": "Screenshots of the iOS app showing device linking and terminal view.",
-        "imageSrc": "/images/docs/mobile-ios/app.png",
+        "imageSrc": "/images/docs/overview/system-map.svg",
         "imageAlt": "PlanToCode iOS app screenshots",
         "caption": "Placeholder for iOS app screenshots."
       }
@@ -2930,19 +3082,33 @@
           "name": "Core",
           "path": "mobile/ios/Core/",
           "description": "Business logic and API clients",
-          "components": ["WorkflowManager", "APIClient", "MobileSessionManager", "DeviceLinkClient"]
+          "components": [
+            "WorkflowManager",
+            "APIClient",
+            "MobileSessionManager",
+            "DeviceLinkClient"
+          ]
         },
         {
           "name": "Security",
           "path": "mobile/ios/Security/",
           "description": "Authentication and credential storage",
-          "components": ["Auth0Manager", "KeychainHelper", "TokenStore"]
+          "components": [
+            "Auth0Manager",
+            "KeychainHelper",
+            "TokenStore"
+          ]
         },
         {
           "name": "VibeUI",
           "path": "mobile/ios/VibeUI/",
           "description": "SwiftUI components and design system",
-          "components": ["TerminalView", "JobListView", "SettingsView", "DeviceLinkView"]
+          "components": [
+            "TerminalView",
+            "JobListView",
+            "SettingsView",
+            "DeviceLinkView"
+          ]
         }
       ]
     },
@@ -3089,9 +3255,17 @@
       "routingMap": {
         "title": "Provider routing map",
         "description": "Diagram of how requests flow from the desktop app to the proxy and out to providers.",
-        "imageSrc": "/images/docs/provider-routing/routing-map.png",
+        "imageSrc": "/images/docs/provider-routing/routing-map.svg",
         "imageAlt": "Diagram of provider routing flow from desktop to external providers",
         "caption": "Placeholder for provider routing diagram."
+      }
+    },
+    "cta": {
+      "heading": "Continue into model configuration",
+      "description": "Model configuration explains how allowed lists and token guardrails are exposed to the UI.",
+      "links": {
+        "modelConfiguration": "Model configuration",
+        "runtimeWalkthrough": "Runtime walkthrough"
       }
     }
   }

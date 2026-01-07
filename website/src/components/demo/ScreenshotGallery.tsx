@@ -289,12 +289,12 @@ export function ScreenshotGallery() {
 
                   {/* Image Section - Right/Left alternating */}
                   <div
-                    className="lg:w-3/5 flex justify-center bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
+                    className="lg:w-3/5 w-full flex justify-center bg-gradient-to-br from-background/50 to-background/20 p-6 lg:p-8 cursor-pointer"
                     onClick={() => setSelectedImage(screenshot)}
                   >
-                    <div className="relative rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
+                    <div className="relative w-full rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-all duration-300 border border-primary/20 dark:border-primary/25 bg-background/50">
                       <div
-                        className="relative"
+                        className="relative w-full"
                         style={{
                           aspectRatio: screenshot.aspectRatio || '16/10',
                           maxWidth: (screenshot.id === 'file-finder-workflow' || screenshot.id === 'background-tasks' || screenshot.id === 'plans-monitor') ? '400px' : undefined,

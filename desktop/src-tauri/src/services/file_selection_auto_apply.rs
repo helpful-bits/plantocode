@@ -21,14 +21,70 @@ pub struct AutoApplyOutcome {
     pub applied_files: Vec<String>,
 }
 
+/// Extract and sanitize file paths from response JSON.
+/// Handles various edge cases:
+/// - Stringified JSON arrays (e.g., "[\"file1.txt\", \"file2.txt\"]") are parsed
+/// - Non-string elements are discarded
+/// - Empty strings are filtered out
+/// - Strings that look like JSON arrays are treated as invalid paths
 fn extract_files_from_response(response: &Value) -> Vec<String> {
     // Dispatcher standardizes file-finding responses to { files: string[] }
     match response.get("files") {
-        Some(Value::Array(arr)) => arr
-            .iter()
-            .filter_map(|v| v.as_str().map(|s| s.trim().to_string()))
-            .filter(|s| !s.is_empty())
-            .collect(),
+        Some(Value::Array(arr)) => {
+            let mut result = Vec::new();
+            for item in arr {
+                match item {
+                    Value::String(s) => {
+                        let trimmed = s.trim();
+                        if trimmed.is_empty() {
+                            continue;
+                        }
+                        // Check if this is a stringified JSON array
+                        if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                            // Attempt to parse as JSON array and flatten
+                            if let Ok(nested_arr) = serde_json::from_str::<Vec<Value>>(trimmed) {
+                                for nested_item in nested_arr {
+                                    if let Value::String(nested_s) = nested_item {
+                                        let nested_trimmed = nested_s.trim();
+                                        // Reject if still looks like JSON
+                                        if !nested_trimmed.is_empty()
+                                            && !(nested_trimmed.starts_with('[')
+                                                && nested_trimmed.ends_with(']'))
+                                        {
+                                            result.push(nested_trimmed.to_string());
+                                        }
+                                    }
+                                }
+                            }
+                            // If parse fails, discard this malformed entry
+                        } else {
+                            // Normal file path
+                            result.push(trimmed.to_string());
+                        }
+                    }
+                    // Skip non-string elements
+                    _ => continue,
+                }
+            }
+            result
+        }
+        Some(Value::String(s)) => {
+            // Handle case where files is a stringified JSON array
+            let trimmed = s.trim();
+            if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                if let Ok(arr) = serde_json::from_str::<Vec<Value>>(trimmed) {
+                    return arr
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| s.trim().to_string())
+                        .filter(|s| {
+                            !s.is_empty() && !(s.starts_with('[') && s.ends_with(']'))
+                        })
+                        .collect();
+                }
+            }
+            vec![]
+        }
         _ => vec![],
     }
 }

@@ -15,11 +15,10 @@ public final class VoiceDictationService: ObservableObject {
     @Published public private(set) var lastTranscriptionJob: TranscriptionJob?
     @Published public private(set) var lastTranscriptionError: Error?
 
-    private let engine = AVAudioEngine()
+    // Use AVAudioRecorder for native AAC compression (much smaller files than WAV)
+    private var audioRecorder: AVAudioRecorder?
     private var audioFileURL: URL?
-    private var audioFile: AVAudioFile?
     private let serverFeatureService = ServerFeatureService()
-    private let audioQueue = DispatchQueue(label: "com.plantocode.audio", qos: .userInitiated)
     private var recordingStartTime: Date?
     private var levelUpdateTimer: Timer?
     private var hasCompletedRecording: Bool = false
@@ -90,7 +89,6 @@ public final class VoiceDictationService: ObservableObject {
 
         let audioSession = AVAudioSession.sharedInstance()
         try audioSession.setCategory(.playAndRecord, mode: .spokenAudio, options: [.allowBluetooth, .duckOthers, .defaultToSpeaker])
-
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
         hasCompletedRecording = false
@@ -99,136 +97,62 @@ public final class VoiceDictationService: ObservableObject {
         let recordingsDir = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceRecordings", isDirectory: true)
         try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
 
-        audioFileURL = recordingsDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("wav")
+        // Use M4A (AAC) format for much smaller file sizes (~10x smaller than WAV)
+        // A 5-minute WAV is ~50MB, but AAC is ~5MB - significantly faster upload
+        audioFileURL = recordingsDir.appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
 
         guard let audioFileURL = audioFileURL else {
             throw VoiceDictationError.fileCreationFailed
         }
 
-        if engine.isRunning {
-            engine.stop()
-        }
-
-        let inputNode = engine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-        guard recordingFormat.channelCount > 0 else {
-            throw VoiceDictationError.audioFormatNotSupported
-        }
-
-        guard recordingFormat.sampleRate > 0 else {
-            throw VoiceDictationError.audioFormatNotSupported
-        }
-
-        let targetSampleRate = recordingFormat.sampleRate > 0 ? recordingFormat.sampleRate : 48000.0
-
-        let audioFormat = AVAudioFormat(
-            commonFormat: .pcmFormatInt16,
-            sampleRate: targetSampleRate,
-            channels: 1,
-            interleaved: false
-        )
-
-        guard let format = audioFormat else {
-            throw VoiceDictationError.audioFormatNotSupported
-        }
+        // AAC recording settings for optimal quality and small file size
+        // 44.1kHz sample rate, mono, AAC codec with high quality
+        let recordingSettings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 44100.0,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            AVEncoderBitRateKey: 128000  // 128 kbps - good quality for speech
+        ]
 
         do {
-            audioFile = try AVAudioFile(
-                forWriting: audioFileURL,
-                settings: format.settings,
-                commonFormat: .pcmFormatInt16,
-                interleaved: false
-            )
+            audioRecorder = try AVAudioRecorder(url: audioFileURL, settings: recordingSettings)
+            audioRecorder?.isMeteringEnabled = true  // Enable metering for audio levels
         } catch {
             throw VoiceDictationError.fileCreationFailed
         }
 
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            guard let self = self else { return }
-            guard buffer.frameLength > 0 else { return }
-
-            // Calculate audio levels for visualization
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                self.updateAudioLevels(from: buffer)
-            }
-
-            guard let bufferCopy = self.makePCMBufferCopy(buffer) else {
-                return
-            }
-            self.audioQueue.async {
-                guard let audioFile = self.audioFile else { return }
-
-                do {
-                    // Convert to target format if needed
-                    if recordingFormat != format {
-                        guard let converter = AVAudioConverter(from: recordingFormat, to: format) else {
-                            return
-                        }
-
-                        // Calculate output frame capacity based on sample rate ratio
-                        let ratio = format.sampleRate / recordingFormat.sampleRate
-                        let outputFrameCapacity = AVAudioFrameCount(Double(bufferCopy.frameLength) * ratio) + 1024
-
-                        guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: outputFrameCapacity) else {
-                            return
-                        }
-
-                        var error: NSError?
-                        var inputBufferUsed = false
-                        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-                            if inputBufferUsed {
-                                outStatus.pointee = .noDataNow
-                                return nil
-                            } else {
-                                outStatus.pointee = .haveData
-                                inputBufferUsed = true
-                                return bufferCopy
-                            }
-                        }
-
-                        let status = converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
-
-                        // Check conversion status
-                        if status == .error {
-                            return
-                        }
-
-                        // Ensure we have converted data to write
-                        guard convertedBuffer.frameLength > 0 else {
-                            return
-                        }
-
-                        do {
-                            try audioFile.write(from: convertedBuffer)
-                        } catch {
-                            // Continue without crashing
-                        }
-                    } else {
-                        // No conversion needed, write directly
-                        do {
-                            try audioFile.write(from: bufferCopy)
-                        } catch {
-                            // Continue without crashing
-                        }
-                    }
-                } catch {
-                }
-            }
+        guard let recorder = audioRecorder else {
+            throw VoiceDictationError.fileCreationFailed
         }
 
-        // Start the engine
-        try engine.start()
+        // Start recording
+        guard recorder.record() else {
+            throw VoiceDictationError.fileCreationFailed
+        }
+
         isRecording = true
         recordingStartTime = Date()
+
+        // Start timer to update audio levels for visualization
+        levelUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateAudioLevelsFromRecorder()
+            }
+        }
     }
 
     public func stopRecording() {
         guard isRecording else { return }
 
-        engine.stop()
-        engine.inputNode.removeTap(onBus: 0)
+        // Stop the level update timer
+        levelUpdateTimer?.invalidate()
+        levelUpdateTimer = nil
+
+        // Stop the recorder
+        audioRecorder?.stop()
+        audioRecorder = nil
+
         isRecording = false
         audioLevels = [0, 0, 0, 0, 0]
 
@@ -238,36 +162,34 @@ public final class VoiceDictationService: ObservableObject {
 
         hasCompletedRecording = true
 
-        audioQueue.sync {
-            audioFile = nil
-        }
-
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         } catch {
         }
     }
 
-    private func updateAudioLevels(from buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData?[0] else { return }
-        let channelDataCount = Int(buffer.frameLength)
-
-        // Calculate RMS (Root Mean Square) for overall amplitude
-        var sum: Float = 0
-        for i in 0..<channelDataCount {
-            let sample = channelData[i]
-            sum += sample * sample
+    private func updateAudioLevelsFromRecorder() {
+        guard let recorder = audioRecorder, recorder.isRecording else {
+            audioLevels = [0, 0, 0, 0, 0]
+            return
         }
-        let rms = sqrt(sum / Float(channelDataCount))
 
-        // Normalize to 0-1 range with boost for better visualization
-        let normalizedLevel = min(rms * 20, 1.0)
+        // Update meters to get current audio levels
+        recorder.updateMeters()
+
+        // Get average power in decibels (typically -160 to 0)
+        let averagePower = recorder.averagePower(forChannel: 0)
+
+        // Convert dB to linear scale (0 to 1)
+        // -60 dB is essentially silence, 0 dB is max
+        let minDb: Float = -60.0
+        let normalizedLevel = max(0, (averagePower - minDb) / (-minDb))
 
         // Create animated levels with slight variations for each bar
         // This creates a more dynamic waveform effect
         let barCount = 5
         var newLevels: [Float] = []
-        for i in 0..<barCount {
+        for _ in 0..<barCount {
             // Add slight variation based on bar position for more natural look
             let variation = Float.random(in: 0.8...1.2)
             let level = normalizedLevel * variation
@@ -377,6 +299,7 @@ public final class VoiceDictationService: ObservableObject {
                         self.hasCompletedRecording = false
                         self.lastRecordingDurationMs = nil
                         self.lastTranscriptionJob = nil
+                        self.lastTranscriptionError = nil
                     }
 
                 } catch let error as DataServiceError {
@@ -468,6 +391,7 @@ public final class VoiceDictationService: ObservableObject {
                         self.hasCompletedRecording = false
                         self.lastRecordingDurationMs = nil
                         self.lastTranscriptionJob = nil
+                        self.lastTranscriptionError = nil
                     }
 
                 } catch let error as DataServiceError {
@@ -557,42 +481,6 @@ extension VoiceDictationService {
 }
 
 // MARK: - Error Types
-
-private extension VoiceDictationService {
-    /// Copies PCM data into a new buffer so work outside the tap never touches recycled memory.
-    func makePCMBufferCopy(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
-        let capacity = max(buffer.frameCapacity, buffer.frameLength)
-        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: capacity) else {
-            return nil
-        }
-
-        copy.frameLength = buffer.frameLength
-
-        let sourceBuffers = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
-        let destinationBuffers = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-
-        guard sourceBuffers.count == destinationBuffers.count else {
-            return nil
-        }
-
-        for index in 0..<sourceBuffers.count {
-            let source = sourceBuffers[index]
-
-            guard
-                let sourceData = source.mData,
-                let destinationData = destinationBuffers[index].mData
-            else {
-                return nil
-            }
-
-            let byteSize = Int(source.mDataByteSize)
-            destinationBuffers[index].mDataByteSize = source.mDataByteSize
-            memcpy(destinationData, sourceData, byteSize)
-        }
-
-        return copy
-    }
-}
 
 public enum VoiceDictationError: Error, LocalizedError {
     case audioFormatNotSupported

@@ -1,11 +1,11 @@
 {
-  "version": "1.2.8",
-  "notes": "Version 1.2.8 Release",
-  "pub_date": "2025-12-22T09:45:00Z",
+  "version": "1.2.9",
+  "notes": "Version 1.2.9 Release",
+  "pub_date": "2026-01-06T22:55:00Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN25JdmZGNUJhQTJnZmtXTGZYNDhqUS9NR1NRWXIvWlhIYzB0c2ErT2RyUXpvWVFpQ1RzTlFIT0Ftc0pyK05oTFdtUndPSm0ySHVuNytmM05xUnhKaVFJPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY2Mzk2NzM3CWZpbGU6UGxhblRvQ29kZV8xLjIuOF9hYXJjaDY0LmFwcC50YXIuZ3oKLzNOT2dIUmFPYytLNFlVWi9LUDZjWVJTRkZjTks5V3YrSERzVTBqTTlVR3hOdVZYZWczNkZidk5FbGZMNXJKRjE5ay9MTkNWVHpsOEhVRjRFOFhYQVE9PQo=",
-      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.8/PlanToCode-1.2.8.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUXZZN0JwS05DN3ErOEpHYWJMSGhYZjBEcW1NenY2TGZWVG5RVGNMUm9sOUhZU0dnek1MSFQvSkR6SG1rbnNnZDdZV3pIa3FMakVDZlRJS3prNTY1anV4TlNiZXFWeWc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzY3NzQwMjQ3CWZpbGU6UGxhblRvQ29kZV8xLjIuOV9hYXJjaDY0LmFwcC50YXIuZ3oKUVFMMjV4ZDZraUVsSWdhL2xPK014bkxjTmdnVEQ0UWR6dFFnSFAycFlySkIxd1VGRnQ2NnQ3UmRvcE03U2p6UHZvZ2wxbmREWDlLOWluTXl6QWtCQWc9PQo=",
+      "url": "https://d2tyb0wucqqf48.cloudfront.net/desktop/mac/v1.2.9/PlanToCode-1.2.9.tar.gz"
     }
   }
 }

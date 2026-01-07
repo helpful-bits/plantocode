@@ -61,6 +61,9 @@ public struct TaskInputView: View {
                 onTextChanged: {
                     // TaskInputView already syncs via debouncedSync; no extra persistence needed
                 },
+                onImmediateSync: {
+                    immediateSync()
+                },
                 showLanguagePicker: false,
                 showEnhanceButtons: true,
                 showUndoRedo: true,
@@ -183,9 +186,8 @@ public struct TaskInputView: View {
 
     private var trailingToolbarButtons: some View {
         HStack(spacing: 12) {
-            // Terminal button
             Button {
-                terminalJobId = TerminalJobIdentifier(id: "task-terminal-\(sessionId)")
+                terminalJobId = TerminalJobIdentifier(id: "terminal:task:\(sessionId)")
             } label: {
                 Image(systemName: "terminal")
                     .font(.system(size: 16))
@@ -275,6 +277,17 @@ public struct TaskInputView: View {
         }
     }
 
+    private func immediateSync() {
+        if isApplyingRemoteMerge {
+            return
+        }
+        undoRedoManager.saveState(taskDescription)
+        debounceTask?.cancel()
+        debounceTask = Task {
+            await performSync()
+        }
+    }
+
     private func debouncedSync() {
         if isApplyingRemoteMerge {
             return
@@ -284,55 +297,55 @@ public struct TaskInputView: View {
         debounceTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
+            await performSync()
+        }
+    }
 
-            // Capture state outside do block so it's accessible in catch for retry
-            let state = await MainActor.run { undoRedoManager.exportState() }
+    private func performSync() async {
+        guard !Task.isCancelled else { return }
 
-            do {
-                let newState = try await container.sessionService.syncHistoryState(
-                    sessionId: sessionId,
-                    kind: "task",
-                    state: state,
-                    expectedVersion: state.version
-                )
-                await MainActor.run {
-                    undoRedoManager.applyRemoteHistoryState(newState, suppressRecording: true)
-                    isEditing = false
-                    if let pending = pendingHistoryState {
-                        applyHistoryState(pending)
-                        pendingHistoryState = nil
-                    }
+        let state = await MainActor.run { undoRedoManager.exportState() }
+
+        do {
+            let newState = try await container.sessionService.syncHistoryState(
+                sessionId: sessionId,
+                kind: "task",
+                state: state,
+                expectedVersion: state.version
+            )
+            await MainActor.run {
+                undoRedoManager.applyRemoteHistoryState(newState, suppressRecording: true)
+                isEditing = false
+                if let pending = pendingHistoryState {
+                    applyHistoryState(pending)
+                    pendingHistoryState = nil
                 }
-            } catch {
-                // Log sync failures for debugging - these were previously silent
-                print("[TaskInputView] Failed to sync task description to desktop: \(error.localizedDescription)")
+            }
+        } catch {
+            print("[TaskInputView] Failed to sync task description to desktop: \(error.localizedDescription)")
 
-                await MainActor.run {
-                    isEditing = false
-                }
+            await MainActor.run {
+                isEditing = false
+            }
 
-                // Retry sync after a delay if not cancelled
-                // This ensures the task description eventually syncs even if there's a temporary connection issue
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                guard !Task.isCancelled else { return }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
 
-                // Only retry if the text hasn't changed since original attempt
-                let currentState = await MainActor.run { undoRedoManager.exportState() }
-                if currentState.checksum == state.checksum {
-                    do {
-                        let retryState = try await container.sessionService.syncHistoryState(
-                            sessionId: sessionId,
-                            kind: "task",
-                            state: currentState,
-                            expectedVersion: currentState.version
-                        )
-                        await MainActor.run {
-                            undoRedoManager.applyRemoteHistoryState(retryState, suppressRecording: true)
-                        }
-                        print("[TaskInputView] Retry sync succeeded")
-                    } catch {
-                        print("[TaskInputView] Retry sync also failed: \(error.localizedDescription)")
+            let currentState = await MainActor.run { undoRedoManager.exportState() }
+            if currentState.checksum == state.checksum {
+                do {
+                    let retryState = try await container.sessionService.syncHistoryState(
+                        sessionId: sessionId,
+                        kind: "task",
+                        state: currentState,
+                        expectedVersion: currentState.version
+                    )
+                    await MainActor.run {
+                        undoRedoManager.applyRemoteHistoryState(retryState, suppressRecording: true)
                     }
+                    print("[TaskInputView] Retry sync succeeded")
+                } catch {
+                    print("[TaskInputView] Retry sync also failed: \(error.localizedDescription)")
                 }
             }
         }

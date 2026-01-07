@@ -136,9 +136,24 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 /// How long before lack of client response causes a timeout
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Rate limiter for binary routing warnings: tracks last warning time per producer
 lazy_static::lazy_static! {
     static ref BINARY_ROUTE_WARNINGS: Mutex<HashMap<String, Instant>> = Mutex::new(HashMap::new());
+}
+
+fn parse_framed_terminal_event(data: &[u8]) -> Option<(&str, &[u8])> {
+    if data.len() < 6 {
+        return None;
+    }
+    if &data[0..4] != b"PTC1" {
+        return None;
+    }
+    let session_id_len = u16::from_be_bytes([data[4], data[5]]) as usize;
+    if data.len() < 6 + session_id_len {
+        return None;
+    }
+    let session_id_bytes = &data[6..6 + session_id_len];
+    let session_id = std::str::from_utf8(session_id_bytes).ok()?;
+    Some((session_id, data))
 }
 
 /// Token bucket rate limiter for per-connection rate limiting
@@ -556,24 +571,28 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
             Ok(Message::Binary(bin)) => {
                 self.last_heartbeat = Instant::now();
 
-                // Headerless binary forwarding via pairing
                 if let (Some(user_id), Some(device_id), Some(connection_manager)) =
                     (self.user_id.as_ref(), self.device_id.as_deref(), &self.connection_manager) {
-                    let bin_len = bin.len();
 
-                    if let Some(target) = connection_manager.get_binary_consumer(user_id, device_id) {
-                        let _ = connection_manager.send_binary_to_device(user_id, &target, bin.to_vec());
+                    let parsed = parse_framed_terminal_event(&bin);
+                    if parsed.is_none() {
+                        return;
+                    }
+                    let (session_id, frame) = parsed.unwrap();
+
+                    if let Some(target) = connection_manager.get_binary_consumer_for_session(user_id, device_id, session_id) {
+                        let _ = connection_manager.send_binary_to_device(user_id, &target, frame.to_vec());
                     } else {
-                        // Rate-limited warning: max 1 per minute per producer
                         let should_warn = {
                             let mut warnings = BINARY_ROUTE_WARNINGS.lock().unwrap();
                             let now = Instant::now();
-                            let last_warn = warnings.get(device_id);
+                            let key = format!("{}:{}", device_id, session_id);
+                            let last_warn = warnings.get(&key);
 
                             match last_warn {
                                 Some(last) if now.duration_since(*last) < Duration::from_secs(60) => false,
                                 _ => {
-                                    warnings.insert(device_id.to_string(), now);
+                                    warnings.insert(key, now);
                                     true
                                 }
                             }
@@ -583,9 +602,10 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
                             warn!(
                                 producer = %device_id,
                                 user_id = %user_id,
-                                len = bin_len,
-                                "No binary consumer found for producer={}, user={}, len={}. Verify bind message sent and device ID normalization.",
-                                device_id, user_id, bin_len
+                                session_id = %session_id,
+                                len = bin.len(),
+                                "No binary consumer found for producer={}, session={}, user={}",
+                                device_id, session_id, user_id
                             );
                         }
                     }
@@ -1644,22 +1664,35 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
             .cloned()
             .unwrap_or(JsonValue::Null);
 
-        // Ensure jobId and sessionId are forwarded at top level for mobile client
-        // Extract from root if present and not in payload
+        // Normalize payload identity for job events - ensure jobId and sessionId exist at payload level
+        // This enables all clients to deterministically route and merge events by stable identity
         if event_type.starts_with("job:") {
-            let root_job_id = msg.payload.get("jobId").cloned();
-            let root_session_id = msg.payload.get("sessionId").cloned();
-            
-            // Normalize to ensure these fields exist at payload level
             if let Some(payload_obj) = event_payload.as_object_mut() {
-                // Lift jobId to top level if it exists in root but not in payload
-                if let Some(job_id) = root_job_id {
+                // Determine canonical jobId in priority order:
+                // 1. root.jobId
+                // 2. payload.jobId
+                // 3. payload.job.id
+                // 4. payload.job.jobId (defensive)
+                let canonical_job_id = msg.payload.get("jobId").cloned()
+                    .or_else(|| payload_obj.get("jobId").cloned())
+                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("id")).cloned())
+                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("jobId")).cloned());
+
+                // Determine canonical sessionId in priority order:
+                // 1. root.sessionId
+                // 2. payload.sessionId
+                // 3. payload.job.sessionId
+                let canonical_session_id = msg.payload.get("sessionId").cloned()
+                    .or_else(|| payload_obj.get("sessionId").cloned())
+                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("sessionId")).cloned());
+
+                // Inject missing fields to ensure consistent identity at payload level
+                if let Some(job_id) = canonical_job_id {
                     if !payload_obj.contains_key("jobId") {
                         payload_obj.insert("jobId".to_string(), job_id);
                     }
                 }
-                // Lift sessionId to top level if it exists in root but not in payload
-                if let Some(session_id) = root_session_id {
+                if let Some(session_id) = canonical_session_id {
                     if !payload_obj.contains_key("sessionId") {
                         payload_obj.insert("sessionId".to_string(), session_id);
                     }
@@ -1884,7 +1917,7 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             if let Some(consumer_device_id) = &self.device_id {
                 let consumer_device_id_normalized = consumer_device_id.to_lowercase();
 
-                connection_manager.set_binary_route(&user_id, &producer_device_id, &consumer_device_id_normalized);
+                connection_manager.set_binary_route_for_session(&user_id, &producer_device_id, session_id, &consumer_device_id_normalized);
                 info!(
                     user_id = %user_id,
                     producer = %producer_device_id,
@@ -1923,43 +1956,70 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
 impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
     type Result = ();
 
-    fn handle(&mut self, _msg: HandleTerminalBinaryUnbind, _ctx: &mut Self::Context) -> Self::Result {
-        if let (Some(user_id), Some(device_id), Some(connection_manager)) =
-            (self.user_id, &self.device_id, &self.connection_manager) {
-
-            let device_id_normalized = device_id.to_lowercase();
-
-            let affected_routes = connection_manager.get_binary_routes_for_device(&user_id, &device_id_normalized);
-            for (producer, consumer) in affected_routes {
-                let unbind_msg = serde_json::json!({
-                    "type": "terminal.binary.unbind",
-                    "payload": {}
-                });
-                if let Err(e) = connection_manager.send_raw_to_device(
-                    &user_id,
-                    &producer,
-                    &unbind_msg.to_string(),
-                ) {
-                    warn!(
-                        producer = %producer,
-                        error = %e,
-                        "Failed to forward unbind notification to producer"
-                    );
-                } else {
-                    debug!(
-                        producer = %producer,
-                        consumer = %consumer,
-                        "Forwarded unbind notification to producer"
-                    );
-                }
+    fn handle(&mut self, msg: HandleTerminalBinaryUnbind, ctx: &mut Self::Context) -> Self::Result {
+        let user_id = match self.user_id {
+            Some(id) => id,
+            None => {
+                self.send_error("authRequired", "Authentication required", ctx);
+                return;
             }
+        };
 
-            connection_manager.clear_binary_routes_for_device(&user_id, &device_id_normalized);
+        let payload = msg.payload.get("payload")
+            .and_then(|v| v.as_object())
+            .or_else(|| msg.payload.as_object());
+
+        let payload = match payload {
+            Some(p) => p,
+            None => {
+                self.send_error("missingPayload", "Missing payload in terminal.binary.unbind message", ctx);
+                return;
+            }
+        };
+
+        let session_id = match payload.get("sessionId").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error("missingSessionId", "Missing sessionId in unbind request", ctx);
+                return;
+            }
+        };
+
+        let producer_device_id = match payload.get("producerDeviceId").and_then(|v| v.as_str()) {
+            Some(id) => id.to_lowercase(),
+            None => {
+                self.send_error("missingProducerDeviceId", "Missing producerDeviceId in unbind request", ctx);
+                return;
+            }
+        };
+
+        if let Some(connection_manager) = &self.connection_manager {
+            connection_manager.clear_binary_route_for_session(&user_id, &producer_device_id, session_id);
             info!(
                 user_id = %user_id,
-                device_id = %device_id_normalized,
-                "Binary routes cleared for device"
+                producer = %producer_device_id,
+                session_id = %session_id,
+                "Binary route cleared for session"
             );
+
+            let unbind_msg = serde_json::json!({
+                "type": "terminal.binary.unbind",
+                "payload": {
+                    "sessionId": session_id
+                }
+            });
+            if let Err(e) = connection_manager.send_raw_to_device(
+                &user_id,
+                &producer_device_id,
+                &unbind_msg.to_string(),
+            ) {
+                warn!(
+                    producer = %producer_device_id,
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to forward unbind notification to producer"
+                );
+            }
         }
     }
 }

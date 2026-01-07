@@ -50,9 +50,9 @@
       "systemMap": {
         "title": "System map snapshot",
         "description": "This diagram depicts the PlanToCode system architecture as four interconnected layers arranged vertically. Top Layer - Desktop Frontend: A React/Next.js box containing components (Plan Viewer, Terminal Panel, Session Manager) connected via labeled arrows 'invoke()' and 'listen()' to Tauri IPC Bridge. Second Layer - Rust Backend: Contains WorkflowOrchestrator (scheduling multi-stage jobs), TerminalSessionManager (PTY lifecycle), and JobProcessors (FileDiscovery, PlanGeneration, TextImprovement, DeepResearch). Arrows show 'spawn()' to job threads and 'emit()' events back to UI. Third Layer - Persistence: SQLite database cylinder showing tables: sessions, background_jobs, terminal_output, project_settings, key_value_store. Bidirectional arrows labeled 'read/write' connect to Rust services. Fourth Layer - External Services: Server box with Auth (/api/auth), LLM Proxy (/api/llm/*), and Usage Tracking; arrows point outward to Provider icons (OpenAI, Anthropic, Google, OpenRouter) with 'route()' labels. Data flows: Task input flows down through layers; LLM responses stream back up via SSE; job status updates propagate via Tauri events. Key labels include 'HTTPS/WSS' on server connections, 'SQLite' on persistence, and 'FFI' on Rust-to-system calls.",
-        "imageSrc": "/images/architecture/system-map.png",
+        "imageSrc": "/images/architecture/system-map.svg",
         "imageAlt": "Diagram showing PlanToCode system map",
-        "caption": "Placeholder for a system map diagram."
+        "caption": "Four-layer architecture with data flowing down and events streaming back up."
       }
     },
     "sections": {

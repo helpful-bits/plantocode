@@ -1,0 +1,184 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 650" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="serverGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#a855f7"/>
+      <stop offset="100%" style="stop-color:#9333ea"/>
+    </linearGradient>
+    <linearGradient id="openaiGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#10b981"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="anthropicGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f97316"/>
+      <stop offset="100%" style="stop-color:#ea580c"/>
+    </linearGradient>
+    <linearGradient id="googleGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="xaiGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#64748b"/>
+      <stop offset="100%" style="stop-color:#475569"/>
+    </linearGradient>
+    <linearGradient id="openrouterGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ec4899"/>
+      <stop offset="100%" style="stop-color:#db2777"/>
+    </linearGradient>
+    <linearGradient id="deepseekGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#06b6d4"/>
+      <stop offset="100%" style="stop-color:#0891b2"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.35"/>
+    </filter>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="4" orient="auto">
+      <path d="M0,0 L0,8 L12,4 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1000" height="650" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
+      <path d="M 30 0 L 0 0 0 30" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="1000" height="650" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="500" y="40" text-anchor="middle" fill="#f8fafc" font-size="24" font-weight="700">Single-Endpoint LLM Provider Routing</text>
+  <text x="500" y="65" text-anchor="middle" fill="#cbd5e1" font-size="14">All requests go to /api/llm/chat/completions — model ID determines provider</text>
+
+  <!-- Desktop App -->
+  <g transform="translate(40, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="130" rx="12" fill="rgba(59, 130, 246, 0.2)" stroke="#3b82f6" stroke-width="2"/>
+    <text x="100" y="28" text-anchor="middle" fill="#f8fafc" font-size="16" font-weight="700">Desktop App</text>
+    <text x="100" y="48" text-anchor="middle" fill="#94a3b8" font-size="12">Tauri + Rust Backend</text>
+    <rect x="15" y="60" width="170" height="28" rx="6" fill="rgba(59, 130, 246, 0.3)"/>
+    <text x="100" y="79" text-anchor="middle" fill="#93c5fd" font-size="11" font-weight="500">POST /api/llm/chat/completions</text>
+    <rect x="15" y="94" width="170" height="26" rx="6" fill="rgba(59, 130, 246, 0.2)"/>
+    <text x="100" y="112" text-anchor="middle" fill="#93c5fd" font-size="10">model: "anthropic/claude-4.5-sonnet"</text>
+  </g>
+
+  <!-- Server Proxy -->
+  <g transform="translate(380, 85)" filter="url(#shadow)">
+    <rect x="0" y="0" width="220" height="160" rx="12" fill="url(#serverGrad)"/>
+    <text x="110" y="28" text-anchor="middle" fill="white" font-size="16" font-weight="700">Server Proxy</text>
+    <text x="110" y="48" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="12">Actix-Web (Rust)</text>
+
+    <rect x="15" y="58" width="190" height="26" rx="6" fill="rgba(0,0,0,0.25)"/>
+    <text x="110" y="76" text-anchor="middle" fill="rgba(255,255,255,0.95)" font-size="11">Auth Validation (Auth0)</text>
+
+    <rect x="15" y="88" width="190" height="26" rx="6" fill="rgba(0,0,0,0.25)"/>
+    <text x="110" y="106" text-anchor="middle" fill="rgba(255,255,255,0.95)" font-size="11">Model ID Lookup (PostgreSQL)</text>
+
+    <rect x="15" y="118" width="190" height="36" rx="6" fill="rgba(0,0,0,0.35)"/>
+    <text x="110" y="136" text-anchor="middle" fill="white" font-size="12" font-weight="600">Provider Router</text>
+    <text x="110" y="150" text-anchor="middle" fill="rgba(255,255,255,0.8)" font-size="10">Routes by provider_code</text>
+  </g>
+
+  <!-- Providers - Right side with larger boxes -->
+  <!-- OpenAI -->
+  <g transform="translate(750, 75)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#openaiGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">OpenAI</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">GPT-5.2, o3, o4-mini</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">api.openai.com</text>
+  </g>
+
+  <!-- Anthropic -->
+  <g transform="translate(750, 152)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#anthropicGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">Anthropic</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">Claude 4.5 Sonnet, Opus 4.5</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">api.anthropic.com</text>
+  </g>
+
+  <!-- Google -->
+  <g transform="translate(750, 229)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#googleGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">Google AI</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">Gemini 3 Pro, 3 Flash</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">generativelanguage.googleapis.com</text>
+  </g>
+
+  <!-- X.AI -->
+  <g transform="translate(750, 306)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#xaiGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">X.AI</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">Grok 4, Grok 4 mini</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">api.x.ai</text>
+  </g>
+
+  <!-- DeepSeek (via OpenRouter) -->
+  <g transform="translate(750, 383)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#deepseekGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">DeepSeek</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">R1, Kimi K2 (via OpenRouter)</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">openrouter.ai/api</text>
+  </g>
+
+  <!-- OpenRouter -->
+  <g transform="translate(750, 460)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="68" rx="10" fill="url(#openrouterGrad)"/>
+    <text x="100" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="700">OpenRouter</text>
+    <text x="100" y="44" text-anchor="middle" fill="rgba(255,255,255,0.9)" font-size="11" font-weight="500">200+ models fallback</text>
+    <text x="100" y="60" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="9">openrouter.ai/api</text>
+  </g>
+
+  <!-- Arrows -->
+  <g stroke="#94a3b8" stroke-width="2.5" fill="none">
+    <!-- Desktop -> Server -->
+    <path d="M240 165 L370 165" marker-end="url(#arrow)"/>
+    <text x="305" y="152" fill="#94a3b8" font-size="11" text-anchor="middle" font-weight="500">HTTPS</text>
+
+    <!-- Server -> Providers -->
+    <path d="M600 110 L740 109" marker-end="url(#arrow)"/>
+    <path d="M600 135 L740 186" marker-end="url(#arrow)"/>
+    <path d="M600 160 L740 263" marker-end="url(#arrow)"/>
+    <path d="M600 185 L740 340" marker-end="url(#arrow)"/>
+    <path d="M600 210 L740 417" marker-end="url(#arrow)"/>
+    <path d="M600 235 L740 494" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Router Logic Box -->
+  <g transform="translate(40, 300)" filter="url(#shadow)">
+    <rect x="0" y="0" width="300" height="220" rx="12" fill="rgba(148, 163, 184, 0.12)" stroke="#64748b" stroke-width="1.5"/>
+    <text x="150" y="28" text-anchor="middle" fill="#f8fafc" font-size="14" font-weight="700">Single-Endpoint Routing Logic</text>
+
+    <g transform="translate(18, 50)" fill="#cbd5e1" font-size="12">
+      <text x="0" y="0">1. Receive POST to /api/llm/chat/completions</text>
+      <text x="0" y="22">2. Extract model ID from request body</text>
+      <text x="0" y="44">3. Look up provider_code from database</text>
+      <text x="0" y="66">4. Validate vision support if images present</text>
+      <text x="0" y="88">5. Transform request to provider format</text>
+      <text x="0" y="110">6. Forward to provider API endpoint</text>
+      <text x="0" y="132">7. Stream response back via SSE</text>
+      <text x="0" y="154">8. Log usage (tokens, cost) for billing</text>
+    </g>
+
+    <rect x="18" y="190" width="264" height="24" rx="6" fill="rgba(168, 85, 247, 0.25)"/>
+    <text x="150" y="207" text-anchor="middle" fill="#c084fc" font-size="11" font-weight="500">Server manages API keys — users bring credits</text>
+  </g>
+
+  <!-- Model ID Format Note -->
+  <g transform="translate(380, 300)">
+    <rect x="0" y="0" width="220" height="90" rx="8" fill="rgba(59, 130, 246, 0.12)" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="110" y="24" text-anchor="middle" fill="#93c5fd" font-size="12" font-weight="600">Model ID Format</text>
+    <text x="110" y="46" text-anchor="middle" fill="#94a3b8" font-size="11">provider/model-name</text>
+    <text x="110" y="66" text-anchor="middle" fill="#cbd5e1" font-size="10">e.g., anthropic/claude-4.5-sonnet</text>
+    <text x="110" y="82" text-anchor="middle" fill="#cbd5e1" font-size="10">e.g., openai/gpt-5.2</text>
+  </g>
+
+  <!-- Footer -->
+  <g transform="translate(40, 600)">
+    <text x="0" y="0" fill="#94a3b8" font-size="11">Single endpoint architecture: All LLM requests use /api/llm/chat/completions. Model ID determines routing. Auth via Auth0 PKCE.</text>
+    <text x="0" y="18" fill="#94a3b8" font-size="11">DeepSeek models routed through OpenRouter. Usage tracked per-user in PostgreSQL. SSE streaming for real-time responses.</text>
+  </g>
+</svg>

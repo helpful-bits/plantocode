@@ -1,5 +1,27 @@
 import Foundation
 
+// MARK: - Jobs Reconcile Reason
+
+/// Reason for reconciling/fetching job snapshots
+public enum JobsReconcileReason: Equatable {
+    /// Initial load when view appears
+    case initialLoad
+    /// App returned to foreground
+    case foregroundResume
+    /// Connectivity was restored after disconnection
+    case connectivityReconnected
+    /// Push notification hint to refresh
+    case pushHint
+    /// Manual user-initiated refresh
+    case userRefresh
+    /// Periodic background sync
+    case periodicSync
+    /// Session changed
+    case sessionChanged
+}
+
+// MARK: - Jobs Decoding
+
 public struct JobsDecoding {
 
     public enum DecodingError: Error, LocalizedError {
@@ -22,26 +44,35 @@ public struct JobsDecoding {
         }
     }
 
+    /// Shared decoder configured for job responses
+    /// Backend uses camelCase and millisecond timestamps
+    private static var jobDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        // Backend sends timestamps as milliseconds since epoch
+        // BackgroundJob stores Int64 timestamps directly, so no date strategy needed
+        return decoder
+    }
+
     public static func decodeJob(dict: [String: Any]) throws -> BackgroundJob {
         let jsonData = try JSONSerialization.data(withJSONObject: dict)
-        let decoder = JSONDecoder()
         do {
-            return try decoder.decode(BackgroundJob.self, from: jsonData)
+            return try jobDecoder.decode(BackgroundJob.self, from: jsonData)
         } catch {
             throw DecodingError.decodingFailed(underlying: error)
         }
     }
 
+    /// Decodes a job list response with flexible format handling
+    /// Supports both `{"jobs": [...]}` wrapper and direct array `[...]` formats
     public static func decodeJobList(dict: [String: Any]) throws -> JobListResponse {
         guard let jobsArray = dict["jobs"] as? [[String: Any]] else {
             throw DecodingError.missingJobsArray
         }
 
         let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
-        let decoder = JSONDecoder()
         let jobs: [BackgroundJob]
         do {
-            jobs = try decoder.decode([BackgroundJob].self, from: jsonData)
+            jobs = try jobDecoder.decode([BackgroundJob].self, from: jsonData)
         } catch {
             throw DecodingError.decodingFailed(underlying: error)
         }
@@ -58,6 +89,33 @@ public struct JobsDecoding {
             pageSize: UInt32(pageSize),
             hasMore: hasMore
         )
+    }
+
+    /// Decodes a job list from a flexible response format
+    /// Handles both wrapped `{"jobs": [...]}` and direct array `[...]` formats
+    public static func decodeJobListFlexible(from data: Any) throws -> [BackgroundJob] {
+        // Handle dictionary with "jobs" key
+        if let dict = data as? [String: Any] {
+            if let jobsArray = dict["jobs"] as? [[String: Any]] {
+                let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
+                return try jobDecoder.decode([BackgroundJob].self, from: jsonData)
+            }
+            // Single job in a wrapper
+            if let _ = dict["id"] as? String {
+                let jsonData = try JSONSerialization.data(withJSONObject: dict)
+                let job = try jobDecoder.decode(BackgroundJob.self, from: jsonData)
+                return [job]
+            }
+            throw DecodingError.missingJobsArray
+        }
+
+        // Handle direct array
+        if let array = data as? [[String: Any]] {
+            let jsonData = try JSONSerialization.data(withJSONObject: array)
+            return try jobDecoder.decode([BackgroundJob].self, from: jsonData)
+        }
+
+        throw DecodingError.invalidJobData
     }
 
     public static func decodeJobEnvelope(dict: [String: Any]) throws -> BackgroundJob {

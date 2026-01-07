@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450" font-family="system-ui, -apple-system, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f172a"/>
+      <stop offset="100%" style="stop-color:#1e293b"/>
+    </linearGradient>
+    <linearGradient id="inputGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#64748b"/>
+      <stop offset="100%" style="stop-color:#475569"/>
+    </linearGradient>
+    <linearGradient id="processGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="outputGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#16a34a"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.3"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#64748b"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="900" height="450" fill="url(#bgGrad)"/>
+
+  <!-- Grid -->
+  <g opacity="0.03">
+    <pattern id="grid" width="25" height="25" patternUnits="userSpaceOnUse">
+      <path d="M 25 0 L 0 0 0 25" fill="none" stroke="white" stroke-width="0.5"/>
+    </pattern>
+    <rect width="900" height="450" fill="url(#grid)"/>
+  </g>
+
+  <!-- Title -->
+  <text x="450" y="35" text-anchor="middle" fill="#f8fafc" font-size="20" font-weight="600">Text Improvement Flow</text>
+  <text x="450" y="55" text-anchor="middle" fill="#94a3b8" font-size="12">TextImprovementProcessor enhances task descriptions</text>
+
+  <!-- Input -->
+  <g transform="translate(50, 100)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="160" rx="10" fill="url(#inputGrad)"/>
+    <text x="100" y="28" text-anchor="middle" fill="white" font-size="14" font-weight="600">Raw Input</text>
+    <line x1="15" y1="40" x2="185" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <rect x="15" y="52" width="170" height="95" rx="4" fill="rgba(0,0,0,0.2)"/>
+    <g fill="rgba(255,255,255,0.8)" font-size="9">
+      <text x="25" y="72">"fix the login bug</text>
+      <text x="25" y="88">users cant sign in</text>
+      <text x="25" y="104">after the update"</text>
+    </g>
+    <text x="100" y="140" text-anchor="middle" fill="rgba(255,255,255,0.5)" font-size="8">Informal, incomplete</text>
+  </g>
+
+  <!-- Processing -->
+  <g transform="translate(320, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="260" height="200" rx="10" fill="url(#processGrad)"/>
+    <text x="130" y="28" text-anchor="middle" fill="white" font-size="14" font-weight="600">TextImprovementProcessor</text>
+    <line x1="15" y1="40" x2="245" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 52)">
+      <rect x="0" y="0" width="230" height="28" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="18" text-anchor="middle" fill="white" font-size="10">1. Wrap text in XML context</text>
+    </g>
+    <g transform="translate(15, 88)">
+      <rect x="0" y="0" width="230" height="28" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="18" text-anchor="middle" fill="white" font-size="10">2. Send to LLM via LlmTaskRunner</text>
+    </g>
+    <g transform="translate(15, 124)">
+      <rect x="0" y="0" width="230" height="28" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="18" text-anchor="middle" fill="white" font-size="10">3. Process non-streaming response</text>
+    </g>
+    <g transform="translate(15, 160)">
+      <rect x="0" y="0" width="230" height="28" rx="4" fill="rgba(255,255,255,0.15)"/>
+      <text x="115" y="18" text-anchor="middle" fill="white" font-size="10">4. Return improved text with usage</text>
+    </g>
+  </g>
+
+  <!-- Output -->
+  <g transform="translate(650, 80)" filter="url(#shadow)">
+    <rect x="0" y="0" width="200" height="280" rx="10" fill="url(#outputGrad)"/>
+    <text x="100" y="28" text-anchor="middle" fill="white" font-size="14" font-weight="600">Enhanced Output</text>
+    <line x1="15" y1="40" x2="185" y2="40" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+
+    <g transform="translate(15, 50)">
+      <text x="0" y="12" fill="rgba(255,255,255,0.9)" font-size="10" font-weight="500">Goal:</text>
+      <text x="0" y="28" fill="rgba(255,255,255,0.75)" font-size="9">Fix authentication failure</text>
+      <text x="0" y="42" fill="rgba(255,255,255,0.75)" font-size="9">after v2.3 update</text>
+    </g>
+
+    <g transform="translate(15, 100)">
+      <text x="0" y="12" fill="rgba(255,255,255,0.9)" font-size="10" font-weight="500">Context:</text>
+      <text x="0" y="28" fill="rgba(255,255,255,0.75)" font-size="9">Users report 401 errors</text>
+      <text x="0" y="42" fill="rgba(255,255,255,0.75)" font-size="9">Session tokens not persisting</text>
+    </g>
+
+    <g transform="translate(15, 150)">
+      <text x="0" y="12" fill="rgba(255,255,255,0.9)" font-size="10" font-weight="500">Affected Areas:</text>
+      <text x="0" y="28" fill="rgba(255,255,255,0.75)" font-size="9">• src/auth/session.ts</text>
+      <text x="0" y="42" fill="rgba(255,255,255,0.75)" font-size="9">• src/middleware/auth.ts</text>
+      <text x="0" y="56" fill="rgba(255,255,255,0.75)" font-size="9">• src/api/login.ts</text>
+    </g>
+
+    <g transform="translate(15, 215)">
+      <text x="0" y="12" fill="rgba(255,255,255,0.9)" font-size="10" font-weight="500">Constraints:</text>
+      <text x="0" y="28" fill="rgba(255,255,255,0.75)" font-size="9">Backward compatible</text>
+      <text x="0" y="42" fill="rgba(255,255,255,0.75)" font-size="9">No breaking changes</text>
+    </g>
+  </g>
+
+  <!-- Arrows -->
+  <g stroke="#64748b" stroke-width="2" fill="none">
+    <path d="M250 180 L310 180" marker-end="url(#arrow)"/>
+    <path d="M580 180 L640 180" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- History note -->
+  <g transform="translate(50, 320)">
+    <rect x="0" y="0" width="200" height="60" rx="6" fill="rgba(59, 130, 246, 0.1)" stroke="#3b82f6" stroke-width="1"/>
+    <text x="100" y="22" text-anchor="middle" fill="#93c5fd" font-size="10" font-weight="500">SQLite Persistence</text>
+    <text x="100" y="42" text-anchor="middle" fill="#64748b" font-size="9">background_jobs table</text>
+  </g>
+
+  <!-- Footer -->
+  <g transform="translate(50, 420)">
+    <text x="0" y="0" fill="#64748b" font-size="10">Runs as non-streaming LLM call. Uses system prompt from server. Token usage and cost tracked per session.</text>
+  </g>
+</svg>
