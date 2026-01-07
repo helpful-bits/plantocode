@@ -26,6 +26,11 @@ const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
 
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
 
+// Batching configuration for terminal output
+// This prevents flooding mobile with hundreds of small WebSocket frames per second
+const BATCH_FLUSH_INTERVAL_MS: u64 = 50; // Flush every 50ms
+const BATCH_SIZE_THRESHOLD: usize = 32 * 1024; // Flush immediately if buffer exceeds 32KB
+
 /// PTC1 binary framing sentinel: "PTC1" in ASCII
 /// Format: [0x50, 0x54, 0x43, 0x31][session_id_length: u16 big-endian][session_id bytes][payload]
 /// This allows the mobile client to demux binary data for multiple terminal sessions
@@ -277,6 +282,9 @@ pub struct DeviceLinkClient {
     binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     event_listener_id: Mutex<Option<tauri::EventId>>,
     pending_binary_by_session: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    /// Batch buffer for terminal output - accumulates data before sending to reduce frame count
+    /// This is separate from pending_binary_by_session which holds data for unbound sessions
+    batch_buffer_by_session: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
 }
 
 impl DeviceLinkClient {
@@ -288,6 +296,7 @@ impl DeviceLinkClient {
             binary_sender: Mutex::new(None),
             event_listener_id: Mutex::new(None),
             pending_binary_by_session: Mutex::new(std::collections::HashMap::new()),
+            batch_buffer_by_session: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 
@@ -496,10 +505,17 @@ impl DeviceLinkClient {
 
         info!("Sent registration message for device: {}", device_id);
 
-        // Spawn sender task with dual-channel support
+        // Spawn sender task with dual-channel support and batch flushing
         let ws_sender_handle = {
             let mut ws_sender = ws_sender;
+            let batch_buffers = Arc::clone(&self.batch_buffer_by_session);
             tokio::spawn(async move {
+                let mut flush_interval = tokio::time::interval(
+                    tokio::time::Duration::from_millis(BATCH_FLUSH_INTERVAL_MS)
+                );
+                // Don't tick immediately on start
+                flush_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
                 loop {
                     tokio::select! {
                         // Text messages
@@ -516,14 +532,38 @@ impl DeviceLinkClient {
                                 }
                             }
                         }
-                        // Binary messages (terminal output)
+                        // Binary messages (terminal output) - immediate send for priority data
                         Some(bytes) = bin_rx.recv() => {
                             let len = bytes.len();
                             if let Err(e) = ws_sender.send(Message::Binary(bytes.into())).await {
                                 error!("Failed to send WebSocket binary message: {}", e);
                                 break;
                             }
-                            debug!("WebSocket: sent {} bytes as binary frame", len);
+                            debug!("WebSocket: sent {} bytes as binary frame (immediate)", len);
+                        }
+                        // Periodic batch flush
+                        _ = flush_interval.tick() => {
+                            // Flush all non-empty batch buffers
+                            let buffers_to_flush: Vec<(String, Vec<u8>)> = {
+                                let mut buffers = batch_buffers.lock().unwrap();
+                                let bound_sessions = get_bound_session_ids().lock().unwrap();
+
+                                buffers.drain()
+                                    .filter(|(session_id, data)| {
+                                        !data.is_empty() && bound_sessions.contains(session_id)
+                                    })
+                                    .collect()
+                            };
+
+                            for (session_id, data) in buffers_to_flush {
+                                let framed = wrap_with_ptc1_frame(&session_id, &data);
+                                let len = framed.len();
+                                if let Err(e) = ws_sender.send(Message::Binary(framed.into())).await {
+                                    error!("Failed to send batched binary frame: {}", e);
+                                    break;
+                                }
+                                debug!("WebSocket: flushed batch {} bytes for session {} (raw: {})", len, session_id, data.len());
+                            }
                         }
                         else => {
                             // Both channels closed
@@ -1114,27 +1154,14 @@ impl DeviceLinkClient {
         result
     }
 
-    /// Send raw terminal output bytes without any header or encoding
-    /// Only sends when connected AND the session is bound
+    /// Send raw terminal output bytes using batching to reduce WebSocket frame count
+    /// Data is accumulated in a batch buffer and flushed periodically (every 50ms) or
+    /// immediately when the buffer exceeds 32KB threshold.
+    /// Only active when connected AND the session is bound.
     pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
         // Early return if not connected
         if !self.is_connected() {
-            // Not connected and session not bound - buffer pending data with cap
-            if !self.is_session_bound(session_id) {
-                let mut pending = self.pending_binary_by_session.lock().unwrap();
-                let buf = pending.entry(session_id.to_string()).or_default();
-                buf.extend_from_slice(data);
-                if buf.len() > MAX_PENDING_BYTES {
-                    let overflow = buf.len() - MAX_PENDING_BYTES;
-                    buf.drain(0..overflow);
-                }
-            }
-            return Ok(());
-        }
-
-        // Early return if session is not bound
-        if !self.is_session_bound(session_id) {
-            // Connected but session not bound - buffer pending data with cap
+            // Not connected - buffer to pending data with cap
             let mut pending = self.pending_binary_by_session.lock().unwrap();
             let buf = pending.entry(session_id.to_string()).or_default();
             buf.extend_from_slice(data);
@@ -1145,24 +1172,53 @@ impl DeviceLinkClient {
             return Ok(());
         }
 
-        // Session is bound and connected - wrap with PTC1 framing and send
-        let framed_data = wrap_with_ptc1_frame(session_id, data);
-        let sender = self.binary_sender.lock().unwrap();
-        match sender.as_ref() {
-            Some(tx) => {
-                tx.send(framed_data)
-                    .map_err(|_| {
-                        warn!("Binary uplink: channel closed for session {}", session_id);
-                        AppError::NetworkError("Binary uplink channel closed".into())
-                    })?;
-                debug!("Binary uplink: enqueued {} bytes (framed: {}) for session {}", data.len(), data.len() + 6 + session_id.len(), session_id);
-                Ok(())
+        // Early return if session is not bound
+        if !self.is_session_bound(session_id) {
+            // Connected but session not bound - buffer to pending data with cap
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buf = pending.entry(session_id.to_string()).or_default();
+            buf.extend_from_slice(data);
+            if buf.len() > MAX_PENDING_BYTES {
+                let overflow = buf.len() - MAX_PENDING_BYTES;
+                buf.drain(0..overflow);
             }
-            None => {
-                warn!("Binary uplink: no sender available for session {}", session_id);
-                Ok(())
+            return Ok(());
+        }
+
+        // Session is bound and connected - add to batch buffer
+        let should_flush_immediately = {
+            let mut batch_buffers = self.batch_buffer_by_session.lock().unwrap();
+            let buf = batch_buffers.entry(session_id.to_string()).or_default();
+            buf.extend_from_slice(data);
+            // Check if we should flush immediately due to size threshold
+            buf.len() >= BATCH_SIZE_THRESHOLD
+        };
+
+        // If buffer exceeds threshold, flush immediately via binary channel
+        if should_flush_immediately {
+            let data_to_send = {
+                let mut batch_buffers = self.batch_buffer_by_session.lock().unwrap();
+                batch_buffers.remove(session_id).unwrap_or_default()
+            };
+
+            if !data_to_send.is_empty() {
+                let framed_data = wrap_with_ptc1_frame(session_id, &data_to_send);
+                let sender = self.binary_sender.lock().unwrap();
+                if let Some(tx) = sender.as_ref() {
+                    tx.send(framed_data)
+                        .map_err(|_| {
+                            warn!("Binary uplink: channel closed for session {}", session_id);
+                            AppError::NetworkError("Binary uplink channel closed".into())
+                        })?;
+                    debug!(
+                        "Binary uplink: immediate flush {} bytes for session {} (threshold exceeded)",
+                        data_to_send.len(), session_id
+                    );
+                }
             }
         }
+
+        Ok(())
     }
 
     /// Send an event to the server
@@ -1241,6 +1297,10 @@ impl DeviceLinkClient {
 
         if let Ok(mut pending) = self.pending_binary_by_session.lock() {
             pending.clear();
+        }
+
+        if let Ok(mut batch) = self.batch_buffer_by_session.lock() {
+            batch.clear();
         }
     }
 
