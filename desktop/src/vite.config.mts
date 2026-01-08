@@ -78,5 +78,9 @@ export default defineConfig({
     rollupOptions: {
       input: path.resolve(__dirname, '../index.html'),
     },
+    // Fix for Tauri v2 production builds - ensures mixed CommonJS/ESM modules work correctly
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
   },
 });
