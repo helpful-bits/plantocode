@@ -55,28 +55,65 @@ extension JobsDataService {
         }
         params["bypassCache"] = bypassCache
 
-        // Perform RPC call
+        let maxAttempts = 3
+        let backoffDelays: [UInt64] = [500_000_000, 1_000_000_000]
+        var lastError: Error?
         var jobsData: [String: Any]?
 
-        for try await rpcResponse in CommandRouter.jobList(
-            sessionId: scope.sessionId,
-            projectDirectory: scope.projectDirectory,
-            statusFilter: nil,
-            taskTypeFilter: nil,
-            page: nil,
-            pageSize: 100,
-            bypassCache: bypassCache
-        ) {
-            if let error = rpcResponse.error {
-                throw DataServiceError.serverError(error.message)
-            }
+        for attempt in 0..<maxAttempts {
+            do {
+                var attemptJobsData: [String: Any]?
 
-            if let result = rpcResponse.result?.value as? [String: Any] {
-                jobsData = result
-                if rpcResponse.isFinal {
-                    break
+                for try await rpcResponse in CommandRouter.jobList(
+                    sessionId: scope.sessionId,
+                    projectDirectory: scope.projectDirectory,
+                    statusFilter: nil,
+                    taskTypeFilter: nil,
+                    page: nil,
+                    pageSize: 100,
+                    bypassCache: bypassCache
+                ) {
+                    if let error = rpcResponse.error {
+                        throw DataServiceError.serverError(error.message)
+                    }
+
+                    if let result = rpcResponse.result?.value as? [String: Any] {
+                        attemptJobsData = result
+                        if rpcResponse.isFinal {
+                            break
+                        }
+                    }
                 }
+
+                jobsData = attemptJobsData
+                break
+            } catch let error as ServerRelayError {
+                if case .timeout = error {
+                    lastError = error
+                    if attempt < maxAttempts - 1 {
+                        try await Task.sleep(nanoseconds: backoffDelays[attempt])
+                        continue
+                    }
+                } else {
+                    throw error
+                }
+            } catch let error as DataServiceError {
+                if case .connectionError = error {
+                    lastError = error
+                    if attempt < maxAttempts - 1 {
+                        try await Task.sleep(nanoseconds: backoffDelays[attempt])
+                        continue
+                    }
+                } else {
+                    throw error
+                }
+            } catch {
+                throw error
             }
+        }
+
+        if jobsData == nil, let error = lastError {
+            throw error
         }
 
         guard let data = jobsData else {

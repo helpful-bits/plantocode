@@ -188,7 +188,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
             // Check if already ready (optimization)
-            if case .connected = connectionState, hasSessionCredentials {
+            if case .connected = connectionState, sessionId != nil && !sessionId!.isEmpty {
                 safeResume(.success(()))
                 return
             }
@@ -198,29 +198,46 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 safeResume(.failure(ConnectionError.timeout))
             }
 
-            // Observe BOTH connectionState AND sessionId (for credentials)
-            // CombineLatest ensures we react to changes in either publisher
-            let statePublisher = $connectionState
-            let credentialsPublisher = $sessionId.map { _ in () }
+            // Helper struct for type-checker performance
+            struct ReadinessResult {
+                let isReady: Bool
+                let isFailed: Bool
+                let failedError: ServerRelayError?
+            }
 
-            cancellable = Publishers.CombineLatest(statePublisher, credentialsPublisher)
-                .sink { [weak self] state, _ in
-                    guard let self = self else {
-                        safeResume(.failure(ConnectionError.terminal(ServerRelayError.invalidState("Client deallocated"))))
-                        return
-                    }
-
-                    switch state {
-                    case .connected where self.hasSessionCredentials:
-                        // Connected AND has credentials - ready!
-                        safeResume(.success(()))
-                    case .failed(let error):
-                        safeResume(.failure(ConnectionError.terminal(error)))
-                    case .connected, .disconnected, .connecting, .handshaking, .authenticating, .reconnecting, .closing:
-                        // Still waiting (either not connected OR connected but no credentials)
-                        break
-                    }
+            let combinedPublisher = Publishers.CombineLatest($connectionState, $sessionId)
+            let mappedPublisher = combinedPublisher.map { [weak self] (state: ConnectionState, sid: String?) -> ReadinessResult in
+                guard self != nil else {
+                    return ReadinessResult(isReady: false, isFailed: true, failedError: ServerRelayError.invalidState("Client deallocated"))
                 }
+                let isConnected: Bool
+                let isFailed: Bool
+                var failedError: ServerRelayError?
+                switch state {
+                case .connected:
+                    isConnected = true
+                    isFailed = false
+                case .failed(let error):
+                    isConnected = false
+                    isFailed = true
+                    failedError = error as? ServerRelayError
+                default:
+                    isConnected = false
+                    isFailed = false
+                }
+                let hasValidSession = sid != nil && !sid!.isEmpty
+                let isReady = isConnected && hasValidSession
+                return ReadinessResult(isReady: isReady, isFailed: isFailed, failedError: failedError)
+            }
+            let dedupedPublisher = mappedPublisher.removeDuplicates { $0.isReady == $1.isReady && $0.isFailed == $1.isFailed }
+            cancellable = dedupedPublisher.sink { result in
+                if result.isFailed {
+                    let error = result.failedError ?? ServerRelayError.invalidState("Connection failed")
+                    safeResume(.failure(ConnectionError.terminal(error)))
+                } else if result.isReady {
+                    safeResume(.success(()))
+                }
+            }
         }
     }
 
@@ -568,18 +585,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
                         }
                     }
 
-                    // Wait for connection to be established
-                    // Skip wait for states that already queue messages - they'll be sent when ready
                     switch self.connectionState {
                     case .connected:
-                        // Already connected, proceed immediately
                         break
                     case .connecting, .handshaking, .authenticating, .reconnecting:
-                        // These states queue messages automatically - use shorter timeout
-                        try await self.waitForConnection(timeout: 2.0)
+                        try await self.waitForConnection(timeout: 10.0)
                     case .disconnected, .closing, .failed:
-                        // Need full connection - but still reduced timeout
-                        try await self.waitForConnection(timeout: 3.0)
+                        try await self.waitForConnection(timeout: 15.0)
                     }
 
                     let envelope: [String: Any] = [

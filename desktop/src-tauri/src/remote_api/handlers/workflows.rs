@@ -1,8 +1,10 @@
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use serde_json::{json, Value};
+use std::sync::Arc;
 use crate::remote_api::error::{RpcError, RpcResult};
 use crate::remote_api::types::RpcRequest;
 use crate::commands::workflow_commands;
+use crate::db_utils::SessionRepository;
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResult<Value> {
     match req.method.as_str() {
@@ -116,7 +118,9 @@ async fn handle_workflows_start_file_finder(
 }
 
 /// Handle workflows.startWebSearch request
-/// Params: sessionId, taskDescription, projectDirectory, excludedPaths, timeoutMs
+/// Accepts two parameter forms for compatibility:
+/// Form A (desktop): sessionId, taskDescription, projectDirectory, excludedPaths, timeoutMs
+/// Form B (mobile): sessionId, query, maxResults, timeoutMs (projectDirectory/excludedPaths optional)
 /// Response: {"workflowId": workflow_id}
 async fn handle_workflows_start_web_search(
     app_handle: &AppHandle,
@@ -129,19 +133,32 @@ async fn handle_workflows_start_web_search(
         .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
         .to_string();
 
-    let task_description = request
-        .params
-        .get("taskDescription")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: taskDescription"))?
-        .to_string();
+    // Accept either taskDescription (Form A) or query (Form B)
+    let task_description = if let Some(td) = request.params.get("taskDescription").and_then(|v| v.as_str()) {
+        td.to_string()
+    } else if let Some(query) = request.params.get("query").and_then(|v| v.as_str()) {
+        // Form B: synthesize taskDescription from query
+        query.to_string()
+    } else {
+        return Err(RpcError::invalid_params("Missing param: taskDescription or query"));
+    };
 
-    let project_directory = request
-        .params
-        .get("projectDirectory")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
-        .to_string();
+    // projectDirectory: required for Form A, optional for Form B (derive from session if missing)
+    let project_directory = if let Some(pd) = request.params.get("projectDirectory").and_then(|v| v.as_str()) {
+        pd.to_string()
+    } else {
+        // Try to derive from session
+        let pool = app_handle.try_state::<Arc<sqlx::SqlitePool>>()
+            .ok_or_else(|| RpcError::database_error("Database not available"))?
+            .inner()
+            .clone();
+        let session_repo = SessionRepository::new(pool);
+        match session_repo.get_session_by_id(&session_id).await {
+            Ok(Some(session)) => session.project_directory,
+            Ok(None) => return Err(RpcError::invalid_params("Session not found and projectDirectory not provided")),
+            Err(_) => return Err(RpcError::invalid_params("Failed to lookup session and projectDirectory not provided")),
+        }
+    };
 
     let excluded_paths = request
         .params
