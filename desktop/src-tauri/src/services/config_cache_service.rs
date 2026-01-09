@@ -134,10 +134,10 @@ pub async fn refresh_config_cache(app_handle: &AppHandle) -> Result<(), AppError
     fetch_and_cache_server_configurations(app_handle, server_proxy_client.as_ref()).await
 }
 
-/// Automatically synchronizes cache with server at 30-second intervals
+/// Automatically synchronizes cache with server at 5-minute intervals
 #[instrument(skip(app_handle))]
 pub async fn auto_sync_cache_with_server(app_handle: AppHandle) {
-    let mut sync_interval = interval(Duration::from_secs(30));
+    let mut sync_interval = interval(Duration::from_secs(300)); // 5 minutes
 
     loop {
         sync_interval.tick().await;
@@ -406,10 +406,10 @@ pub fn validate_all_task_types_have_configs(
         )));
     }
 
-    // WARNING: Extra unknown keys are logged but not treated as errors
+    // INFO: Extra unknown keys are logged but not treated as errors
     // This allows the server to add new task types without breaking older clients
     if !invalid_task_keys.is_empty() {
-        tracing::warn!(
+        tracing::debug!(
             "Runtime AI config has unknown task keys that will be ignored: {}. \
             These may be new task types added by the server that this client version doesn't recognize yet.",
             invalid_task_keys.join(", ")

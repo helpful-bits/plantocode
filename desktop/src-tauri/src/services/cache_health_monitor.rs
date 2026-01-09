@@ -30,8 +30,8 @@ impl CacheHealthMonitor {
     pub fn new(app_handle: AppHandle) -> Self {
         Self {
             app_handle,
-            max_cache_age_seconds: 300,        // 5 minutes
-            health_check_interval_seconds: 60, // 1 minute
+            max_cache_age_seconds: 600,         // 10 minutes (config syncs every 5 min)
+            health_check_interval_seconds: 300, // 5 minutes
         }
     }
 
@@ -232,10 +232,15 @@ impl CacheHealthMonitor {
     /// Gets last refresh timestamp from cache metadata
     #[instrument(skip(self, cache_entries))]
     fn get_last_refresh_timestamp(&self, cache_entries: &HashMap<String, JsonValue>) -> u64 {
+        let current_time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
         cache_entries
             .get("_cache_metadata_last_refresh")
             .and_then(|v| v.as_u64())
-            .unwrap_or(0)
+            .unwrap_or(current_time) // Default to current time if not set, not 0
     }
 
     /// Counts stale entries in cache

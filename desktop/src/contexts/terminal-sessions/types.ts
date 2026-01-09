@@ -58,4 +58,16 @@ export interface TerminalSessionsContextShape {
   getAttention: (sessionId: string) => AttentionState | undefined;
   getAttentionCount: () => number;
   deleteLog: (sessionId: string) => Promise<void>;
+  // Terminal stability/hydration methods
+  getHydratedSnapshotBytes: (sessionId: string, maxBytes?: number) => Uint8Array;
+  getLastActivityAt: (sessionId: string) => number | undefined;
+  ensureSessionReady: (sessionId: string, opts?: {
+    workingDirectory?: string;
+    cols?: number;
+    rows?: number;
+    displayName?: string;
+    origin?: 'plan' | 'task' | 'adhoc' | string;
+    jobId?: string;
+    initialInput?: string;
+  }) => Promise<void>;
 }

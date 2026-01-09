@@ -191,7 +191,7 @@ impl BackupService {
         })?;
 
         // Run integrity check on backup
-        let result = sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+        let result = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
             .fetch_one(&backup_pool)
             .await
             .map_err(|e| {
@@ -384,7 +384,7 @@ impl BackupService {
         })?;
 
         // Run integrity check on backup
-        let result = sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+        let result = sqlx::query_scalar::<_, String>("PRAGMA quick_check")
             .fetch_one(&backup_pool)
             .await
             .map_err(|e| {

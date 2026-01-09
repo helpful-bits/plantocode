@@ -523,17 +523,13 @@ public class DataServicesManager: ObservableObject {
 
                 guard !self.isPerformingLiveBootstrap else { return }
 
-                // Guard to prevent repeated preloads for the same session
                 if s.id == self.lastBroadcastedSessionId {
                     return
                 }
                 self.lastBroadcastedSessionId = s.id
 
-                // Defensive guard: ensure JobsDataService has correct session context
-                // Primary sync happens via startSessionScopedSync() in SessionWorkspaceViewModel.loadSession()
-                self.jobsService.setActiveSession(sessionId: s.id, projectDirectory: s.projectDirectory)
+                self.jobsService.startSessionScopedSync(sessionId: s.id, projectDirectory: s.projectDirectory)
 
-                // Unified preloads for immediacy across tabs
                 self.filesService.performSearch(query: self.filesService.currentSearchTerm)
 
                 #if DEBUG
@@ -662,9 +658,16 @@ public class DataServicesManager: ObservableObject {
                     self.jobsService.applyRelayEvent(event)
 
                 case "jobs:list-invalidated":
-                    let sessionId = dict["sessionId"] as? String
-                    let projectDirectory = dict["projectDirectory"] as? String
-                    self.jobsService.handleJobsListInvalidated(sessionId: sessionId, projectDirectory: projectDirectory)
+                    let payloadDict = dict["payload"] as? [String: Any]
+                    let sessionId = payloadDict?["sessionId"] as? String ?? dict["sessionId"] as? String
+                    let projectDirectory = payloadDict?["projectDirectory"] as? String ?? dict["projectDirectory"] as? String
+                    let projectHash = payloadDict?["projectHash"] as? String ?? dict["projectHash"] as? String
+                    if self.jobsService.activeSessionId == nil,
+                       let currentSession = self.sessionService.currentSession,
+                       !currentSession.id.isEmpty {
+                        self.jobsService.setActiveSession(sessionId: currentSession.id, projectDirectory: currentSession.projectDirectory)
+                    }
+                    self.jobsService.handleJobsListInvalidated(sessionId: sessionId, projectDirectory: projectDirectory, projectHash: projectHash)
 
                 default:
                     if eventType.hasPrefix("job:") {

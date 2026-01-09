@@ -30,6 +30,10 @@ const terminalInstances = new Map<string, {
   terminal: Terminal;
   fitAddon: FitAddon;
   cleanup: () => void;
+  hydrated: boolean;
+  lastCols?: number;
+  lastRows?: number;
+  rafFitId?: number;
 }>();
 
 // Export cleanup function for external use
@@ -41,7 +45,7 @@ export const cleanupTerminalInstance = (sessionId: string) => {
 };
 
 const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
-  const { setOutputBytesCallback, removeOutputBytesCallback, write, resize, attachSession, setVisibleSessionId } = useTerminalSessions();
+  const { setOutputBytesCallback, removeOutputBytesCallback, write, resize, ensureSessionReady, setVisibleSessionId, getHydratedSnapshotBytes } = useTerminalSessions();
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const parseUriListToPaths = (uriList: string): string[] => {
@@ -210,6 +214,11 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
         removeOutputBytesCallback(sessionId);
         onData.dispose();
         ro?.disconnect();
+        // Cancel any pending resize animation frame
+        const inst = terminalInstances.get(sessionId);
+        if (inst?.rafFitId) {
+          cancelAnimationFrame(inst.rafFitId);
+        }
         if (pasteHandler && term.element) {
           term.element.removeEventListener('paste', pasteHandler as any);
         }
@@ -266,15 +275,18 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
         // Let xterm handle regular text paste
       };
 
+      // Remove existing callback to prevent duplicates
+      removeOutputBytesCallback(sessionId);
+
       setOutputBytesCallback(sessionId, (chunk: Uint8Array) => {
         term.write(chunk);
       });
 
       // Ensure we're attached to this session
       // This is critical for reconnection after page reload
-      attachSession(sessionId).catch(console.error);
+      ensureSessionReady(sessionId, { jobId: sessionId, origin: 'adhoc' }).catch(console.error);
 
-      instance = { terminal: term, fitAddon: fit, cleanup };
+      instance = { terminal: term, fitAddon: fit, cleanup, hydrated: false, lastCols: undefined, lastRows: undefined, rafFitId: undefined };
       terminalInstances.set(sessionId, instance);
 
       (instance as any).pasteHandler = pasteHandler;
@@ -290,11 +302,23 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
       const setupResizeObserver = (container: HTMLElement) => {
         if (ro) ro.disconnect();
         ro = new ResizeObserver(() => {
-          // Use requestAnimationFrame to ensure DOM has settled
-          requestAnimationFrame(() => {
+          // Cancel any pending fit operation
+          if (instance!.rafFitId) {
+            cancelAnimationFrame(instance!.rafFitId);
+          }
+
+          // Schedule fit for next frame (coalesce multiple resize events)
+          instance!.rafFitId = requestAnimationFrame(() => {
+            instance!.rafFitId = undefined;
             fit.fit();
             const { cols, rows } = term;
-            resize(sessionId, cols, rows);
+
+            // Only send resize if dimensions actually changed
+            if (cols !== instance!.lastCols || rows !== instance!.lastRows) {
+              instance!.lastCols = cols;
+              instance!.lastRows = rows;
+              resize(sessionId, cols, rows);
+            }
           });
         });
         ro.observe(container);
@@ -314,6 +338,16 @@ const TerminalView: React.FC<Props> = ({ sessionId, isVisible }) => {
     // Only open if not already opened
     if (!instance.terminal.element) {
       instance.terminal.open(container);
+
+      // Hydrate from buffered output if not already done
+      if (!instance.hydrated) {
+        const snapshot = getHydratedSnapshotBytes(sessionId);
+        if (snapshot && snapshot.length > 0) {
+          instance.terminal.write(snapshot);
+        }
+        instance.hydrated = true;
+      }
+
       instance.fitAddon.fit();
       (instance as any).setupResizeObserver(container);
       // Attach paste handler to terminal element

@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Trash2, ChevronRight, ChevronLeft, Bell } from "lucide-react";
+import { RefreshCw, Trash2, ChevronRight, ChevronLeft, Terminal } from "lucide-react";
 import { FC, ComponentType } from "react";
 
 import { Button } from "@/ui/button";
@@ -112,7 +112,7 @@ export const SidebarHeader: FC<SidebarHeaderProps> = ({
                   }
                 }}
               >
-                <Bell className="h-4 w-4 text-foreground" />
+                <Terminal className="h-4 w-4 text-foreground" />
                 {alertCount !== undefined && alertCount > 0 && (
                   <div className="absolute -top-1 -right-1 h-4 w-4 bg-red-500 rounded-full flex items-center justify-center">
                     <span className="text-white text-xs font-medium">

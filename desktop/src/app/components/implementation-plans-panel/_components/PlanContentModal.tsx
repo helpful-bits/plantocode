@@ -529,7 +529,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
             <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 z-10">
               <div className="flex items-center gap-2 bg-card/95 backdrop-blur-sm border border-border rounded-full px-3 py-1.5 shadow-lg">
                 {totalPlans > 1 && onNavigate && (
-                  <>
+                  <React.Fragment key="navigation">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -553,7 +553,7 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
                     >
                       <ChevronRight className="h-4 w-4" />
                     </Button>
-                  </>
+                  </React.Fragment>
                 )}
                 
                 {onSelect && displayPlan.status === "completed" && (

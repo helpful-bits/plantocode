@@ -17,7 +17,6 @@ import { useTerminalSessions } from "@/contexts/terminal-sessions/useTerminalSes
 
 import { JobContent } from "./_components/job-content";
 import { MonitoringPanel } from "./_components/MonitoringPanel";
-import { GenericTerminalModal } from "./_components/GenericTerminalModal";
 import { useJobFiltering } from "./hooks/use-job-filtering";
 import { useSidebarStateManager } from "./hooks/use-sidebar-state-manager";
 import { JobDetailsModal } from "./job-details-modal";
@@ -38,10 +37,6 @@ export const BackgroundJobsSidebar = () => {
 
   // View state management
   const [view, setView] = useState<'jobs' | 'monitoring'>('jobs');
-
-  // Generic terminal modal state
-  const [genericTerminalSessionId, setGenericTerminalSessionId] = useState<string | null>(null);
-  const [isGenericTerminalVisible, setIsGenericTerminalVisible] = useState(false);
 
   // System prompt cache for web search execution
   const [webSearchSystemPrompt, setWebSearchSystemPrompt] = useState<string>('');
@@ -168,17 +163,6 @@ export const BackgroundJobsSidebar = () => {
       window.removeEventListener('open-plan-terminal', handleOpenPlanTerminalEvent as EventListener);
     };
   }, [handleOpenTerminal]);
-
-  // Listen for open-terminal-session events
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      setGenericTerminalSessionId(detail.sessionId);
-      setIsGenericTerminalVisible(true);
-    };
-    window.addEventListener('open-terminal-session', handler);
-    return () => window.removeEventListener('open-terminal-session', handler);
-  }, []);
 
   // Function to continue workflow from a completed web search prompts generation job
   const handleContinueWorkflow = useCallback(async (job: BackgroundJob) => {
@@ -358,16 +342,6 @@ export const BackgroundJobsSidebar = () => {
 
       {/* Job Details Modal - Moved outside sidebar container to fix z-index stacking */}
       <JobDetailsModal job={selectedJob} onClose={() => setSelectedJob(null)} />
-
-      {/* Generic Terminal Modal */}
-      {genericTerminalSessionId && (
-        <GenericTerminalModal
-          open={isGenericTerminalVisible}
-          onOpenChange={setIsGenericTerminalVisible}
-          sessionId={genericTerminalSessionId}
-          title={`Terminal — ${genericTerminalSessionId}`}
-        />
-      )}
     </>
   );
 };

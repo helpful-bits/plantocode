@@ -71,12 +71,39 @@ async fn handle_get_project_directory(app_handle: AppHandle, _request: RpcReques
     Ok(json!({"projectDirectory": dir}))
 }
 
+/// DJB2 hash function matching the frontend implementation
+fn djb2_hash(s: &str) -> String {
+    if s.is_empty() || s == "global" {
+        return "global".to_string();
+    }
+    let mut hash: i32 = 5381;
+    for c in s.chars() {
+        let char_code = c as i32;
+        hash = ((hash << 5).wrapping_sub(hash)).wrapping_add(char_code);
+    }
+    // Convert to unsigned and format as hex with padding
+    format!("{:08x}", hash as u32)
+}
+
 async fn handle_get_active_session_id(app_handle: AppHandle, _request: RpcRequest) -> RpcResult<Value> {
     let settings_repo = get_settings_repo(&app_handle)?;
 
-    // Read the active session ID
-    let session_id = settings_repo.get_active_session_id().await
+    // Get the project directory to compute the correct key
+    let project_dir = settings_repo.get_project_directory().await
         .map_err(RpcError::from)?;
+
+    let session_id = if let Some(ref dir) = project_dir {
+        // Compute the key matching frontend: global:activeSession:{hash}
+        let hash = djb2_hash(dir);
+        let key = format!("global:activeSession:{}", hash);
+        let value = settings_repo.get_value(&key).await
+            .map_err(RpcError::from)?;
+        log::debug!("[app.getActiveSessionId] project_dir={:?}, hash={}, key={}, session_id={:?}", dir, hash, key, value);
+        value
+    } else {
+        log::debug!("[app.getActiveSessionId] No project directory set");
+        None
+    };
 
     Ok(json!({"sessionId": session_id}))
 }

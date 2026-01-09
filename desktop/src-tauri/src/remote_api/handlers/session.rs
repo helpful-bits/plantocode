@@ -6,7 +6,6 @@ use crate::commands::session_commands;
 use crate::models::CreateSessionRequest;
 use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
 use crate::services::history_state_sequencer::HistoryStateSequencer;
-use crate::services::session_cache::SessionCache;
 use std::sync::Arc;
 
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
@@ -78,11 +77,37 @@ pub async fn handle_session_list(app_handle: AppHandle, request: RpcRequest) -> 
         .ok_or_else(|| RpcError::invalid_params("Missing param: projectDirectory"))?
         .to_string();
 
-    let sessions = session_commands::get_sessions_for_project_command(app_handle, project_directory)
+    // Parse pagination params with defaults to ensure bounded responses
+    let request_limit = request.params.get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|n| n.min(500) as u32); // Cap at 500 sessions max
+
+    // Default limit of 100 ensures bounded responses even when client omits pagination
+    let effective_limit = request_limit.unwrap_or(100);
+
+    let offset = request.params.get("offset")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    // Use repository directly with DB-level pagination for efficiency
+    let repo = app_handle
+        .state::<Arc<SessionRepository>>()
+        .inner()
+        .clone();
+
+    let project_hash = crate::utils::hash_utils::hash_string(&project_directory);
+
+    let (sessions, total_count) = repo
+        .get_sessions_by_project_hash_paginated(&project_hash, Some(effective_limit), offset)
         .await
         .map_err(RpcError::from)?;
 
-    Ok(json!({ "sessions": sessions }))
+    Ok(json!({
+        "sessions": sessions,
+        "totalCount": total_count,
+        "offset": offset,
+        "limit": effective_limit
+    }))
 }
 
 pub async fn handle_session_update(app_handle: AppHandle, request: RpcRequest) -> RpcResult<Value> {
@@ -386,6 +411,11 @@ async fn handle_session_get_history_state(
         .ok_or_else(|| RpcError::invalid_params("Missing kind"))?
         .to_string();
 
+    let summary_only = params["summaryOnly"].as_bool().unwrap_or(false);
+    let max_entries = params["maxEntries"]
+        .as_i64()
+        .map(|n| n.min(100).max(1) as usize);
+
     let db = app.state::<Arc<sqlx::SqlitePool>>();
     let repo = SessionRepository::new(db.inner().clone());
 
@@ -393,14 +423,50 @@ async fn handle_session_get_history_state(
         let task_state = repo.get_task_history_state(&session_id)
             .await
             .map_err(|e| RpcError::internal_error(e.to_string()))?;
-        serde_json::to_value(&task_state)
-            .map_err(|e| RpcError::internal_error(e.to_string()))?
+
+        if summary_only {
+            json!({
+                "version": task_state.version,
+                "checksum": task_state.checksum,
+                "currentIndex": task_state.current_index
+            })
+        } else if let Some(limit) = max_entries {
+            let mut limited_state = task_state;
+            if limited_state.entries.len() > limit {
+                let start = limited_state.entries.len().saturating_sub(limit);
+                limited_state.entries = limited_state.entries[start..].to_vec();
+                limited_state.current_index = limited_state.current_index.saturating_sub(start as i64);
+            }
+            serde_json::to_value(&limited_state)
+                .map_err(|e| RpcError::internal_error(e.to_string()))?
+        } else {
+            serde_json::to_value(&task_state)
+                .map_err(|e| RpcError::internal_error(e.to_string()))?
+        }
     } else if kind == "files" {
         let file_state = repo.get_file_history_state(&session_id)
             .await
             .map_err(|e| RpcError::internal_error(e.to_string()))?;
-        serde_json::to_value(&file_state)
-            .map_err(|e| RpcError::internal_error(e.to_string()))?
+
+        if summary_only {
+            json!({
+                "version": file_state.version,
+                "checksum": file_state.checksum,
+                "currentIndex": file_state.current_index
+            })
+        } else if let Some(limit) = max_entries {
+            let mut limited_state = file_state;
+            if limited_state.entries.len() > limit {
+                let start = limited_state.entries.len().saturating_sub(limit);
+                limited_state.entries = limited_state.entries[start..].to_vec();
+                limited_state.current_index = limited_state.current_index.saturating_sub(start as i64);
+            }
+            serde_json::to_value(&limited_state)
+                .map_err(|e| RpcError::internal_error(e.to_string()))?
+        } else {
+            serde_json::to_value(&file_state)
+                .map_err(|e| RpcError::internal_error(e.to_string()))?
+        }
     } else {
         return Err(RpcError::invalid_params("Invalid kind: must be 'task' or 'files'"));
     };

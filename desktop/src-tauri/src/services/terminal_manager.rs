@@ -347,11 +347,7 @@ impl TerminalManager {
                             if connected && bound {
                                 if let Err(e) = client.send_terminal_output_binary(&sid, &chunk) {
                                     log::warn!("Failed to send terminal binary for session {}: {}", sid, e);
-                                } else {
-                                    log::debug!("PTY output {} bytes forwarded for session {}", chunk.len(), sid);
                                 }
-                            } else {
-                                log::debug!("Binary uplink skipped: session={} connected={} bound={}", sid, connected, bound);
                             }
                         }
                     }

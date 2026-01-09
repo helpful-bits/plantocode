@@ -21,8 +21,8 @@ public struct JobCardView: View {
     @State private var jobStartTime: Date?
     @State private var timeRefreshTrigger: Int = 0  // Triggers view refresh for time labels
 
-    // Timer publisher for updating time-based UI elements (100ms for smooth second counting)
-    private let refreshTimer = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
+    // Timer publisher for updating time-based UI elements (1s is sufficient for human-readable "time ago" labels)
+    private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
 
     public init(
         job: BackgroundJob,
@@ -55,7 +55,7 @@ public struct JobCardView: View {
     }
 
     private var isJobRunning: Bool {
-        ["running", "processingStream", "generatingStream", "preparing", "preparing_input"].contains(job.status)
+        job.jobStatus.isActive
     }
 
     private var canCancel: Bool {
@@ -97,18 +97,20 @@ public struct JobCardView: View {
     }
 
     private var statusDisplay: String {
-        switch job.status {
-        case "running", "processingStream":
+        switch job.jobStatus {
+        case .running, .processingStream:
             return "Processing"
-        case "preparing", "created", "queued", "preparing_input", "generating_stream":
+        case .generatingStream:
+            return "Generating"
+        case .idle, .created, .queued, .acknowledgedByWorker, .preparing, .preparingInput:
             return "Preparing"
-        case "completed", "completed_by_tag":
+        case .completed, .completedByTag:
             return "Completed"
-        case "failed":
+        case .failed:
             return "Failed"
-        case "canceled":
+        case .canceled:
             return "Canceled"
-        default:
+        case .unknown:
             return job.status.capitalized
         }
     }
@@ -162,6 +164,14 @@ public struct JobCardView: View {
     }
 
     private func formatTokenCount(_ count: Int32?) -> String {
+        guard let count = count, count > 0 else { return "0" }
+        if count >= 1000 {
+            return String(format: "%.1fK", Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+
+    private func formatTokenCount(_ count: Int64?) -> String {
         guard let count = count, count > 0 else { return "0" }
         if count >= 1000 {
             return String(format: "%.1fK", Double(count) / 1000.0)
@@ -283,8 +293,10 @@ public struct JobCardView: View {
             // Progress Bar (for active jobs)
             if isJobRunning {
                 VStack(spacing: Theme.Spacing.itemSpacing) {
-                    if let progressPct = job.streamProgressPercentage, progressPct > 0 {
-                        ProgressView(value: Double(progressPct), total: 100)
+                    if let progressPct = job.streamProgressPercentage {
+                        // Show determinate progress when streamProgressPercentage is non-nil (including 0)
+                        let clampedProgress = max(0, min(100, progressPct))
+                        ProgressView(value: Double(clampedProgress), total: 100)
                             .tint(statusColor)
                             .frame(maxWidth: .infinity)
                             .frame(height: 4)
@@ -298,12 +310,13 @@ public struct JobCardView: View {
                                     .lineLimit(1)
                             }
                             Spacer()
-                            Text("\(progressPct)%")
+                            Text("\(clampedProgress)%")
                                 .font(.system(size: 11, weight: .medium))
                                 .foregroundColor(Color.textSecondary)
                         }
                         .padding(.horizontal, Theme.Spacing.cardPadding)
                     } else {
+                        // Fallback to time-based progress for active jobs without streamProgressPercentage
                         ProgressView(value: progress, total: 1.0)
                             .tint(statusColor)
                             .frame(maxWidth: .infinity)
@@ -533,12 +546,13 @@ public struct JobCardView: View {
             guard let startTime = jobStartTime else { return }
 
             let elapsed = Date().timeIntervalSince(startTime)
-            let calculatedProgress = min(0.90, elapsed / estimatedDuration)
+            // Cap at 95% (desktop-like behavior) to indicate job is still running
+            let calculatedProgress = min(0.95, elapsed / estimatedDuration)
 
             withAnimation(.linear(duration: 1.0)) {
                 progress = calculatedProgress
             }
-            // Note: timeRefreshTrigger is updated by refreshTimer publisher (100ms interval)
+            // Note: timeRefreshTrigger is updated by refreshTimer publisher (1s interval)
         }
     }
 
@@ -626,9 +640,11 @@ public struct JobCardView: View {
     }
 
     private func shouldShowApplyButton() -> Bool {
+        let isCompleted = job.jobStatus == .completed || job.jobStatus == .completedByTag
+
         // File finding tasks - only if files were found AND there are new files to add
         if ["extended_path_finder", "file_relevance_assessment", "path_correction", "regex_file_filter"].contains(job.taskType) {
-            if job.status == "completed" && hasFilesInResponse() {
+            if isCompleted && hasFilesInResponse() {
                 // Only show button if there are new files to add
                 let newFilesCount = calculateNewFilesCount()
                 return newFilesCount > 0 || newFilesCount == -1 // Show if new files exist or count is unknown
@@ -638,7 +654,7 @@ public struct JobCardView: View {
 
         // Video analysis with results
         if job.taskType == "video_analysis" {
-            return job.status == "completed" && job.response != nil
+            return isCompleted && job.response != nil
         }
 
         // Web search with results
@@ -739,8 +755,10 @@ public struct JobCardView: View {
 // MARK: - BackgroundJob Extensions
 
 extension BackgroundJob {
+    // Note: displayTimestampMs is defined in Core/DataServices/SharedTypes.swift
+
     var formattedTimeAgo: String {
-        let timestamp = startTime ?? updatedAt ?? createdAt
+        let timestamp = displayTimestampMs
         guard timestamp > 0 else { return "Unknown time" }
 
         let date = Date(timeIntervalSince1970: Double(timestamp) / 1000)

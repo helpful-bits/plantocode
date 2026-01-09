@@ -110,17 +110,17 @@ public struct PlanSummary: Codable, Identifiable {
     }
 
     /// Status-based color
-    /// Green checkmark only shown when both job is completed AND markdown is ready
+    /// Green shown when job is completed (and markdown is ready or not applicable)
     public var statusColor: String {
         switch status.lowercased() {
         case "completed", "completed_by_tag":
-            // Only show green if markdown is also completed
-            if markdownConversionStatus == "completed" {
-                return "green"
-            } else if markdownConversionStatus == "failed" {
+            // Show green if markdown is completed or not tracked (nil means legacy/not applicable)
+            if markdownConversionStatus == "failed" {
                 return "orange"  // Markdown conversion failed
+            } else if markdownConversionStatus == "pending" {
+                return "blue"  // Actively converting markdown
             } else {
-                return "blue"  // Still converting markdown
+                return "green"  // Completed or nil (legacy)
             }
         case "failed":
             return "red"
@@ -136,17 +136,17 @@ public struct PlanSummary: Codable, Identifiable {
     }
 
     /// Status icon name
-    /// Green checkmark only shown when both job is completed AND markdown is ready
+    /// Green checkmark shown when job is completed (and markdown is ready or not applicable)
     public var statusIcon: String {
         switch status.lowercased() {
         case "completed", "completed_by_tag":
-            // Only show checkmark if markdown is also completed
-            if markdownConversionStatus == "completed" {
-                return "checkmark.circle.fill"
-            } else if markdownConversionStatus == "failed" {
+            // Show checkmark if markdown is completed or not tracked (nil means legacy/not applicable)
+            if markdownConversionStatus == "failed" {
                 return "exclamationmark.triangle.fill"  // Markdown conversion failed
+            } else if markdownConversionStatus == "pending" {
+                return "arrow.clockwise"  // Actively converting markdown
             } else {
-                return "arrow.clockwise"  // Still converting markdown
+                return "checkmark.circle.fill"  // Completed or nil (legacy)
             }
         case "failed":
             return "exclamationmark.circle.fill"
@@ -185,8 +185,9 @@ public struct PlanSummary: Codable, Identifiable {
             metadataDict = parsed
         }
 
-        // Extract title using PlanContentParser
-        self.title = PlanContentParser.extractPlanTitle(metadata: job.metadata, response: job.response)
+        // Extract title: prefer planTitle from summary, fallback to PlanContentParser
+        self.title = job.planTitle
+            ?? PlanContentParser.extractPlanTitle(metadata: job.metadata, response: job.response)
             ?? (job.taskType == "implementation_plan_merge" ? "Merged Plan" : "Implementation Plan")
 
         // Extract filePath from metadata
@@ -208,8 +209,8 @@ public struct PlanSummary: Codable, Identifiable {
         // Set model used
         self.modelUsed = job.modelUsed
 
-        // Extract markdown conversion status from metadata
-        self.markdownConversionStatus = metadataDict?["markdownConversionStatus"] as? String
+        // Use markdownConversionStatus from job (from summary), fallback to metadata parsing
+        self.markdownConversionStatus = job.markdownConversionStatus ?? (metadataDict?["markdownConversionStatus"] as? String)
 
         // Extract execution status from job progress fields
         if let progressPercentage = job.progressPercentage,

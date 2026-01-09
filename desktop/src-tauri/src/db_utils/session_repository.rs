@@ -631,6 +631,67 @@ impl SessionRepository {
         Ok(sessions)
     }
 
+    /// Get sessions for a project with pagination support
+    /// Returns (sessions, total_count) to support pagination metadata
+    pub async fn get_sessions_by_project_hash_paginated(
+        &self,
+        project_hash: &str,
+        limit: Option<u32>,
+        offset: u32,
+    ) -> AppResult<(Vec<Session>, u32)> {
+        // Get total count first
+        let total_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sessions WHERE project_hash = $1"
+        )
+        .bind(project_hash)
+        .fetch_one(&*self.pool)
+        .await
+        .map_err(|e| {
+            AppError::DatabaseError(format!("Failed to count sessions: {}", e))
+        })?;
+
+        // Build query with pagination
+        let query = if let Some(limit) = limit {
+            format!(
+                "SELECT * FROM sessions WHERE project_hash = $1 ORDER BY updated_at DESC LIMIT {} OFFSET {}",
+                limit, offset
+            )
+        } else {
+            "SELECT * FROM sessions WHERE project_hash = $1 ORDER BY updated_at DESC".to_string()
+        };
+
+        let rows = sqlx::query(&query)
+            .bind(project_hash)
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| {
+                AppError::DatabaseError(format!("Failed to fetch sessions for project: {}", e))
+            })?;
+
+        let mut sessions = Vec::new();
+
+        for row in rows {
+            match self.row_to_session(&row).await {
+                Ok(session) => {
+                    sessions.push(session);
+                }
+                Err(e) => {
+                    let session_id_for_log: String = row
+                        .try_get("id")
+                        .unwrap_or_else(|_| "unknown_id".to_string());
+                    log::error!(
+                        "Failed to process session with id '{}': {}",
+                        session_id_for_log,
+                        e
+                    );
+                    continue;
+                }
+            }
+        }
+
+        Ok((sessions, total_count as u32))
+    }
+
     /// Delete all sessions for a project
     pub async fn delete_all_sessions(&self, project_hash: &str) -> AppResult<()> {
         // Delete all sessions with the given project hash

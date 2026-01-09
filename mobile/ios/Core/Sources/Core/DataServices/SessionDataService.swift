@@ -411,7 +411,8 @@ public final class SessionDataService: ObservableObject {
             }
 
             do {
-                let stream = CommandRouter.sessionList(projectDirectory: projectDirectory)
+                // Request bounded page to prevent huge transfers over relay
+                let stream = CommandRouter.sessionList(projectDirectory: projectDirectory, limit: 100, offset: 0)
 
                 for try await response in stream {
                     if let error = response.error {
@@ -422,7 +423,7 @@ public final class SessionDataService: ObservableObject {
                     }
 
                     if let value = response.result?.value {
-                        // Try to parse as wrapped response first, then fall back to raw array
+                        // Decode the desktop envelope {sessions, totalCount, offset, limit}
                         var sessionsArray: [[String: Any]]?
                         if let dict = value as? [String: Any], let arr = dict["sessions"] as? [[String: Any]] {
                             sessionsArray = arr
@@ -1394,8 +1395,8 @@ public final class SessionDataService: ObservableObject {
     // MARK: - HistoryState Methods
 
     /// Get history state from desktop
-    public func getHistoryState(sessionId: String, kind: String) async throws -> HistoryState {
-        return try await CommandRouter.sessionGetHistoryState(sessionId: sessionId, kind: kind)
+    public func getHistoryState(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> HistoryState {
+        return try await CommandRouter.sessionGetHistoryState(sessionId: sessionId, kind: kind, summaryOnly: summaryOnly, maxEntries: maxEntries)
     }
 
     /// Sync history state to desktop

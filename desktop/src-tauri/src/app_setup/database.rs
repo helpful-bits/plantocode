@@ -246,7 +246,7 @@ pub async fn run_deferred_db_tasks(
     use tracing::{error, info, warn};
 
     info!("Starting deferred DB tasks: health check, recovery, migrations, and repo wiring.");
-    info!("Deferred DB: starting integrity check.");
+    info!("Deferred DB: starting quick check.");
 
     // Retrieve pool from app state
     let pool_arc = app_handle
@@ -254,13 +254,13 @@ pub async fn run_deferred_db_tasks(
         .inner()
         .clone();
 
-    // Health check with PRAGMA integrity_check
+    // Health check with PRAGMA quick_check
     match check_database_health(&*pool_arc).await {
         Ok(true) => {
-            info!("Deferred DB: integrity check passed");
+            info!("Deferred DB: quick check passed");
         }
         Ok(false) => {
-            warn!("Deferred DB: integrity check failed, attempting automatic recovery");
+            warn!("Deferred DB: quick check failed, attempting automatic recovery");
             let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
                 crate::error::AppError::InitializationError(format!(
                     "Failed to get app local data dir: {}",
@@ -272,19 +272,19 @@ pub async fn run_deferred_db_tasks(
             // Re-check after recovery
             match check_database_health(&*pool_arc).await {
                 Ok(true) => {
-                    info!("Deferred DB: integrity check passed after recovery");
+                    info!("Deferred DB: quick check passed after recovery");
                 }
                 _ => {
-                    error!("Deferred DB: integrity check still failed after recovery attempt");
+                    error!("Deferred DB: quick check still failed after recovery attempt");
                     return Err(crate::error::AppError::DatabaseError(
-                        "Database integrity check failed even after recovery".to_string(),
+                        "Database quick check failed even after recovery".to_string(),
                     ));
                 }
             }
         }
         Err(e) => {
-            error!("Deferred DB: integrity check error: {}", e);
-            warn!("Deferred DB: attempting automatic recovery due to integrity check error");
+            error!("Deferred DB: quick check error: {}", e);
+            warn!("Deferred DB: attempting automatic recovery due to quick check error");
             let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
                 crate::error::AppError::InitializationError(format!(
                     "Failed to get app local data dir: {}",
@@ -387,8 +387,8 @@ pub async fn run_deferred_db_tasks(
 
 /// Check if database is healthy
 async fn check_database_health(db: &SqlitePool) -> Result<bool, AppError> {
-    // Try to run a simple integrity check
-    match sqlx::query_scalar::<_, String>("PRAGMA integrity_check")
+    // Run quick_check (much faster than full integrity_check, ~3.3s improvement)
+    match sqlx::query_scalar::<_, String>("PRAGMA quick_check")
         .fetch_one(db)
         .await
     {

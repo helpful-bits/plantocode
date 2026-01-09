@@ -90,54 +90,70 @@ public final class FilesDataService: ObservableObject {
             return self.files
         }
 
-        if let activeId = MultiConnectionManager.shared.activeDeviceId {
-            let state = MultiConnectionManager.shared.connectionStates[activeId]
-            guard state?.isConnected == true else {
-                throw DataServiceError.connectionError("No active device connection")
-            }
-        } else {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let _ = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
             throw DataServiceError.connectionError("No active device connection")
         }
 
-        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
-            throw DataServiceError.invalidState("Not connected to desktop")
-        }
+        let maxAttempts = 3
+        let backoffDelays: [TimeInterval] = [0.5, 1.0]
+        var lastError: Error = DataServiceError.connectionError("No active device connection")
 
-        for try await response in CommandRouter.filesSearch(
-            projectDirectory: projectDirectory,
-            query: query,
-            includeContent: includeContent,
-            maxResults: maxResults
-        ) {
-            if let result = response.result?.value as? [String: Any] {
-                // Desktop returns { "files": [...], "total_count": 123 }
-                // Handle both NSArray and Swift Array
-                if let filesArray = result["files"] as? NSArray {
-                    let fileInfos = filesArray.compactMap { fileObj -> FileInfo? in
-                        guard let dict = fileObj as? [String: Any] else {
-                            return nil
+        for attempt in 1...maxAttempts {
+            do {
+                for try await response in CommandRouter.filesSearch(
+                    projectDirectory: projectDirectory,
+                    query: query,
+                    includeContent: includeContent,
+                    maxResults: maxResults
+                ) {
+                    if let result = response.result?.value as? [String: Any] {
+                        if let filesArray = result["files"] as? NSArray {
+                            let fileInfos = filesArray.compactMap { fileObj -> FileInfo? in
+                                guard let dict = fileObj as? [String: Any] else {
+                                    return nil
+                                }
+                                return FileInfo(from: dict)
+                            }
+                            self.lastFileSearch[cacheKey] = Date()
+                            return fileInfos
+                        } else if let files = result["files"] as? [[String: Any]] {
+                            let fileInfos = files.compactMap { dict in
+                                FileInfo(from: dict)
+                            }
+                            self.lastFileSearch[cacheKey] = Date()
+                            return fileInfos
                         }
-                        return FileInfo(from: dict)
                     }
-                    // Update timestamp after successful search
-                    self.lastFileSearch[cacheKey] = Date()
-                    return fileInfos
-                } else if let files = result["files"] as? [[String: Any]] {
-                    let fileInfos = files.compactMap { dict in
-                        FileInfo(from: dict)
-                    }
-                    // Update timestamp after successful search
-                    self.lastFileSearch[cacheKey] = Date()
-                    return fileInfos
-                }
-            }
 
-            if let error = response.error {
-                throw DataServiceError.serverError(error.message)
+                    if let error = response.error {
+                        throw DataServiceError.serverError(error.message)
+                    }
+                }
+                return []
+            } catch {
+                lastError = error
+
+                let isRetryable: Bool
+                if case ServerRelayError.timeout = error {
+                    isRetryable = true
+                } else if case DataServiceError.connectionError = error {
+                    isRetryable = true
+                } else {
+                    isRetryable = false
+                }
+
+                if isRetryable && attempt < maxAttempts {
+                    let delay = backoffDelays[attempt - 1]
+                    try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    continue
+                }
+
+                throw error
             }
         }
-        return []
+
+        throw lastError
     }
 
 

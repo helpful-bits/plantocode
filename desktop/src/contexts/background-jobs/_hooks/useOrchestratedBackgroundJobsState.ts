@@ -301,22 +301,12 @@ export function useOrchestratedBackgroundJobsState({
           });
 
           if (!shouldProcess) {
-            if (process.env.NODE_ENV !== "production") {
-              console.debug("[BackgroundJobs] Filtered job:created - session mismatch", {
-                activeSessionId: sessionIdRef.current,
-                payloadSessionId,
-                jobId: payload.job?.id,
-              });
-            }
             return;
           }
 
           const newJob = payload.job as BackgroundJob;
-          const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
-          if (!workflowTypes.includes(newJob.taskType)) {
-            jobsMapRef.current.set(newJob.id, newJob);
-            updateJobsFromMap();
-          }
+          jobsMapRef.current.set(newJob.id, newJob);
+          updateJobsFromMap();
         };
 
         const onJobDeleted = (payload: any) => {
@@ -335,11 +325,6 @@ export function useOrchestratedBackgroundJobsState({
           });
 
           if (!shouldProcess) {
-            if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-              console.debug("[BackgroundJobs] job:deleted payload lacks sessionId", {
-                jobId: payload.jobId,
-              });
-            }
             return;
           }
 
@@ -359,12 +344,6 @@ export function useOrchestratedBackgroundJobsState({
           });
 
           if (!shouldProcess) {
-            if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-              console.debug("[BackgroundJobs] job:status-changed payload lacks sessionId, relying on existing job", {
-                jobId: update.jobId,
-                existingJobSessionId: existingJob?.sessionId,
-              });
-            }
             return;
           }
 
@@ -410,17 +389,14 @@ export function useOrchestratedBackgroundJobsState({
               const result = await invoke("get_background_job_by_id_command", { jobId: update.jobId });
               if (result) {
                 const fetchedJob = result as BackgroundJob;
-                const workflowTypes = ['file_finder_workflow', 'web_search_workflow'];
-                if (!workflowTypes.includes(fetchedJob.taskType)) {
-                  jobsMapRef.current.set(fetchedJob.id, fetchedJob);
-                  updateJobsFromMap();
+                jobsMapRef.current.set(fetchedJob.id, fetchedJob);
+                updateJobsFromMap();
 
-                  if (process.env.NODE_ENV !== "production") {
-                    console.debug("[BackgroundJobs] Successfully fetched and added job to Map", {
-                      jobId: fetchedJob.id,
-                      status: fetchedJob.status,
-                    });
-                  }
+                if (process.env.NODE_ENV !== "production") {
+                  console.debug("[BackgroundJobs] Successfully fetched and added job to Map", {
+                    jobId: fetchedJob.id,
+                    status: fetchedJob.status,
+                  });
                 }
               }
             } catch (fetchErr) {
@@ -473,12 +449,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:stream-progress payload lacks sessionId, relying on existing job", {
-                  jobId: p.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -529,12 +499,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:tokens-updated payload lacks sessionId, relying on existing job", {
-                  jobId: t.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -569,12 +533,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:cost-updated payload lacks sessionId, relying on existing job", {
-                  jobId: c.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -607,12 +565,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:response-appended payload lacks sessionId, relying on existing job", {
-                  jobId: ra.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -650,12 +602,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:error-details payload lacks sessionId, relying on existing job", {
-                  jobId: e.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -687,12 +633,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:finalized payload lacks sessionId, relying on existing job", {
-                  jobId: f.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 
@@ -757,12 +697,6 @@ export function useOrchestratedBackgroundJobsState({
             });
 
             if (!shouldProcess) {
-              if (process.env.NODE_ENV !== "production" && !payloadSessionId) {
-                console.debug("[BackgroundJobs] job:metadata-updated payload lacks sessionId, relying on existing job", {
-                  jobId: m.jobId,
-                  existingJobSessionId: existingJob?.sessionId,
-                });
-              }
               return;
             }
 

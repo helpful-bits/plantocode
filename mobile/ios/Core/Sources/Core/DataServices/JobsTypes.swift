@@ -52,14 +52,36 @@ public struct JobListRequest: Codable {
 }
 
 public struct JobListResponse: Codable {
-    public let jobs: [BackgroundJob]
+    public let jobs: [BackgroundJobListItem]
     public let totalCount: UInt32
     public let page: UInt32
     public let pageSize: UInt32
     public let hasMore: Bool
 
     public init(
-        jobs: [BackgroundJob],
+        jobs: [BackgroundJobListItem],
+        totalCount: UInt32,
+        page: UInt32 = 0,
+        pageSize: UInt32 = 50,
+        hasMore: Bool
+    ) {
+        self.jobs = jobs
+        self.totalCount = totalCount
+        self.page = page
+        self.pageSize = pageSize
+        self.hasMore = hasMore
+    }
+}
+
+public struct JobSummaryListResponse: Codable {
+    public let jobs: [BackgroundJobListItem]
+    public let totalCount: UInt32
+    public let page: UInt32
+    public let pageSize: UInt32
+    public let hasMore: Bool
+
+    public init(
+        jobs: [BackgroundJobListItem],
         totalCount: UInt32,
         page: UInt32 = 0,
         pageSize: UInt32 = 50,

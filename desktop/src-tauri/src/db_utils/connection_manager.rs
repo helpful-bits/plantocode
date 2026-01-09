@@ -134,32 +134,32 @@ pub async fn handle_readonly_database(
     }
 
     // Try to access the database through Tauri plugin
-    info!("Attempting to run integrity check on database");
+    info!("Attempting to run quick check on database");
     let db = app_handle
         .state::<Arc<sqlx::SqlitePool>>()
         .inner()
         .clone();
 
-    // Run integrity check
-    match sqlx::query("PRAGMA integrity_check;")
+    // Run quick_check (much faster than full integrity_check, ~3.3s improvement)
+    match sqlx::query("PRAGMA quick_check;")
         .fetch_one(&*db)
         .await
     {
         Ok(row) => match row.try_get::<'_, String, _>(0) {
             Ok(result) => {
                 if result == "ok" {
-                    info!("Database integrity check passed");
+                    info!("Database quick check passed");
                     return Ok(true);
                 } else {
-                    warn!("Database integrity check failed: {}", result);
+                    warn!("Database quick check failed: {}", result);
                 }
             }
             Err(e) => {
-                warn!("Failed to read integrity check result: {}", e);
+                warn!("Failed to read quick check result: {}", e);
             }
         },
         Err(e) => {
-            warn!("Failed to run integrity check: {}", e);
+            warn!("Failed to run quick check: {}", e);
 
             // Try more aggressive recovery: delete WAL and SHM files
             if wal_file_path.exists() {
@@ -176,27 +176,27 @@ pub async fn handle_readonly_database(
                 }
             }
 
-            // Try running integrity check again after removing auxiliary files
-            info!("Attempting to run integrity check after removing auxiliary files");
-            match sqlx::query("PRAGMA integrity_check;")
+            // Try running quick check again after removing auxiliary files
+            info!("Attempting to run quick check after removing auxiliary files");
+            match sqlx::query("PRAGMA quick_check;")
                 .fetch_one(&*db)
                 .await
             {
                 Ok(row) => match row.try_get::<'_, String, _>(0) {
                     Ok(result) => {
                         if result == "ok" {
-                            info!("Database integrity check passed after removing auxiliary files");
+                            info!("Database quick check passed after removing auxiliary files");
                             return Ok(true);
                         } else {
                             warn!(
-                                "Database integrity check failed after removing auxiliary files: {}",
+                                "Database quick check failed after removing auxiliary files: {}",
                                 result
                             );
                         }
                     }
                     Err(e) => {
                         warn!(
-                            "Failed to read integrity check result after removing auxiliary files: {}",
+                            "Failed to read quick check result after removing auxiliary files: {}",
                             e
                         );
                     }

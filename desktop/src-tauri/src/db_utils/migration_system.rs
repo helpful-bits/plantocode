@@ -194,14 +194,14 @@ impl MigrationSystem {
             }
         }
 
-        // Validate database integrity
-        let integrity_result: String = sqlx::query_scalar("PRAGMA integrity_check")
+        // Validate database (quick_check is faster than integrity_check, ~3.3s improvement)
+        let quick_check_result: String = sqlx::query_scalar("PRAGMA quick_check")
             .fetch_one(&*self.pool)
             .await?;
-        if integrity_result != "ok" {
+        if quick_check_result != "ok" {
             return Err(AppError::DatabaseError(format!(
-                "Database integrity check failed: {}",
-                integrity_result
+                "Database quick check failed: {}",
+                quick_check_result
             )));
         }
 

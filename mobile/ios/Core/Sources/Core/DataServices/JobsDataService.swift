@@ -7,10 +7,17 @@ import OSLog
 public final class JobsDataService: ObservableObject {
     let logger = Logger(subsystem: "PlanToCode", category: "JobsDataService")
 
-    // MARK: - Canonical Job Store (Single Source of Truth)
+    // MARK: - Job Stores
 
-    /// Canonical job store keyed by jobId - the single source of truth for all job state
+    /// Full job store keyed by jobId - contains real jobs with prompt/response content.
+    /// Only populated via job.get RPC calls or job relay events (not from summaries).
+    /// Use this for detailed job views that need full content.
     @Published public internal(set) var jobsById: [String: BackgroundJob] = [:]
+
+    /// Authoritative list store keyed by jobId - lightweight summaries without content.
+    /// Populated via job.list RPC calls. Drives badge counts and UI list views.
+    /// The published `jobs` array is a projection built from this store.
+    @Published public internal(set) var jobSummariesById: [String: BackgroundJobListItem] = [:]
 
     /// Derived state: count of active jobs that contribute to badge
     @Published public private(set) var activeJobsCount: Int = 0
@@ -43,6 +50,10 @@ public final class JobsDataService: ObservableObject {
     // MARK: - Published Properties
     @Published public var jobs: [BackgroundJob] = []
     @Published public var isLoading = false
+    /// Tracks background refresh (when hasLoadedOnce is already true) - prevents full-screen loading states during refreshes
+    @Published public private(set) var isRefreshing: Bool = false
+    /// Animation token for SwiftUI - increments on each publish cycle to trigger animations
+    @Published public private(set) var jobsVersion: Int = 0
     @Published public var error: DataServiceError?
     @Published public var syncStatus: JobSyncStatus?
     @Published public internal(set) var sessionActiveWorkflowJobs: Int = 0
@@ -82,6 +93,9 @@ public final class JobsDataService: ObservableObject {
 
     /// Debounce work item for high-frequency events like response-appended
     private var debouncedPublishWorkItem: DispatchWorkItem?
+
+    /// Debounce work item for relay-driven summary changes
+    private var debouncedSummariesPublishWorkItem: DispatchWorkItem?
 
     /// Central merge reducer - the single point of truth for job state mutations
     /// All job updates flow through this method to ensure consistent state
@@ -137,6 +151,122 @@ public final class JobsDataService: ObservableObject {
 
         // Sync the derived jobs array (this is the ONLY place it gets updated)
         syncLegacyJobsArray()
+
+        // Bump version token for SwiftUI animations
+        bumpJobsVersion()
+    }
+
+    /// Increment jobsVersion token for SwiftUI animation triggers (wraps on overflow)
+    private func bumpJobsVersion() {
+        jobsVersion &+= 1
+    }
+
+    /// Reduce job summaries into the authoritative summary store.
+    /// This does NOT write to jobsById - summaries are lightweight list items without full content.
+    /// jobsById is only populated via job.get / job events with real full job data.
+    /// - Parameters:
+    ///   - incoming: Job summaries to merge into the store
+    ///   - source: Whether this is a snapshot (full replace) or event (incremental update)
+    ///     - `.snapshot`: publishes immediately (no debounce), calls recomputeDerivedStateFromSummaries() synchronously
+    ///     - `.event`: debounces for 0.1 seconds to batch high-frequency relay events
+    public func reduceJobSummaries(_ incoming: [BackgroundJobListItem], source: MergeSource) {
+        var updatedSummaries = jobSummariesById
+
+        for summary in incoming {
+            let id = summary.id
+            if let existing = updatedSummaries[id] {
+                let existingTs = existing.updatedAt ?? 0
+                let incomingTs = summary.updatedAt ?? 0
+                if incomingTs >= existingTs {
+                    updatedSummaries[id] = summary
+                }
+            } else {
+                updatedSummaries[id] = summary
+            }
+        }
+
+        if case .snapshot = source {
+            let incomingIds = Set(incoming.map { $0.id })
+            for id in updatedSummaries.keys {
+                if !incomingIds.contains(id) {
+                    updatedSummaries.removeValue(forKey: id)
+                }
+            }
+        }
+
+        jobSummariesById = updatedSummaries
+
+        // Debounce logic based on source:
+        // - snapshot: publish immediately (authoritative full list from server)
+        // - event: debounce for 0.1 seconds to batch high-frequency relay events
+        switch source {
+        case .snapshot:
+            // Cancel any pending debounced work and publish immediately
+            debouncedSummariesPublishWorkItem?.cancel()
+            debouncedSummariesPublishWorkItem = nil
+            recomputeDerivedStateFromSummaries()
+
+        case .event:
+            // Debounce relay-driven summary changes to prevent UI flicker
+            debouncedSummariesPublishWorkItem?.cancel()
+            let workItem = DispatchWorkItem { [weak self] in
+                self?.recomputeDerivedStateFromSummaries()
+            }
+            debouncedSummariesPublishWorkItem = workItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: workItem)
+        }
+    }
+
+    /// Recompute all derived state from the authoritative jobSummariesById store.
+    /// This builds: activeJobsCount (for badges), and the legacy jobs array (as a projection).
+    /// The jobs array is built by preferring full jobs from jobsById when available,
+    /// falling back to BackgroundJob(from: summary) for UI list compatibility.
+    func recomputeDerivedStateFromSummaries() {
+        let allSummaries = Array(jobSummariesById.values)
+
+        // Compute activeJobsCount from summaries (authoritative for badge)
+        activeJobsCount = allSummaries.filter { $0.jobStatus.isActive && JobTypeFilters.isBadgeCountableSummary($0) }.count
+
+        // Build the legacy jobs array as a projection:
+        // - Use full job from jobsById if available (has real content)
+        // - Otherwise project from summary for UI list compatibility
+        var projectedJobs: [BackgroundJob] = []
+        for summary in allSummaries {
+            if let fullJob = jobsById[summary.id] {
+                // Prefer real full job data
+                projectedJobs.append(fullJob)
+            } else {
+                // Project from summary for UI list compatibility (no prompt/response content)
+                projectedJobs.append(BackgroundJob(from: summary))
+            }
+        }
+
+        // Sort by (updatedAt ?? createdAt) DESC, tie-break by id for stable ordering
+        let sortedJobs = projectedJobs.sorted { job1, job2 in
+            let time1 = job1.updatedAt ?? job1.createdAt
+            let time2 = job2.updatedAt ?? job2.createdAt
+            if time1 == time2 {
+                return job1.id > job2.id // Stable tie-breaker
+            }
+            return (time1 ?? 0) > (time2 ?? 0)
+        }
+
+        jobs = sortedJobs
+        jobsIndex = Dictionary(uniqueKeysWithValues: jobs.enumerated().map { ($1.id, $0) })
+
+        // Update accumulated lengths for new jobs
+        for job in sortedJobs {
+            if lastAccumulatedLengths[job.id] == nil {
+                lastAccumulatedLengths[job.id] = job.response?.count ?? 0
+            }
+        }
+
+        // Update workflow/implementation plan counts from summaries
+        updateWorkflowCountsFromSummaries(allSummaries)
+        updateImplementationPlanCountsFromSummaries(allSummaries)
+
+        // Bump version token for SwiftUI animations
+        bumpJobsVersion()
     }
 
     /// Resolve conflicts between existing and incoming job data
@@ -227,15 +357,20 @@ public final class JobsDataService: ObservableObject {
     public func reset() {
         // Reset canonical store
         jobsById.removeAll()
+        jobSummariesById.removeAll()
         activeJobsCount = 0
         reconcileTask?.cancel()
         reconcileTask = nil
         debouncedPublishWorkItem?.cancel()
         debouncedPublishWorkItem = nil
+        debouncedSummariesPublishWorkItem?.cancel()
+        debouncedSummariesPublishWorkItem = nil
 
         // Reset derived state
         jobs = []
         isLoading = false
+        isRefreshing = false
+        jobsVersion = 0
         error = nil
         syncStatus = nil
         jobsIndex = [:]
@@ -282,22 +417,42 @@ public final class JobsDataService: ObservableObject {
         return "sess:\(sessionPart)|proj:\(projectPart)|status:\(statusPart)|task:\(taskTypePart)|page:\(pagePart)|size:\(pageSizePart)"
     }
 
+    /// Computes effective job list scope, mirroring `determineJobScope()` semantics.
+    /// - If sessionId is non-empty and NOT prefixed with "mobile-session-", return (sessionId, projectDirectory)
+    /// - Else if projectDirectory is non-empty, return (nil, projectDirectory)
+    /// - Else return (nil, nil)
     func effectiveJobListScope(sessionId: String?, projectDirectory: String?) -> (sessionId: String?, projectDirectory: String?) {
-        if let sid = sessionId, !sid.hasPrefix("mobile-session-") {
-            return (sid, projectDirectory)
+        // Normalize empty strings to nil
+        let normalizedSessionId: String? = (sessionId?.isEmpty == false) ? sessionId : nil
+        let normalizedProjectDirectory: String? = (projectDirectory?.isEmpty == false) ? projectDirectory : nil
+
+        // If sessionId is non-empty and NOT a mobile session, use it with projectDirectory
+        if let sid = normalizedSessionId, !sid.hasPrefix("mobile-session-") {
+            return (sid, normalizedProjectDirectory)
         }
-        guard let project = projectDirectory, !project.isEmpty else {
-            return (nil, nil)
+
+        // Otherwise, use projectDirectory-only scoping if available
+        if let proj = normalizedProjectDirectory {
+            return (nil, proj)
         }
-        return (nil, project)
+
+        // No valid scope parameters
+        return (nil, nil)
     }
 
-    public func handleJobsListInvalidated(sessionId: String?, projectDirectory: String?) {
+    /// Handles job list invalidation events from the desktop.
+    /// Triggers a cache-bypassing refresh when any of sessionId, projectDirectory, or projectHash is provided.
+    /// - Parameters:
+    ///   - sessionId: Optional session ID from the invalidation event
+    ///   - projectDirectory: Optional project directory from the invalidation event
+    ///   - projectHash: Optional project hash from the invalidation event (new payload field)
+    public func handleJobsListInvalidated(sessionId: String?, projectDirectory: String?, projectHash: String? = nil) {
         let (sid, proj) = effectiveJobListScope(
             sessionId: sessionId ?? activeSessionId,
             projectDirectory: projectDirectory ?? activeProjectDirectory
         )
-        guard sid != nil || proj != nil else { return }
+        // Trigger refresh when any scope parameter is available
+        guard sid != nil || proj != nil || projectHash != nil else { return }
         scheduleCoalescedListJobsForActiveSession(bypassCache: true)
     }
 
@@ -406,55 +561,27 @@ public final class JobsDataService: ObservableObject {
     /// It handles: setting active session, and fetching ONLY if needed.
     /// Relay events handle incremental updates after initial load.
     public func startSessionScopedSync(sessionId: String, projectDirectory: String?) {
-        let isSameSession = sessionId == activeSessionId
-
-        // Skip fetch entirely if same session AND we have data
-        // The 2-second dedup only applies when jobs is not empty (prevents skipping failed fetches)
-        if isSameSession && !jobs.isEmpty {
-            if hasLoadedOnce {
-                logger.debug("Skipping sync for session \(sessionId) - already loaded, relay events handle updates")
-                return
-            }
-            if let lastSync = lastSyncTime, Date().timeIntervalSince(lastSync) < 2.0 {
-                logger.debug("Skipping duplicate sync for session \(sessionId) - synced \(Date().timeIntervalSince(lastSync))s ago")
-                return
-            }
+        // Coalescing guard: Skip duplicate sync within 2s window for same session
+        // This reduces bootstrap stampede during rapid session changes
+        if sessionId == lastSyncSessionId,
+           let lastSync = lastSyncTime,
+           Date().timeIntervalSince(lastSync) < 2.0,
+           (reconcileTask != nil || hasLoadedOnce) {
+            logger.debug("Skipping duplicate sync for session \(sessionId) - synced \(String(format: "%.2f", Date().timeIntervalSince(lastSync)))s ago, reconcileTask=\(self.reconcileTask != nil), hasLoadedOnce=\(self.hasLoadedOnce)")
+            return
         }
 
+        // Update sync tracking BEFORE launching reconcileJobs for deterministic guard under concurrent triggers
         lastSyncSessionId = sessionId
         lastSyncTime = Date()
 
         self.activeSessionId = sessionId
         self.activeProjectDirectory = projectDirectory
 
-        // Update workflow job count for new session (from cache, may be stale)
         recomputeSessionWorkflowCount(for: sessionId)
         recomputeSessionImplementationPlanCount(for: sessionId)
 
-        // For mobile sessions, use nil sessionId to fetch ALL jobs (not filtered by session)
-        // This matches the view's loadJobs() behavior to prevent token conflicts
-        let effectiveSessionId: String? = sessionId.hasPrefix("mobile-session-") ? nil : sessionId
-
-        // Fetch jobs
-        listJobs(request: JobListRequest(
-            projectDirectory: projectDirectory,
-            sessionId: effectiveSessionId,
-            pageSize: 100,
-            sortBy: .createdAt,
-            sortOrder: .desc
-        ))
-        .sink(
-            receiveCompletion: { [weak self] completion in
-                if case .failure(let error) = completion {
-                    self?.logger.error("Initial session sync failed: \(error.localizedDescription)")
-                }
-            },
-            receiveValue: { _ in
-                // Job counts are updated via updateWorkflowCountsFromJobs/updateImplementationPlanCountsFromJobs
-                // which are called internally by listJobsViaRPC
-            }
-        )
-        .store(in: &cancellables)
+        Task { await self.reconcileJobs(reason: .initialLoad) }
     }
 
     /// Stop session-scoped sync (keeps processing relay events)
@@ -510,6 +637,15 @@ public final class JobsDataService: ObservableObject {
     /// Reconcile jobs with single-flight coalescing.
     /// Concurrent calls will wait for the existing reconciliation to complete.
     /// This is the primary entry point for ensuring job data is up-to-date.
+    ///
+    /// State guarantees (matching desktop behavior):
+    /// - `hasLoadedOnce` is set to true after completion, regardless of success or failure
+    /// - `error` is set on failure so UI can distinguish error state from empty data
+    /// - `error` is cleared on success
+    ///
+    /// Refresh semantics:
+    /// - If `hasLoadedOnce == false`: uses `isLoading` for full-screen loading state (initial load)
+    /// - If `hasLoadedOnce == true`: uses `isRefreshing` for background refresh (no full-screen loading)
     public func reconcileJobs(reason: JobsReconcileReason) async {
         // Coalesce concurrent calls - wait for existing reconciliation
         if let existing = reconcileTask {
@@ -517,14 +653,39 @@ public final class JobsDataService: ObservableObject {
             return
         }
 
+        // Set loading state based on whether this is initial load or refresh
+        let isInitialLoad = !hasLoadedOnce
+        if isInitialLoad {
+            isLoading = true
+        } else {
+            isRefreshing = true
+        }
+
         let task = Task { [weak self] in
             guard let self = self else { return }
             do {
-                let jobs = try await self.fetchVisibleJobsSnapshot(reason: reason)
-                self.reduceJobs(jobs, source: .snapshot)
+                let summaries = try await self.fetchVisibleJobSummariesSnapshot(reason: reason)
+                self.reduceJobSummaries(summaries, source: .snapshot)
+                // Clear error on success
+                self.error = nil
+            } catch let err as DataServiceError {
+                self.logger.error("Reconciliation failed for reason \(String(describing: reason)): \(err.localizedDescription)")
+                // Set error state so UI can distinguish error from empty
+                self.error = err
             } catch {
-                // Log but don't mutate badge incorrectly
                 self.logger.error("Reconciliation failed for reason \(String(describing: reason)): \(error.localizedDescription)")
+                // Wrap non-DataServiceError in networkError
+                self.error = .networkError(error)
+            }
+            // Deterministically set hasLoadedOnce after completion (success or failure)
+            // This ensures UI stops showing loading state and can render appropriately
+            self.hasLoadedOnce = true
+
+            // Clear refresh state
+            if isInitialLoad {
+                self.isLoading = false
+            } else {
+                self.isRefreshing = false
             }
         }
         reconcileTask = task
@@ -805,5 +966,7 @@ public final class JobsDataService: ObservableObject {
         cacheValidationTimer?.invalidate()
         progressSubscription?.cancel()
         cancellables.removeAll()
+        debouncedPublishWorkItem?.cancel()
+        debouncedSummariesPublishWorkItem?.cancel()
     }
 }

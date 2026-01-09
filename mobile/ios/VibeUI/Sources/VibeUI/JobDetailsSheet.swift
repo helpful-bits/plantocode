@@ -333,7 +333,9 @@ struct JobStatusHeader: View {
             Spacer()
 
             if job.jobStatus.isActive, let progress = job.streamProgressPercentage {
-                CircularProgressView(progress: Double(progress) / 100.0)
+                // Clamp progress to 0..100
+                let clampedProgress = max(0, min(100, progress))
+                CircularProgressView(progress: Double(clampedProgress) / 100.0)
                     .frame(width: 50, height: 50)
             }
         }
@@ -348,6 +350,40 @@ struct JobStatusHeader: View {
 
 struct OverviewTab: View {
     let job: BackgroundJob
+    @State private var timeRefreshTrigger: Int = 0
+
+    // Timer publisher for updating live duration
+    private let refreshTimer = Timer.publish(every: 1.0, on: .main, in: .common).autoconnect()
+
+    private var costLabel: String {
+        if job.isFinalized == true {
+            return "Final Cost"
+        } else if job.jobStatus.isActive {
+            return "Estimated Cost"
+        } else {
+            return "Cost"
+        }
+    }
+
+    private var liveDuration: String? {
+        // Use timeRefreshTrigger to force re-evaluation
+        let _ = timeRefreshTrigger
+
+        if let endTime = job.endTime, let startTime = job.startTime {
+            // Job completed - use stored duration
+            let duration = endTime - startTime
+            return formatDurationMs(duration)
+        } else if let durationMs = job.durationMs {
+            // Duration already computed
+            return formatDurationMs(Int64(durationMs))
+        } else if job.jobStatus.isActive, let startTime = job.startTime {
+            // Active job - compute live duration
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let duration = now - startTime
+            return formatDurationMs(duration)
+        }
+        return nil
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -358,23 +394,18 @@ struct OverviewTab: View {
                         MetricRow(label: "Model", value: model)
                     }
 
+                    // Token Grid Layout
                     if job.tokensSent ?? 0 > 0 || job.tokensReceived ?? 0 > 0 {
-                        MetricRow(label: "Tokens Sent", value: formatTokenCount(job.tokensSent))
-                        MetricRow(label: "Tokens Received", value: formatTokenCount(job.tokensReceived))
-
-                        if let cacheRead = job.cacheReadTokens, cacheRead > 0 {
-                            MetricRow(label: "Cache Read", value: formatTokenCount(cacheRead))
-                        }
-                        if let cacheWrite = job.cacheWriteTokens, cacheWrite > 0 {
-                            MetricRow(label: "Cache Write", value: formatTokenCount(cacheWrite))
-                        }
+                        TokenGridView(job: job)
                     }
 
+                    // Cost with dynamic label
                     if let cost = job.actualCost, cost > 0 {
-                        MetricRow(label: "Cost", value: formatCurrency(cost))
+                        MetricRow(label: costLabel, value: formatCurrency(cost))
                     }
 
-                    if let duration = job.formattedDuration {
+                    // Live duration
+                    if let duration = liveDuration {
                         MetricRow(label: "Duration", value: duration)
                     }
                 }
@@ -385,6 +416,10 @@ struct OverviewTab: View {
                 VStack(spacing: 12) {
                     MetricRow(label: "Created", value: formatDate(job.createdAt))
 
+                    if let startTime = job.startTime {
+                        MetricRow(label: "Started", value: formatDate(startTime))
+                    }
+
                     if let endTime = job.endTime {
                         MetricRow(label: "Completed", value: formatDate(endTime))
                     }
@@ -392,8 +427,287 @@ struct OverviewTab: View {
             }
 
             // Error Section (if applicable)
-            if let errorMessage = job.errorMessage {
-                DetailSection(title: "Error Details") {
+            if job.errorDetails != nil || job.errorMessage != nil {
+                ErrorDetailsSection(job: job)
+            }
+        }
+        .padding(.horizontal)
+        .onReceive(refreshTimer) { _ in
+            if job.jobStatus.isActive {
+                timeRefreshTrigger += 1
+            }
+        }
+    }
+
+    private func formatDurationMs(_ duration: Int64) -> String {
+        if duration < 1000 {
+            return "\(duration)ms"
+        } else if duration < 60000 {
+            return String(format: "%.1fs", Double(duration) / 1000)
+        } else {
+            let mins = duration / 60000
+            let secs = (duration % 60000) / 1000
+            return "\(mins)m \(secs)s"
+        }
+    }
+
+    private func formatCurrency(_ amount: Double) -> String {
+        if amount < 0.01 {
+            return String(format: "$%.4f", amount)
+        } else if amount < 0.10 {
+            return String(format: "$%.4f", amount)
+        } else {
+            return String(format: "$%.2f", amount)
+        }
+    }
+
+    private func formatDate(_ timestamp: Int64) -> String {
+        let date = Date(timeIntervalSince1970: Double(timestamp) / 1000)
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .medium
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Token Grid View
+
+struct TokenGridView: View {
+    let job: BackgroundJob
+
+    private let columns = [
+        GridItem(.flexible()),
+        GridItem(.flexible())
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            TokenCell(label: "Sent", value: formatTokenCount(job.tokensSent))
+            TokenCell(label: "Received", value: formatTokenCount(job.tokensReceived))
+
+            if let cacheRead = job.cacheReadTokens, cacheRead > 0 {
+                TokenCell(label: "Cache Read", value: formatTokenCount64(cacheRead), isCache: true)
+            }
+            if let cacheWrite = job.cacheWriteTokens, cacheWrite > 0 {
+                TokenCell(label: "Cache Write", value: formatTokenCount64(cacheWrite), isCache: true)
+            }
+        }
+        .padding()
+        .background(Color.muted)
+        .cornerRadius(Theme.Radii.md)
+    }
+
+    private func formatTokenCount(_ count: Int32?) -> String {
+        guard let count = count, count > 0 else { return "0" }
+        if count >= 1000 {
+            return String(format: "%.1fK", Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+
+    private func formatTokenCount64(_ count: Int64) -> String {
+        if count >= 1000 {
+            return String(format: "%.1fK", Double(count) / 1000.0)
+        }
+        return "\(count)"
+    }
+}
+
+struct TokenCell: View {
+    let label: String
+    let value: String
+    var isCache: Bool = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.caption2)
+                .foregroundColor(isCache ? Color.info : Color.mutedForeground)
+            Text(value)
+                .font(.system(size: 14, weight: .medium, design: .monospaced))
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Error Details Section
+
+struct ErrorDetailsSection: View {
+    let job: BackgroundJob
+    @State private var isExpanded = false
+
+    private func getErrorCodeLabel(_ code: String) -> String {
+        let labels: [String: String] = [
+            "context_length_exceeded": "Context Length Exceeded",
+            "rate_limit_exceeded": "Rate Limit Exceeded",
+            "authentication_failed": "Authentication Failed",
+            "external_service_error": "External Service Error",
+            "bad_request": "Bad Request",
+            "internal_error": "Internal Error"
+        ]
+        return labels[code] ?? code.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    private func getProviderLabel(_ provider: String) -> String {
+        let labels: [String: String] = [
+            "openai": "OpenAI",
+            "anthropic": "Anthropic",
+            "google": "Google",
+            "openrouter": "OpenRouter",
+            "xai": "xAI"
+        ]
+        return labels[provider] ?? provider
+    }
+
+    var body: some View {
+        DetailSection(title: "Error Details") {
+            VStack(alignment: .leading, spacing: 12) {
+                if let errorDetails = job.errorDetails {
+                    // Structured error display
+                    VStack(alignment: .leading, spacing: 8) {
+                        // Error code and message
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundColor(Color.destructive)
+                                .font(.system(size: 16))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let code = errorDetails.code {
+                                    Text(getErrorCodeLabel(code))
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundColor(Color.destructive)
+                                }
+                                if let message = errorDetails.message {
+                                    Text(message)
+                                        .font(.caption)
+                                        .foregroundColor(Color.mutedForeground)
+                                }
+                            }
+                        }
+
+                        // Provider error details (expandable)
+                        if let providerError = errorDetails.providerError {
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    isExpanded.toggle()
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                                        .font(.system(size: 10))
+                                    Image(systemName: "server.rack")
+                                        .font(.system(size: 10))
+                                    if let provider = providerError.provider {
+                                        Text("\(getProviderLabel(provider)) Error Details")
+                                            .font(.caption2)
+                                    } else {
+                                        Text("Provider Error Details")
+                                            .font(.caption2)
+                                    }
+                                    if let statusCode = providerError.statusCode {
+                                        Text("(\(statusCode))")
+                                            .font(.caption2)
+                                    }
+                                }
+                                .foregroundColor(Color.mutedForeground)
+                            }
+                            .buttonStyle(.plain)
+
+                            if isExpanded {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    // Status and Type
+                                    HStack(spacing: 16) {
+                                        if let statusCode = providerError.statusCode {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Status")
+                                                    .font(.caption2)
+                                                    .foregroundColor(Color.mutedForeground)
+                                                Text("\(statusCode)")
+                                                    .font(.system(size: 12, design: .monospaced))
+                                            }
+                                        }
+                                        if let errorType = providerError.errorType {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Type")
+                                                    .font(.caption2)
+                                                    .foregroundColor(Color.mutedForeground)
+                                                Text(errorType)
+                                                    .font(.system(size: 12, design: .monospaced))
+                                            }
+                                        }
+                                    }
+
+                                    // Context (token limits)
+                                    if let context = providerError.context {
+                                        if let requestedTokens = context.requestedTokens,
+                                           let modelLimit = context.modelLimit {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Token Usage")
+                                                    .font(.caption2)
+                                                    .foregroundColor(Color.mutedForeground)
+                                                HStack(spacing: 4) {
+                                                    Text("\(requestedTokens.formatted())")
+                                                        .font(.system(size: 12, design: .monospaced))
+                                                        .foregroundColor(Color.destructive)
+                                                    Text("/")
+                                                        .foregroundColor(Color.mutedForeground)
+                                                    Text("\(modelLimit.formatted())")
+                                                        .font(.system(size: 12, design: .monospaced))
+                                                    let percentage = Int(Double(requestedTokens) / Double(modelLimit) * 100)
+                                                    Text("(\(percentage)% of limit)")
+                                                        .font(.caption2)
+                                                        .foregroundColor(Color.mutedForeground)
+                                                }
+                                            }
+                                        }
+                                        if let additionalInfo = context.additionalInfo, !additionalInfo.isEmpty {
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("Additional Info")
+                                                    .font(.caption2)
+                                                    .foregroundColor(Color.mutedForeground)
+                                                Text(additionalInfo)
+                                                    .font(.caption)
+                                            }
+                                        }
+                                    }
+
+                                    // Full details
+                                    if let details = providerError.details, !details.isEmpty {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Full Details")
+                                                .font(.caption2)
+                                                .foregroundColor(Color.mutedForeground)
+                                            ScrollView(.horizontal, showsIndicators: false) {
+                                                Text(details)
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .textSelection(.enabled)
+                                            }
+                                        }
+                                    }
+                                }
+                                .padding(12)
+                                .background(Color.background)
+                                .cornerRadius(Theme.Radii.sm)
+                            }
+                        }
+
+                        // Fallback attempted indicator
+                        if errorDetails.fallbackAttempted == true {
+                            HStack(spacing: 4) {
+                                Image(systemName: "exclamationmark.circle")
+                                    .font(.system(size: 10))
+                                Text("A fallback to another provider was attempted")
+                                    .font(.caption2)
+                            }
+                            .foregroundColor(Color.warning)
+                        }
+                    }
+                    .padding()
+                    .background(Color.destructive.opacity(0.1))
+                    .cornerRadius(Theme.Radii.base)
+                } else if let errorMessage = job.errorMessage {
+                    // Fallback to simple error message display
                     ScrollView {
                         Text(errorMessage)
                             .inlineCode()
@@ -407,38 +721,6 @@ struct OverviewTab: View {
                 }
             }
         }
-        .padding(.horizontal)
-    }
-
-    private func formatTokenCount(_ count: Int32?) -> String {
-        guard let count = count, count > 0 else { return "0" }
-        if count >= 1000 {
-            return String(format: "%.1fK", Double(count) / 1000.0)
-        }
-        return "\(count)"
-    }
-
-    private func formatCurrency(_ amount: Double) -> String {
-        if amount < 0.01 {
-            return String(format: "$%.4f", amount)
-        } else {
-            return String(format: "$%.3f", amount)
-        }
-    }
-
-    private func formatDate(_ timestamp: Int64) -> String {
-        let date = Date(timeIntervalSince1970: Double(timestamp) / 1000)
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .medium
-        return formatter.string(from: date)
-    }
-
-    private func formatTaskType(_ taskType: String) -> String {
-        taskType.replacingOccurrences(of: "_", with: " ")
-            .split(separator: " ")
-            .map { $0.capitalized }
-            .joined(separator: " ")
     }
 }
 
@@ -757,39 +1039,3 @@ struct CircularProgressView: View {
     }
 }
 
-// MARK: - Extensions
-
-extension JobStatus {
-    var displayName: String {
-        switch self {
-        case .idle:
-            return "Idle"
-        case .created:
-            return "Created"
-        case .queued:
-            return "Queued"
-        case .acknowledgedByWorker:
-            return "Acknowledged"
-        case .preparing:
-            return "Preparing"
-        case .preparingInput:
-            return "Preparing Input"
-        case .running:
-            return "Running"
-        case .processingStream:
-            return "Processing Stream"
-        case .generatingStream:
-            return "Generating Stream"
-        case .completed:
-            return "Completed"
-        case .completedByTag:
-            return "Completed (Tagged)"
-        case .failed:
-            return "Failed"
-        case .canceled:
-            return "Canceled"
-        case .unknown:
-            return "Unknown"
-        }
-    }
-}

@@ -55,6 +55,7 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
   const [showDictation, setShowDictation] = useState(false);
   const [dictationText, setDictationText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const openInFlightRef = useRef(false);
 
   // Voice transcription integration
   const {
@@ -79,56 +80,49 @@ export const PlanTerminalModal: React.FC<PlanTerminalModalProps> = ({
     getSessionRef.current = getSession;
   });
 
-  // Auto-start fresh session when reopening finished
-  // Only triggers when modal opens or sessionId changes, not on status updates
-  useEffect(() => {
-    if (!open || !planJobId) return;
-
-    const currentSession = getSessionRef.current(planJobId);
-    if (!currentSession || currentSession.status !== 'running') {
-      startSessionRef.current(planJobId, {
-        workingDirectory: projectDirectory,
-        jobId: planJobId,
-        origin: "plan"
-      });
-    }
-  }, [open, planJobId, projectDirectory]);
+  // Note: Session auto-start is now handled by handleModalOpen with single-flight guard
+  // The previous useEffect here was redundant and could cause race conditions
 
   const handleModalOpen = useCallback(async () => {
-    if (!open) return;
+    if (!open || openInFlightRef.current) return;
+    openInFlightRef.current = true;
 
-    const session = getSession(planJobId);
-    if (!session) {
-      await startSession(planJobId, {
-        workingDirectory: projectDirectory,
-        jobId: planJobId,
-        origin: "plan"
-      });
-    }
-
-    // Load plan content
-    if (planJobId) {
-      setIsLoadingContent(true);
-      try {
-        const result = await getBackgroundJobAction(planJobId);
-        if (result.isSuccess && result.data?.response) {
-          const normalized = normalizeJobResponse(result.data.response);
-          setPlanContent(normalized?.content ?? "");
-        } else {
-          setPlanContent("");
-        }
-      } catch {
-        setPlanContent("");
-      } finally {
-        setIsLoadingContent(false);
+    try {
+      const session = getSession(planJobId);
+      if (!session) {
+        await startSession(planJobId, {
+          workingDirectory: projectDirectory,
+          jobId: planJobId,
+          origin: "plan"
+        });
       }
+
+      // Load plan content
+      if (planJobId) {
+        setIsLoadingContent(true);
+        try {
+          const result = await getBackgroundJobAction(planJobId);
+          if (result.isSuccess && result.data?.response) {
+            const normalized = normalizeJobResponse(result.data.response);
+            setPlanContent(normalized?.content ?? "");
+          } else {
+            setPlanContent("");
+          }
+        } catch {
+          setPlanContent("");
+        } finally {
+          setIsLoadingContent(false);
+        }
+      }
+    } finally {
+      openInFlightRef.current = false;
     }
   }, [open, planJobId, projectDirectory, startSession, getSession]);
 
-  // Handle modal state changes directly
-  React.useMemo(() => {
+  // Handle modal state changes - use useEffect for side effects, not useMemo
+  useEffect(() => {
     if (open) {
-      handleModalOpen();
+      void handleModalOpen();
     } else {
       setPlanContent(null);
     }

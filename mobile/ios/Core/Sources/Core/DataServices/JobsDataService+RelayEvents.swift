@@ -42,9 +42,10 @@ extension JobsDataService {
                 handleJobDeleted(jobId: jobId)
             }
         case "jobs:list-invalidated":
-            Task {
-                await self.reconcileJobs(reason: .listInvalidated)
-            }
+            let sessionId = payload["sessionId"] as? String
+            let projectDirectory = payload["projectDirectory"] as? String
+            let projectHash = payload["projectHash"] as? String
+            handleJobsListInvalidated(sessionId: sessionId, projectDirectory: projectDirectory, projectHash: projectHash)
         default:
             break
         }
@@ -175,23 +176,19 @@ extension JobsDataService {
         let workItem = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             Task { @MainActor in
-                let request = JobListRequest(
-                    projectDirectory: proj,
-                    sessionId: sid,
-                    pageSize: 100
-                )
-
-                // Route through listJobsViaRPC which uses the canonical reducer
-                // bypassCache == true -> shouldReplace = true -> .snapshot source
-                // bypassCache == false -> shouldReplace = false -> .event source
-                self.listJobsViaRPC(request: request, shouldReplace: bypassCache)
-                    .sink(
-                        receiveCompletion: { _ in },
-                        receiveValue: { _ in
-                            // State already updated via reducer in listJobsViaRPC
-                        }
-                    )
-                    .store(in: &self.cancellables)
+                // Use summary-based fetch (includeContent: false) for coalesced list refresh.
+                // This avoids heavy payloads and keeps single meaning for list fetches.
+                // The reducer updates jobsById and derived state from summaries.
+                let reason: JobsReconcileReason = bypassCache ? .listInvalidated : .periodicSync
+                do {
+                    let summaries = try await self.fetchVisibleJobSummariesSnapshot(reason: reason)
+                    // Route through summary reducer with appropriate source
+                    // bypassCache == true -> .snapshot source (prunes missing jobs)
+                    // bypassCache == false -> .event source (merge only)
+                    self.reduceJobSummaries(summaries, source: bypassCache ? .snapshot : .event)
+                } catch {
+                    self.logger.error("Coalesced list refresh failed: \(error.localizedDescription)")
+                }
 
                 self.lastCoalescedResyncAt = Date()
             }
@@ -326,16 +323,57 @@ extension JobsDataService {
                     if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
                        let updatedString = String(data: updatedData, encoding: .utf8) {
                         job.metadata = updatedString
-                        job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                        // Only set updatedAt if server provides authoritative value
+                        if let serverUpdatedAt = intValue(from: payload["updatedAt"]) {
+                            job.updatedAt = Int64(serverUpdatedAt)
+                        }
                         // Route through reducer
                         reduceJobs([job], source: .event)
                     }
                 } else if let patchData = try? JSONSerialization.data(withJSONObject: metadataPatch),
                           let patchString = String(data: patchData, encoding: .utf8) {
                     job.metadata = patchString
-                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    // Only set updatedAt if server provides authoritative value
+                    if let serverUpdatedAt = intValue(from: payload["updatedAt"]) {
+                        job.updatedAt = Int64(serverUpdatedAt)
+                    }
                     // Route through reducer
                     reduceJobs([job], source: .event)
+                }
+
+                // Update jobSummariesById if markdownConversionStatus changed
+                // This ensures Plans list readiness is updated without full list refresh
+                if let newMarkdownStatus = metadataPatch["markdownConversionStatus"] as? String,
+                   let existingSummary = jobSummariesById[jobId] {
+                    // Only update updatedAt if server provides authoritative value, otherwise keep existing
+                    let summaryUpdatedAt: Int64?
+                    if let serverUpdatedAt = intValue(from: payload["updatedAt"]) {
+                        summaryUpdatedAt = Int64(serverUpdatedAt)
+                    } else {
+                        summaryUpdatedAt = existingSummary.updatedAt
+                    }
+                    let updatedSummary = BackgroundJobListItem(
+                        id: existingSummary.id,
+                        sessionId: existingSummary.sessionId,
+                        taskType: existingSummary.taskType,
+                        status: existingSummary.status,
+                        createdAt: existingSummary.createdAt,
+                        updatedAt: summaryUpdatedAt,
+                        startTime: existingSummary.startTime,
+                        endTime: existingSummary.endTime,
+                        isFinalized: existingSummary.isFinalized,
+                        tokensSent: existingSummary.tokensSent,
+                        tokensReceived: existingSummary.tokensReceived,
+                        cacheWriteTokens: existingSummary.cacheWriteTokens,
+                        cacheReadTokens: existingSummary.cacheReadTokens,
+                        modelUsed: existingSummary.modelUsed,
+                        actualCost: existingSummary.actualCost,
+                        durationMs: existingSummary.durationMs,
+                        errorMessage: existingSummary.errorMessage,
+                        planTitle: existingSummary.planTitle,
+                        markdownConversionStatus: newMarkdownStatus
+                    )
+                    reduceJobSummaries([updatedSummary], source: .event)
                 }
             }
 
@@ -377,10 +415,10 @@ extension JobsDataService {
                 job.tokensReceived = Int32(tokensReceived)
             }
             if let cacheWrite = intValue(from: payload["cacheWriteTokens"]) {
-                job.cacheWriteTokens = Int32(cacheWrite)
+                job.cacheWriteTokens = Int64(cacheWrite)
             }
             if let cacheRead = intValue(from: payload["cacheReadTokens"]) {
-                job.cacheReadTokens = Int32(cacheRead)
+                job.cacheReadTokens = Int64(cacheRead)
             }
             if let finalized = boolValue(from: payload["isFinalized"]) {
                 job.isFinalized = finalized
@@ -471,9 +509,32 @@ extension JobsDataService {
                 if let updatedData = try? JSONSerialization.data(withJSONObject: metadataDict),
                    let updatedString = String(data: updatedData, encoding: .utf8) {
                     job.metadata = updatedString
-                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    // Only set updatedAt if server provides authoritative value
+                    // (avoid bumping timestamp for high-frequency micro-events to prevent list reordering)
+                    if let serverUpdatedAt = intValue(from: payload["updatedAt"]) {
+                        job.updatedAt = Int64(serverUpdatedAt)
+                    }
                     // Route through reducer with high-frequency debounce
                     reduceJobs([job], source: .event, isHighFrequency: true)
+                }
+            }
+
+        case "job:error-details":
+            guard let jobId = jobId else { return }
+            if ensureJobPresent(jobId: jobId, onReady: { [weak self] in
+                self?.applyRelayEvent(event)
+            }) == false {
+                return
+            }
+            guard var job = jobsById[jobId] else { return }
+            guard shouldIgnore(job: job) == false else { return }
+
+            // Decode errorDetails from payload
+            if let errorDetailsData = payload["errorDetails"] {
+                if let errorDetails = decodeErrorDetails(from: errorDetailsData) {
+                    job.errorDetails = errorDetails
+                    job.updatedAt = Int64(Date().timeIntervalSince1970 * 1000)
+                    reduceJobs([job], source: .event)
                 }
             }
 
@@ -485,6 +546,58 @@ extension JobsDataService {
         default:
             break
         }
+    }
+
+    /// Decode ErrorDetails from a payload value (dictionary or AnyCodable-wrapped dictionary)
+    func decodeErrorDetails(from value: Any) -> ErrorDetails? {
+        var dict: [String: Any]?
+
+        if let d = value as? [String: Any] {
+            dict = d
+        } else if let anyCodable = value as? AnyCodable, let d = anyCodable.value as? [String: Any] {
+            dict = d
+        }
+
+        guard let errorDict = dict else { return nil }
+
+        guard let code = errorDict["code"] as? String,
+              let message = errorDict["message"] as? String else {
+            return nil
+        }
+
+        let fallbackAttempted = boolValue(from: errorDict["fallbackAttempted"]) ?? false
+
+        var providerError: ProviderError?
+        if let providerDict = errorDict["providerError"] as? [String: Any] {
+            let provider = providerDict["provider"] as? String
+            let statusCode = intValue(from: providerDict["statusCode"])
+            let errorType = providerDict["errorType"] as? String
+            let details = providerDict["details"] as? String
+
+            var context: ProviderErrorContext?
+            if let contextDict = providerDict["context"] as? [String: Any] {
+                context = ProviderErrorContext(
+                    requestedTokens: intValue(from: contextDict["requestedTokens"]),
+                    modelLimit: intValue(from: contextDict["modelLimit"]),
+                    additionalInfo: contextDict["additionalInfo"] as? String
+                )
+            }
+
+            providerError = ProviderError(
+                provider: provider,
+                statusCode: statusCode,
+                errorType: errorType,
+                details: details,
+                context: context
+            )
+        }
+
+        return ErrorDetails(
+            code: code,
+            message: message,
+            providerError: providerError,
+            fallbackAttempted: fallbackAttempted
+        )
     }
 
     // MARK: - Canonical Event Handlers (Reducer-Based)
@@ -502,7 +615,13 @@ extension JobsDataService {
         let wasActive = oldJob?.jobStatus.isActive ?? true
         let isNowActive = job.jobStatus.isActive
 
-        reduceJobs([job], source: .event)
+        // Preserve errorDetails from existing job if incoming doesn't have it
+        var jobToReduce = job
+        if jobToReduce.errorDetails == nil, let existingErrorDetails = oldJob?.errorDetails {
+            jobToReduce.errorDetails = existingErrorDetails
+        }
+
+        reduceJobs([jobToReduce], source: .event)
 
         // Post workflow completion notification if transitioning from active to inactive
         if wasActive && !isNowActive && isWorkflowUmbrella(job) {
@@ -539,7 +658,13 @@ extension JobsDataService {
         let wasActive = oldJob?.jobStatus.isActive ?? true
         let isNowActive = job.jobStatus.isActive
 
-        reduceJobs([job], source: .event)
+        // Preserve errorDetails from existing job if incoming doesn't have it
+        var jobToReduce = job
+        if jobToReduce.errorDetails == nil, let existingErrorDetails = oldJob?.errorDetails {
+            jobToReduce.errorDetails = existingErrorDetails
+        }
+
+        reduceJobs([jobToReduce], source: .event)
 
         // Post workflow completion notification if transitioning from active to inactive
         if wasActive && !isNowActive && isWorkflowUmbrella(job) {

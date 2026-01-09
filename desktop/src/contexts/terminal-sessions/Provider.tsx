@@ -13,6 +13,8 @@ import {
 } from "@/actions/terminal/terminal.actions";
 import { safeListen } from "@/utils/tauri-event-utils";
 import type { TerminalSessionsContextShape, TerminalSession, TerminalStatus } from "./types";
+import { ByteRing, DESKTOP_TERMINAL_RING_MAX_BYTES, DESKTOP_TERMINAL_SNAPSHOT_MAX_BYTES } from "./outputRing";
+import type { AttentionState } from "./types";
 
 const INACTIVITY_KEY = 'terminal.inactivitySeconds';
 const DEFAULT_INACTIVITY_SEC = 20;
@@ -30,6 +32,10 @@ class TerminalStore {
   public inactivityNotifiedRef: Set<string> = new Set();
   public startingSessionIds: Set<string> = new Set();
   public attachingSessionIds: Set<string> = new Set();
+  private ringsRef: Map<string, ByteRing> = new Map();
+  private attentionBySessionId: Map<string, AttentionState> = new Map();
+  private ensureReadyPromises: Map<string, Promise<void>> = new Map();
+  public lastActivityUpdateTime: Map<string, number> = new Map();
 
   subscribe = (onStoreChange: () => void) => {
     this.subscribers.add(onStoreChange);
@@ -83,6 +89,18 @@ class TerminalStore {
                 status: exitCode === 0 ? "completed" : "failed",
                 exitCode
               });
+
+              // Set or clear attention based on exit code
+              if (exitCode !== 0) {
+                this.attentionBySessionId.set(sessionId, {
+                  level: 'high',
+                  message: 'Terminal exited with error',
+                  lastDetectedAt: Date.now()
+                });
+              } else {
+                this.attentionBySessionId.delete(sessionId);
+              }
+
               this.notifySubscribers();
 
               // Dispatch agent-job-completed event
@@ -177,6 +195,65 @@ class TerminalStore {
   getChannelsRef = () => this.channelsRef;
   getBytesCbRef = () => this.bytesCbRef;
 
+  // Ring buffer methods
+  getRing = (id: string): ByteRing => {
+    let ring = this.ringsRef.get(id);
+    if (!ring) {
+      ring = new ByteRing(DESKTOP_TERMINAL_RING_MAX_BYTES);
+      this.ringsRef.set(id, ring);
+    }
+    return ring;
+  };
+
+  appendToRing = (id: string, chunk: Uint8Array) => {
+    this.getRing(id).append(chunk);
+  };
+
+  getHydratedSnapshotBytes = (id: string, maxBytes?: number): Uint8Array => {
+    const ring = this.ringsRef.get(id);
+    if (!ring) return new Uint8Array(0);
+    return ring.snapshot(maxBytes ?? DESKTOP_TERMINAL_SNAPSHOT_MAX_BYTES);
+  };
+
+  clearRing = (id: string) => {
+    this.ringsRef.delete(id);
+  };
+
+  // Attention methods
+  setAttention = (id: string, attention: AttentionState | undefined) => {
+    if (attention) {
+      this.attentionBySessionId.set(id, attention);
+    } else {
+      this.attentionBySessionId.delete(id);
+    }
+    this.notifySubscribers();
+  };
+
+  getAttentionForSession = (id: string): AttentionState | undefined => {
+    return this.attentionBySessionId.get(id);
+  };
+
+  getAttentionCountFromStore = (): number => {
+    return this.attentionBySessionId.size;
+  };
+
+  clearAttention = (id: string) => {
+    this.attentionBySessionId.delete(id);
+  };
+
+  // ensureReady tracking
+  getEnsureReadyPromise = (id: string): Promise<void> | undefined => {
+    return this.ensureReadyPromises.get(id);
+  };
+
+  setEnsureReadyPromise = (id: string, promise: Promise<void> | undefined) => {
+    if (promise) {
+      this.ensureReadyPromises.set(id, promise);
+    } else {
+      this.ensureReadyPromises.delete(id);
+    }
+  };
+
   cleanup = () => {
     if (this.unlistenExit) {
       this.unlistenExit();
@@ -211,7 +288,6 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
       try {
         const statusData = await getTerminalStatus(id);
         if (statusData?.status !== 'running') {
-          console.log(`Refusing to attach to non-running session ${id} (status: ${statusData?.status})`);
           return;
         }
       } catch (e) {
@@ -221,16 +297,28 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
 
       const ch = new Channel<Uint8Array>();
       ch.onmessage = (chunk) => {
-        // Update lastActivityAt on every output chunk
-        store.updateSession(id, { lastActivityAt: Date.now() });
+        const bytes = new Uint8Array(chunk);
 
-        // Clear inactivity notification if it was set
-        if (store.inactivityNotifiedRef.has(id)) {
-          store.inactivityNotifiedRef.delete(id);
+        // Append to ring buffer for hydration
+        store.appendToRing(id, bytes);
+
+        // Throttle lastActivityAt updates (max once per 250ms)
+        const now = Date.now();
+        const lastUpdate = store.lastActivityUpdateTime.get(id) || 0;
+        if (now - lastUpdate >= 250) {
+          store.lastActivityUpdateTime.set(id, now);
+          store.updateSession(id, { lastActivityAt: now });
         }
 
+        // Clear inactivity notification on output
+        if (store.inactivityNotifiedRef.has(id)) {
+          store.inactivityNotifiedRef.delete(id);
+          store.clearAttention(id);
+        }
+
+        // Fan out to registered callback
         const cb = store.getBytesCbRef().get(id);
-        if (cb) cb(new Uint8Array(chunk));
+        if (cb) cb(bytes);
       };
 
       try {
@@ -278,12 +366,28 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
           // Session is running on backend, try to reconnect
           const ch = new Channel<Uint8Array>();
           ch.onmessage = (chunk) => {
-            store.updateSession(id, { lastActivityAt: Date.now() });
+            const bytes = new Uint8Array(chunk);
+
+            // Append to ring buffer for hydration
+            store.appendToRing(id, bytes);
+
+            // Throttle lastActivityAt updates (max once per 250ms)
+            const now = Date.now();
+            const lastUpdate = store.lastActivityUpdateTime.get(id) || 0;
+            if (now - lastUpdate >= 250) {
+              store.lastActivityUpdateTime.set(id, now);
+              store.updateSession(id, { lastActivityAt: now });
+            }
+
+            // Clear inactivity notification on output
             if (store.inactivityNotifiedRef.has(id)) {
               store.inactivityNotifiedRef.delete(id);
+              store.clearAttention(id);
             }
+
+            // Fan out to registered callback
             const cb = store.getBytesCbRef().get(id);
-            if (cb) cb(new Uint8Array(chunk));
+            if (cb) cb(bytes);
           };
 
           const reconnected = await reconnectTerminalSession(id, ch);
@@ -324,16 +428,28 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
 
       const ch = new Channel<Uint8Array>();
       ch.onmessage = (chunk) => {
-        // Update lastActivityAt on every output chunk
-        store.updateSession(id, { lastActivityAt: Date.now() });
+        const bytes = new Uint8Array(chunk);
 
-        // Clear inactivity notification if it was set
-        if (store.inactivityNotifiedRef.has(id)) {
-          store.inactivityNotifiedRef.delete(id);
+        // Append to ring buffer for hydration
+        store.appendToRing(id, bytes);
+
+        // Throttle lastActivityAt updates (max once per 250ms)
+        const now = Date.now();
+        const lastUpdate = store.lastActivityUpdateTime.get(id) || 0;
+        if (now - lastUpdate >= 250) {
+          store.lastActivityUpdateTime.set(id, now);
+          store.updateSession(id, { lastActivityAt: now });
         }
 
+        // Clear inactivity notification on output
+        if (store.inactivityNotifiedRef.has(id)) {
+          store.inactivityNotifiedRef.delete(id);
+          store.clearAttention(id);
+        }
+
+        // Fan out to registered callback
         const cb = store.getBytesCbRef().get(id);
-        if (cb) cb(new Uint8Array(chunk));
+        if (cb) cb(bytes);
       };
 
       await startTerminalSession(id, opts, ch);
@@ -377,6 +493,40 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
     }
   }, [storeState.sessions, storeState.channelsRef]);
 
+  const ensureSessionReady = useCallback(async (id: string, opts?: any) => {
+    // Check for existing in-flight promise
+    const existingPromise = store.getEnsureReadyPromise(id);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const promise = (async () => {
+      try {
+        // Check backend status
+        const statusData = await getTerminalStatus(id);
+        const status = statusData?.status;
+
+        if (status === 'running') {
+          // Session running - just attach if we don't have a channel
+          if (!storeState.channelsRef.has(id)) {
+            await attachSession(id);
+          }
+        } else if (status !== 'starting' && status !== 'initializing') {
+          // Session not running and not starting - start fresh
+          await startSession(id, opts);
+        }
+        // If starting/initializing, do nothing - it's already in progress
+      } catch (e) {
+        console.error(`ensureSessionReady failed for ${id}:`, e);
+      } finally {
+        store.setEnsureReadyPromise(id, undefined);
+      }
+    })();
+
+    store.setEnsureReadyPromise(id, promise);
+    return promise;
+  }, [attachSession, startSession, storeState.channelsRef]);
+
   const detachSession = useCallback((id: string) => {
     storeState.channelsRef.delete(id);
   }, [storeState.channelsRef]);
@@ -394,6 +544,8 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
   }, []);
 
   const cleanupTerminal = useCallback((id: string) => {
+    store.clearRing(id);
+    store.clearAttention(id);
     import("@/ui/TerminalView").then(({ cleanupTerminalInstance }) => {
       cleanupTerminalInstance(id);
     }).catch(console.error);
@@ -404,8 +556,14 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
     return [...storeState.sessions.values()].filter(s => s.status === "running").length;
   }, [storeState.sessions]);
 
-  const getAttention = useCallback(() => undefined, []);
-  const getAttentionCount = useCallback(() => 0, []);
+  const getAttention = useCallback((id: string) => {
+    return store.getAttentionForSession(id);
+  }, []);
+
+  const getAttentionCount = useCallback(() => {
+    return store.getAttentionCountFromStore();
+  }, []);
+
   const deleteLog = useCallback(async () => {}, []);
 
   // Inactivity scanner
@@ -417,6 +575,12 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
         if (session.status === 'running') {
           const lastTs = session.lastActivityAt ?? Date.now();
           if (Date.now() - lastTs >= threshold * 1000 && !store.inactivityNotifiedRef.has(id)) {
+            // Set attention state
+            store.setAttention(id, {
+              level: 'medium',
+              message: 'Terminal inactive',
+              lastDetectedAt: Date.now()
+            });
             window.dispatchEvent(new CustomEvent('agent-inactivity', { detail: { sessionId: id } }));
             store.inactivityNotifiedRef.add(id);
           }
@@ -445,8 +609,11 @@ export const TerminalSessionsProvider: React.FC<React.PropsWithChildren> = ({ ch
     getActiveCount,
     getAttention,
     getAttentionCount,
-    deleteLog
-  }), [storeState, startSession, attachSession, detachSession, write, resize, kill, cleanupTerminal, getActiveCount, getAttention, getAttentionCount, deleteLog]);
+    deleteLog,
+    ensureSessionReady,
+    getHydratedSnapshotBytes: store.getHydratedSnapshotBytes,
+    getLastActivityAt: (id: string) => store.getSession(id)?.lastActivityAt,
+  }), [storeState, startSession, attachSession, detachSession, write, resize, kill, cleanupTerminal, getActiveCount, getAttention, getAttentionCount, deleteLog, ensureSessionReady]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 };

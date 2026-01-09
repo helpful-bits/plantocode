@@ -110,7 +110,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 60.0)
     }
 
 // MARK: - Terminal Control
@@ -571,7 +571,9 @@ public struct CommandRouter {
     }
 
     public static func sessionList(
-        projectDirectory: String
+        projectDirectory: String,
+        limit: Int = 100,
+        offset: Int = 0
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
@@ -580,11 +582,15 @@ public struct CommandRouter {
         }
         let (deviceId, relayClient) = usable
 
+        let params: [String: Any] = [
+            "projectDirectory": projectDirectory,
+            "limit": limit,
+            "offset": offset
+        ]
+
         let request = RpcRequest(
             method: "session.list",
-            params: [
-                "projectDirectory": projectDirectory
-            ]
+            params: params
         )
 
         return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
@@ -941,9 +947,10 @@ public struct CommandRouter {
         projectDirectory: String? = nil,
         statusFilter: [String]? = nil,
         taskTypeFilter: [String]? = nil,
-        page: Int? = nil,
-        pageSize: Int? = nil,
-        bypassCache: Bool = false
+        page: Int = 0,
+        pageSize: Int = 50,
+        bypassCache: Bool = false,
+        includeContent: Bool = false
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
@@ -958,7 +965,11 @@ public struct CommandRouter {
             }
         }
 
-        var params: [String: Any] = [:]
+        var params: [String: Any] = [
+            "page": page,
+            "pageSize": pageSize,
+            "includeContent": includeContent
+        ]
 
         if let sessionId = sessionId {
             params["sessionId"] = sessionId
@@ -972,12 +983,6 @@ public struct CommandRouter {
         if let taskTypeFilter = taskTypeFilter {
             params["taskTypeFilter"] = taskTypeFilter
         }
-        if let page = page {
-            params["page"] = page
-        }
-        if let pageSize = pageSize {
-            params["pageSize"] = pageSize
-        }
         params["bypassCache"] = bypassCache
 
         let request = RpcRequest(
@@ -985,7 +990,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 60.0)
     }
 
     public static func jobCancel(
@@ -1230,18 +1235,24 @@ public struct CommandRouter {
     // MARK: - HistoryState Methods
 
     /// Get history state from desktop
-    public static func sessionGetHistoryState(sessionId: String, kind: String) async throws -> HistoryState {
+    public static func sessionGetHistoryState(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> HistoryState {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
         let (deviceId, relayClient) = usable
 
+        var params: [String: Any] = [
+            "sessionId": sessionId,
+            "kind": kind,
+            "summaryOnly": summaryOnly
+        ]
+        if let maxEntries = maxEntries {
+            params["maxEntries"] = maxEntries
+        }
+
         let request = RpcRequest(
             method: "session.getHistoryState",
-            params: [
-                "sessionId": sessionId,
-                "kind": kind
-            ]
+            params: params
         )
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
@@ -1345,18 +1356,24 @@ public struct CommandRouter {
         throw ServerRelayError.invalidState("No merge result received")
     }
 
-    public static func sessionGetHistoryStateRaw(sessionId: String, kind: String) async throws -> [String: Any] {
+    public static func sessionGetHistoryStateRaw(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> [String: Any] {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
         let (deviceId, relayClient) = usable
 
+        var params: [String: Any] = [
+            "sessionId": sessionId,
+            "kind": kind,
+            "summaryOnly": summaryOnly
+        ]
+        if let maxEntries = maxEntries {
+            params["maxEntries"] = maxEntries
+        }
+
         let request = RpcRequest(
             method: "session.getHistoryState",
-            params: [
-                "sessionId": sessionId,
-                "kind": kind
-            ]
+            params: params
         )
 
         for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {

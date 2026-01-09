@@ -327,6 +327,32 @@ pub struct BackgroundJob {
     pub error_details: Option<ErrorDetails>,
 }
 
+/// Lightweight job summary DTO for listing jobs without large content fields.
+/// Excludes: prompt, response, system_prompt_template, error_details, metadata
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundJobSummary {
+    pub id: String,
+    pub session_id: String,
+    pub task_type: String,
+    pub status: String,
+    pub error_message: Option<String>,
+    pub tokens_sent: Option<i32>,
+    pub tokens_received: Option<i32>,
+    pub cache_write_tokens: Option<i64>,
+    pub cache_read_tokens: Option<i64>,
+    pub model_used: Option<String>,
+    pub actual_cost: Option<f64>,
+    pub duration_ms: Option<i64>,
+    pub created_at: i64,
+    pub updated_at: Option<i64>,
+    pub start_time: Option<i64>,
+    pub end_time: Option<i64>,
+    pub is_finalized: bool,
+    pub plan_title: Option<String>,
+    pub markdown_conversion_status: Option<String>,
+}
+
 // Task settings model (DB struct - no camelCase conversion)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

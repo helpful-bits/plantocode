@@ -25,8 +25,17 @@ extension JobsDataService {
         Self.fileFinderStepTypes.contains(job.taskType)
     }
 
+    /// Determines if a job should be ignored for relay event processing.
+    /// IMPORTANT: Returns false for all jobs to match desktop behavior.
+    /// Desktop shows internal step types (extended_path_finder, file_relevance_assessment,
+    /// regex_file_filter, etc.) in the sidebar. Only workflow umbrella types and
+    /// implementation plans are filtered at the visibility layer, not at event processing.
     func shouldIgnore(job: BackgroundJob) -> Bool {
-        isFileFinderStep(job)
+        // Return false for ALL jobs - let visibility filtering happen at the UI layer
+        // via JobTypeFilters.isVisibleInJobsList() which correctly hides only:
+        // - workflowUmbrellaTypes (file_finder_workflow, web_search_workflow)
+        // - implementationPlanTypes (implementation_plan, implementation_plan_merge)
+        return false
     }
 
     func isWorkflowJob(_ job: BackgroundJob) -> Bool {
@@ -193,25 +202,82 @@ extension JobsDataService {
 
         logger.debug("Validating workflow cache for session \(self.activeSessionId ?? "nil"), project \(self.activeProjectDirectory ?? "nil")")
 
-        // Fetch latest jobs and recompute from authoritative source
-        // For mobile sessions, projectDirectory alone is sufficient
-        listJobs(request: JobListRequest(
-            projectDirectory: self.activeProjectDirectory,
-            sessionId: self.activeSessionId,
-            pageSize: 100,
-            sortBy: .createdAt,
-            sortOrder: .desc
-        ))
-        .sink(
-            receiveCompletion: { [weak self] completion in
-                if case .failure(let error) = completion {
-                    self?.logger.error("Cache validation failed: \(error.localizedDescription)")
-                }
-            },
-            receiveValue: { [weak self] response in
-                self?.logger.debug("Cache validation complete - recomputed workflow counts")
+        // Use summary-based fetch (includeContent: false) for lightweight cache validation.
+        // Summaries contain taskType/status/updatedAt which is sufficient for computing workflow counts.
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            do {
+                let summaries = try await self.fetchVisibleJobSummariesSnapshot(reason: .userRefresh)
+                self.updateWorkflowCountsFromSummaries(summaries)
+                self.updateImplementationPlanCountsFromSummaries(summaries)
+                self.logger.debug("Cache validation complete - recomputed workflow counts from \(summaries.count) summaries")
+            } catch {
+                self.logger.error("Cache validation failed: \(error.localizedDescription)")
             }
-        )
-        .store(in: &cancellables)
+        }
+    }
+
+    // MARK: - Workflow Counts from Summaries
+
+    func updateWorkflowCountsFromSummaries(_ summaries: [BackgroundJobListItem]) {
+        // Only update from summaries that ARE workflow umbrella jobs
+        let workflowSummaries = summaries.filter { Self.workflowUmbrellaTypes.contains($0.taskType) }
+
+        // If no workflow summaries in the response:
+        // - If cache is also empty, we can safely keep counts at 0 (no-op)
+        // - If cache has jobs, the response might be incomplete (eventual consistency)
+        //   so we should NOT reset counts - relay events are more authoritative
+        if workflowSummaries.isEmpty {
+            if workflowJobsCache.isEmpty {
+                // Both empty - safe to reset (though likely already 0)
+                activeWorkflowJobsBySession.removeAll()
+                recomputeSessionWorkflowCount(for: activeSessionId)
+            }
+            // Otherwise keep existing cache - response might be stale/incomplete
+            return
+        }
+
+        // Compute counts directly from summaries
+        var countsBySession: [String: Int] = [:]
+        for summary in workflowSummaries {
+            guard let sessionId = summary.sessionId else { continue }
+            if summary.jobStatus.isActive {
+                countsBySession[sessionId, default: 0] += 1
+            }
+        }
+
+        activeWorkflowJobsBySession = countsBySession
+        recomputeSessionWorkflowCount(for: activeSessionId)
+    }
+
+    func updateImplementationPlanCountsFromSummaries(_ summaries: [BackgroundJobListItem]) {
+        // Only update from summaries that ARE implementation plans
+        let planSummaries = summaries.filter { Self.implementationPlanTypes.contains($0.taskType) }
+
+        // If no plan summaries in the response:
+        // - If cache is also empty, we can safely keep counts at 0 (no-op)
+        // - If cache has jobs, the response might be incomplete (eventual consistency)
+        //   so we should NOT reset counts - relay events are more authoritative
+        if planSummaries.isEmpty {
+            if implementationPlanCache.isEmpty {
+                // Both empty - safe to reset (though likely already 0)
+                activeImplementationPlansBySession.removeAll()
+                recomputeSessionImplementationPlanCount(for: activeSessionId)
+            }
+            // Otherwise keep existing cache - response might be stale/incomplete
+            return
+        }
+
+        // Compute counts directly from summaries
+        var countsBySession: [String: Int] = [:]
+        for summary in planSummaries {
+            guard let sessionId = summary.sessionId else { continue }
+            if summary.jobStatus.isActive {
+                countsBySession[sessionId, default: 0] += 1
+            }
+        }
+
+        activeImplementationPlansBySession = countsBySession
+        recomputeSessionImplementationPlanCount(for: activeSessionId)
     }
 }

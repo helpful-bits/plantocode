@@ -61,9 +61,27 @@ pub async fn delete_background_job_command(job_id: String, app_handle: AppHandle
     let preserved_task_type = job_opt.as_ref().map(|j| j.task_type.clone());
     let preserved_session_id = job_opt.as_ref().map(|j| j.session_id.clone()).unwrap_or_default();
 
+    // Resolve project_hash from session
+    let session_repo = crate::db_utils::SessionRepository::new(repo.get_pool());
+    let project_hash = if !preserved_session_id.is_empty() {
+        session_repo
+            .get_session_by_id(&preserved_session_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.project_hash)
+    } else {
+        None
+    };
+
     repo.delete_job(&job_id)
         .await
         .map_err(|e| AppError::DatabaseError(format!("Failed to delete job: {}", e)))?;
+
+    crate::remote_api::handlers::jobs::invalidate_job_list_for_session(&app_handle, &preserved_session_id);
+    if let Some(ref ph) = project_hash {
+        crate::remote_api::handlers::jobs::invalidate_job_list_for_project(&app_handle, ph);
+    }
 
     emit_job_deleted(
         &app_handle,
@@ -110,11 +128,27 @@ pub async fn cancel_background_job_command(job_id: String, app_handle: AppHandle
 
     let preserved_session_id = job_opt.as_ref().map(|j| j.session_id.clone()).unwrap_or_default();
 
+    // Resolve project_hash from session
+    let session_repo = crate::db_utils::SessionRepository::new(repo.get_pool());
+    let project_hash = if !preserved_session_id.is_empty() {
+        session_repo
+            .get_session_by_id(&preserved_session_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|s| s.project_hash)
+    } else {
+        None
+    };
+
     repo.cancel_job(&job_id, "Canceled by user")
         .await
         .map_err(|e| AppError::JobError(format!("Failed to cancel job: {}", e)))?;
 
     crate::remote_api::handlers::jobs::invalidate_job_list_for_session(&app_handle, &preserved_session_id);
+    if let Some(ref ph) = project_hash {
+        crate::remote_api::handlers::jobs::invalidate_job_list_for_project(&app_handle, ph);
+    }
 
     Ok(())
 }

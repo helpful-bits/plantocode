@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use std::collections::HashMap;
-use crate::db_utils::{SessionRepository, BackgroundJobRepository};
+use crate::db_utils::BackgroundJobRepository;
 use std::sync::Arc;
 use crate::utils::hash_utils::generate_project_hash;
 
@@ -69,34 +69,28 @@ struct CacheEntry {
     value: serde_json::Value,
 }
 
-struct SessionProjectEntry {
-    inserted_at: Instant,
-    project_cache_key: String,
-}
-
 static JOB_LIST_CACHE: Lazy<Mutex<HashMap<String, CacheEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 const CACHE_TTL: Duration = Duration::from_secs(2);
 const MAX_ENTRIES: usize = 128;
 
-const MAX_SESSION_MAP_ENTRIES: usize = 512;
-static SESSION_PROJECT_MAP: Lazy<Mutex<HashMap<String, SessionProjectEntry>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-
 pub fn invalidate_job_list_cache_for_session(session_id: &str) {
-    let session_key = format!("jobs::session::{}", session_id);
-    {
-        let mut cache = JOB_LIST_CACHE.lock().unwrap();
-        cache.remove(&session_key);
-    }
+    let session_prefix = format!("jobs::session::{}::", session_id);
+    let mut cache = JOB_LIST_CACHE.lock().unwrap();
+    cache.retain(|key, _| !key.starts_with(&session_prefix));
+}
 
-    let maybe_project_key = {
-        let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-        map.remove(session_id).map(|e| e.project_cache_key)
-    };
+fn invalidate_job_list_cache_for_project_hash(project_hash: &str) {
+    let project_prefix = format!("jobs::project::{}::", project_hash);
+    let mut cache = JOB_LIST_CACHE.lock().unwrap();
+    cache.retain(|key, _| !key.starts_with(&project_prefix));
+}
 
-    if let Some(project_key) = maybe_project_key {
-        let mut cache = JOB_LIST_CACHE.lock().unwrap();
-        cache.remove(&project_key);
-    }
+pub fn invalidate_job_list_for_project(app_handle: &AppHandle, project_hash: &str) {
+    invalidate_job_list_cache_for_project_hash(project_hash);
+    let _ = app_handle.emit("device-link-event", json!({
+        "type": "jobs:list-invalidated",
+        "payload": { "projectHash": project_hash }
+    }));
 }
 
 pub fn invalidate_job_list_for_session(app_handle: &AppHandle, session_id: &str) {
@@ -169,9 +163,19 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         session_id = None;
     }
 
+    if session_id.is_some() {
+        project_directory = None;
+    }
+
     let bypass_cache = request
         .params
         .get("bypassCache")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let include_content = request
+        .params
+        .get("includeContent")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
@@ -186,7 +190,7 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         page_size = DEFAULT_PAGE_SIZE;
     }
 
-    let has_filters = status_filter.is_some() || task_type_filter.is_some() || page > 0;
+    log::debug!("[job.list] Received params: session_id={:?}, project_directory={:?}, bypass_cache={}", session_id, project_directory, bypass_cache);
 
     if session_id.is_none() && project_directory.is_none() {
         return Err(RpcError::invalid_params("Missing required sessionId or projectDirectory"));
@@ -197,57 +201,22 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         .inner()
         .clone();
 
-    let project_hash = if let Some(ref dir) = project_directory {
-        Some(generate_project_hash(dir))
+    let project_hash = if session_id.is_none() {
+        project_directory.as_ref().map(|dir| generate_project_hash(dir))
     } else {
         None
     };
 
-    if has_filters {
-        let job_repo = BackgroundJobRepository::new(pool.clone());
-
-        let effective_project_hash = if project_hash.is_some() {
-            project_hash.clone()
-        } else if let Some(ref sid) = session_id {
-            let session_repo = SessionRepository::new(pool.clone());
-            match session_repo.get_session_by_id(sid).await {
-                Ok(Some(session)) => Some(session.project_hash),
-                Ok(None) | Err(_) => {
-                    return Err(RpcError::not_found("Invalid sessionId: not found"));
-                }
-            }
+    let cache_key = {
+        let scope = if let Some(ref sid) = session_id {
+            format!("session::{}", sid)
         } else {
-            None
+            let hash = project_hash.as_ref().expect("project_hash must be present when sessionId is missing");
+            format!("project::{}", hash)
         };
-
-        let (jobs, total_count, has_more) = job_repo
-            .get_jobs_filtered(
-                effective_project_hash,
-                session_id.clone(),
-                status_filter,
-                task_type_filter,
-                page,
-                page_size,
-            )
-            .await
-            .map_err(RpcError::from)?;
-
-        return Ok(json!({
-            "jobs": jobs,
-            "totalCount": total_count,
-            "page": page,
-            "pageSize": page_size,
-            "hasMore": has_more
-        }));
-    }
-
-    let cache_key = if let Some(ref session_id) = session_id {
-        format!("jobs::session::{}", session_id)
-    } else {
-        let hash = project_hash
-            .as_ref()
-            .expect("project_hash must be present when sessionId is missing");
-        format!("jobs::project::{}", hash)
+        let status_str = status_filter.as_ref().map(|v| v.join(",")).unwrap_or_default();
+        let task_type_str = task_type_filter.as_ref().map(|v| v.join(",")).unwrap_or_default();
+        format!("jobs::{}::p{}::s{}::st[{}]::tt[{}]::ic{}", scope, page, page_size, status_str, task_type_str, include_content)
     };
 
     if !bypass_cache {
@@ -259,76 +228,75 @@ async fn handle_job_list(app_handle: &AppHandle, request: RpcRequest) -> RpcResu
         }
     }
 
-    let mut effective_project_directory: Option<String> = None;
+    let job_repo = BackgroundJobRepository::new(pool.clone());
 
-    let jobs_result = if let Some(session_id) = session_id.clone() {
-        let session_repo = SessionRepository::new(pool.clone());
-        let resolved_dir = match session_repo.get_session_by_id(&session_id).await {
-            Ok(Some(session)) => Some(session.project_directory),
-            Ok(None) | Err(_) => {
-                return Err(RpcError::not_found("Invalid sessionId: not found"));
-            }
-        };
-
-        effective_project_directory = resolved_dir.clone();
-
-        job_commands::get_all_visible_jobs_command_with_content(
-            resolved_dir,
-            Some(session_id),
-            true,
-            app_handle.clone(),
-        )
-        .await
+    let effective_project_hash = if session_id.is_some() {
+        None
+    } else if let Some(ref ph) = project_hash {
+        Some(ph.clone())
     } else {
-        let project_directory = project_directory
-            .clone()
-            .expect("projectDirectory must be present when sessionId is missing");
-
-        job_commands::get_all_visible_jobs_command_with_content(
-            Some(project_directory),
-            None,
-            true,
-            app_handle.clone(),
-        )
-        .await
+        None
     };
 
-    let jobs = jobs_result.map_err(RpcError::from)?;
-    let result_value = json!({ "jobs": jobs });
+    let result_value = if include_content {
+        let (jobs_result, total_count, has_more) = job_repo
+            .get_jobs_filtered(
+                effective_project_hash,
+                session_id.clone(),
+                status_filter,
+                task_type_filter,
+                page,
+                page_size,
+            )
+            .await
+            .map_err(RpcError::from)?;
+
+        // Explicitly type as Vec to guarantee stable envelope fields
+        let jobs: Vec<_> = jobs_result;
+
+        json!({
+            "jobs": jobs,
+            "totalCount": total_count,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": has_more
+        })
+    } else {
+        let (summaries_result, total_count, has_more) = job_repo
+            .get_job_summaries_filtered(
+                effective_project_hash,
+                session_id.clone(),
+                status_filter,
+                task_type_filter,
+                page,
+                page_size,
+            )
+            .await
+            .map_err(RpcError::from)?;
+
+        // Explicitly type as Vec to guarantee stable envelope fields
+        let jobs: Vec<_> = summaries_result;
+
+        json!({
+            "jobs": jobs,
+            "totalCount": total_count,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": has_more
+        })
+    };
 
     {
         let mut cache = JOB_LIST_CACHE.lock().unwrap();
         if cache.len() >= MAX_ENTRIES {
             if let Some(oldest_key) = cache.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
-                if let Some(session_id) = oldest_key.strip_prefix("jobs::session::") {
-                    let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-                    map.remove(session_id);
-                }
                 cache.remove(&oldest_key);
             }
         }
-        cache.insert(cache_key.clone(), CacheEntry {
+        cache.insert(cache_key, CacheEntry {
             inserted_at: Instant::now(),
             value: result_value.clone(),
         });
-    }
-
-    if let Some(ref session_id) = session_id {
-        if let Some(ref proj_dir) = effective_project_directory {
-            let project_hash = generate_project_hash(proj_dir);
-            let project_key = format!("jobs::project::{}", project_hash);
-
-            let mut map = SESSION_PROJECT_MAP.lock().unwrap();
-            if map.len() >= MAX_SESSION_MAP_ENTRIES {
-                if let Some(old_k) = map.iter().min_by_key(|(_, v)| v.inserted_at).map(|(k, _)| k.clone()) {
-                    map.remove(&old_k);
-                }
-            }
-            map.insert(session_id.clone(), SessionProjectEntry {
-                inserted_at: Instant::now(),
-                project_cache_key: project_key,
-            });
-        }
     }
 
     Ok(result_value)

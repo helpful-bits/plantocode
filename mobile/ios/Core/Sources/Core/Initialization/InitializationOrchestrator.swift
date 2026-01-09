@@ -160,14 +160,12 @@ public final class InitializationOrchestrator: ObservableObject {
             dataServices.setCurrentProject(project)
             await dataServices.sessionService.setSessions(sessions, activeId: finalActiveId)
 
-            // Hydrate active session before marking bootstrap ready
             if let id = finalActiveId {
                 log.info("InitializationOrchestrator: hydrating active session via RPC (id=\(id))")
                 do {
                     let session = try await dataServices.sessionService.getSession(id: id)
-                    // Prime JobsDataService during bootstrap after session is resolved
                     if let session = session {
-                        dataServices.jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
+                        dataServices.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
                     }
                 } catch {
                     log.warning("InitializationOrchestrator: failed to hydrate active session: \(error)")

@@ -1,7 +1,7 @@
 use super::base::BackgroundJobRepository;
-use super::helpers::row_to_job;
+use super::helpers::{row_to_job, row_to_job_summary};
 use crate::error::{AppError, AppResult};
-use crate::models::{BackgroundJob, JobStatus};
+use crate::models::{BackgroundJob, BackgroundJobSummary, JobStatus};
 use crate::utils::get_timestamp;
 use sqlx::Row;
 
@@ -402,6 +402,7 @@ impl BackgroundJobRepository {
     }
 
     /// Get jobs with filtering and pagination
+    /// Always excludes internal workflow jobs (file_finder_workflow, web_search_workflow)
     pub async fn get_jobs_filtered(
         &self,
         project_hash: Option<String>,
@@ -411,12 +412,19 @@ impl BackgroundJobRepository {
         page: u32,
         page_size: u32,
     ) -> AppResult<(Vec<BackgroundJob>, u32, bool)> {
+        let project_hash = if session_id.is_some() { None } else { project_hash };
         let mut param_index = 1;
         let mut where_clauses: Vec<String> = Vec::new();
         let mut bindings: Vec<String> = Vec::new();
 
         let use_session_join = project_hash.is_some() && session_id.is_none();
         let table_prefix = if use_session_join { "bj." } else { "" };
+
+        // Always exclude internal workflow jobs for "visible jobs" semantics
+        where_clauses.push(format!(
+            "{}task_type NOT IN ('file_finder_workflow', 'web_search_workflow')",
+            table_prefix
+        ));
 
         if let Some(ref sid) = session_id {
             where_clauses.push(format!("{}session_id = ${}", table_prefix, param_index));
@@ -462,11 +470,8 @@ impl BackgroundJobRepository {
             }
         }
 
-        let where_clause = if where_clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", where_clauses.join(" AND "))
-        };
+        // where_clauses is never empty due to the unconditional task_type exclusion above
+        let where_clause = format!("WHERE {}", where_clauses.join(" AND "));
 
         let offset = page * page_size;
         let limit = page_size + 1;
@@ -539,5 +544,150 @@ impl BackgroundJobRepository {
         let total_count: i64 = count_row.try_get("cnt").unwrap_or(0);
 
         Ok((jobs, total_count as u32, has_more))
+    }
+
+    pub async fn get_job_summaries_filtered(
+        &self,
+        project_hash: Option<String>,
+        session_id: Option<String>,
+        status_filter: Option<Vec<String>>,
+        task_type_filter: Option<Vec<String>>,
+        page: u32,
+        page_size: u32,
+    ) -> AppResult<(Vec<BackgroundJobSummary>, u32, bool)> {
+        let project_hash = if session_id.is_some() { None } else { project_hash };
+        let mut param_index = 1;
+        let mut where_clauses: Vec<String> = Vec::new();
+        let mut bindings: Vec<String> = Vec::new();
+
+        let use_session_join = project_hash.is_some() && session_id.is_none();
+        let table_prefix = if use_session_join { "bj." } else { "" };
+
+        where_clauses.push(format!(
+            "{}task_type NOT IN ('file_finder_workflow', 'web_search_workflow')",
+            table_prefix
+        ));
+
+        if let Some(ref sid) = session_id {
+            where_clauses.push(format!("{}session_id = ${}", table_prefix, param_index));
+            bindings.push(sid.clone());
+            param_index += 1;
+        }
+
+        if let Some(ref ph) = project_hash {
+            if session_id.is_none() {
+                where_clauses.push(format!("s.project_hash = ${}", param_index));
+                bindings.push(ph.clone());
+                param_index += 1;
+            }
+        }
+
+        if let Some(ref statuses) = status_filter {
+            if !statuses.is_empty() {
+                let placeholders: Vec<String> = statuses
+                    .iter()
+                    .map(|_| {
+                        let p = format!("${}", param_index);
+                        param_index += 1;
+                        p
+                    })
+                    .collect();
+                where_clauses.push(format!("{}status IN ({})", table_prefix, placeholders.join(", ")));
+                bindings.extend(statuses.clone());
+            }
+        }
+
+        if let Some(ref task_types) = task_type_filter {
+            if !task_types.is_empty() {
+                let placeholders: Vec<String> = task_types
+                    .iter()
+                    .map(|_| {
+                        let p = format!("${}", param_index);
+                        param_index += 1;
+                        p
+                    })
+                    .collect();
+                where_clauses.push(format!("{}task_type IN ({})", table_prefix, placeholders.join(", ")));
+                bindings.extend(task_types.clone());
+            }
+        }
+
+        let where_clause = format!("WHERE {}", where_clauses.join(" AND "));
+
+        let offset = page * page_size;
+        let limit = page_size + 1;
+
+        let summary_columns = "id, session_id, task_type, status, error_message, tokens_sent, tokens_received, cache_write_tokens, cache_read_tokens, model_used, actual_cost, created_at, updated_at, start_time, end_time, is_finalized, COALESCE(json_extract(metadata, '$.planTitle'), json_extract(metadata, '$.generated_title'), json_extract(metadata, '$.taskData.planTitle')) as plan_title, json_extract(metadata, '$.markdownConversionStatus') as markdown_conversion_status";
+
+        let (data_query, count_query) = if use_session_join {
+            (
+                format!(
+                    r#"SELECT bj.{} FROM background_jobs bj
+                    INNER JOIN sessions s ON bj.session_id = s.id
+                    {}
+                    ORDER BY COALESCE(bj.updated_at, bj.created_at) DESC
+                    LIMIT {} OFFSET {}"#,
+                    summary_columns, where_clause, limit, offset
+                ),
+                format!(
+                    r#"SELECT COUNT(*) as cnt FROM background_jobs bj
+                    INNER JOIN sessions s ON bj.session_id = s.id
+                    {}"#,
+                    where_clause
+                ),
+            )
+        } else {
+            (
+                format!(
+                    r#"SELECT {} FROM background_jobs
+                    {}
+                    ORDER BY COALESCE(updated_at, created_at) DESC
+                    LIMIT {} OFFSET {}"#,
+                    summary_columns, where_clause, limit, offset
+                ),
+                format!(
+                    r#"SELECT COUNT(*) as cnt FROM background_jobs
+                    {}"#,
+                    where_clause
+                ),
+            )
+        };
+
+        let mut data_query_builder = sqlx::query(&data_query);
+        for binding in &bindings {
+            data_query_builder = data_query_builder.bind(binding);
+        }
+
+        let rows = data_query_builder
+            .fetch_all(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to fetch filtered job summaries: {}", e)))?;
+
+        log::debug!("[get_job_summaries_filtered] Returned {} rows", rows.len());
+
+        let mut summaries = Vec::new();
+        for row in rows {
+            let summary = row_to_job_summary(&row)?;
+            summaries.push(summary);
+        }
+
+        let has_more = summaries.len() > page_size as usize;
+        if has_more {
+            summaries.pop();
+        }
+
+        let mut count_query_builder = sqlx::query(&count_query);
+        for binding in &bindings {
+            count_query_builder = count_query_builder.bind(binding);
+        }
+
+        let count_row = count_query_builder
+            .fetch_one(&*self.pool)
+            .await
+            .map_err(|e| AppError::DatabaseError(format!("Failed to count filtered job summaries: {}", e)))?;
+
+        let total_count: i64 = count_row.try_get("cnt").unwrap_or(0);
+
+        Ok((summaries, total_count as u32, has_more))
     }
 }

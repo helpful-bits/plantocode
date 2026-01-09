@@ -1,25 +1,5 @@
 import Foundation
 
-// MARK: - Jobs Reconcile Reason
-
-/// Reason for reconciling/fetching job snapshots
-public enum JobsReconcileReason: Equatable {
-    /// Initial load when view appears
-    case initialLoad
-    /// App returned to foreground
-    case foregroundResume
-    /// Connectivity was restored after disconnection
-    case connectivityReconnected
-    /// Push notification hint to refresh
-    case pushHint
-    /// Manual user-initiated refresh
-    case userRefresh
-    /// Periodic background sync
-    case periodicSync
-    /// Session changed
-    case sessionChanged
-}
-
 // MARK: - Jobs Decoding
 
 public struct JobsDecoding {
@@ -64,17 +44,34 @@ public struct JobsDecoding {
 
     /// Decodes a job list response with flexible format handling
     /// Supports both `{"jobs": [...]}` wrapper and direct array `[...]` formats
+    /// Returns lightweight BackgroundJobListItem summaries (not full BackgroundJob)
     public static func decodeJobList(dict: [String: Any]) throws -> JobListResponse {
-        guard let jobsArray = dict["jobs"] as? [[String: Any]] else {
+        // Extract jobs array with tolerance for empty bridged arrays
+        let jobsArray: [[String: Any]]
+        if let typedArray = dict["jobs"] as? [[String: Any]] {
+            // Standard case: properly typed array
+            jobsArray = typedArray
+        } else if let anyArray = dict["jobs"] as? [Any], anyArray.isEmpty {
+            // Empty [Any] from bridging - treat as empty job list
+            jobsArray = []
+        } else if let nsArray = dict["jobs"] as? NSArray, nsArray.count == 0 {
+            // Empty NSArray from bridging - treat as empty job list
+            jobsArray = []
+        } else {
+            // Non-empty array that doesn't match expected type, or missing entirely
             throw DecodingError.missingJobsArray
         }
 
-        let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
-        let jobs: [BackgroundJob]
-        do {
-            jobs = try jobDecoder.decode([BackgroundJob].self, from: jsonData)
-        } catch {
-            throw DecodingError.decodingFailed(underlying: error)
+        let jobs: [BackgroundJobListItem]
+        if jobsArray.isEmpty {
+            jobs = []
+        } else {
+            let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
+            do {
+                jobs = try jobDecoder.decode([BackgroundJobListItem].self, from: jsonData)
+            } catch {
+                throw DecodingError.decodingFailed(underlying: error)
+            }
         }
 
         let totalCount = dict["totalCount"] as? Int ?? jobs.count
@@ -97,8 +94,18 @@ public struct JobsDecoding {
         // Handle dictionary with "jobs" key
         if let dict = data as? [String: Any] {
             if let jobsArray = dict["jobs"] as? [[String: Any]] {
+                if jobsArray.isEmpty {
+                    return []
+                }
                 let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
                 return try jobDecoder.decode([BackgroundJob].self, from: jsonData)
+            }
+            // Tolerance for empty bridged arrays
+            if let anyArray = dict["jobs"] as? [Any], anyArray.isEmpty {
+                return []
+            }
+            if let nsArray = dict["jobs"] as? NSArray, nsArray.count == 0 {
+                return []
             }
             // Single job in a wrapper
             if let _ = dict["id"] as? String {
@@ -111,8 +118,19 @@ public struct JobsDecoding {
 
         // Handle direct array
         if let array = data as? [[String: Any]] {
+            if array.isEmpty {
+                return []
+            }
             let jsonData = try JSONSerialization.data(withJSONObject: array)
             return try jobDecoder.decode([BackgroundJob].self, from: jsonData)
+        }
+
+        // Tolerance for empty bridged arrays (direct format)
+        if let anyArray = data as? [Any], anyArray.isEmpty {
+            return []
+        }
+        if let nsArray = data as? NSArray, nsArray.count == 0 {
+            return []
         }
 
         throw DecodingError.invalidJobData
@@ -123,5 +141,57 @@ public struct JobsDecoding {
             throw DecodingError.missingJobKey
         }
         return try decodeJob(dict: jobData)
+    }
+
+    public static func decodeJobSummary(dict: [String: Any]) throws -> BackgroundJobListItem {
+        let jsonData = try JSONSerialization.data(withJSONObject: dict)
+        do {
+            return try jobDecoder.decode(BackgroundJobListItem.self, from: jsonData)
+        } catch {
+            throw DecodingError.decodingFailed(underlying: error)
+        }
+    }
+
+    public static func decodeJobSummaryList(dict: [String: Any]) throws -> JobSummaryListResponse {
+        // Extract jobs array with tolerance for empty bridged arrays
+        let jobsArray: [[String: Any]]
+        if let typedArray = dict["jobs"] as? [[String: Any]] {
+            // Standard case: properly typed array
+            jobsArray = typedArray
+        } else if let anyArray = dict["jobs"] as? [Any], anyArray.isEmpty {
+            // Empty [Any] from bridging - treat as empty job list
+            jobsArray = []
+        } else if let nsArray = dict["jobs"] as? NSArray, nsArray.count == 0 {
+            // Empty NSArray from bridging - treat as empty job list
+            jobsArray = []
+        } else {
+            // Non-empty array that doesn't match expected type, or missing entirely
+            throw DecodingError.missingJobsArray
+        }
+
+        let jobs: [BackgroundJobListItem]
+        if jobsArray.isEmpty {
+            jobs = []
+        } else {
+            let jsonData = try JSONSerialization.data(withJSONObject: jobsArray)
+            do {
+                jobs = try jobDecoder.decode([BackgroundJobListItem].self, from: jsonData)
+            } catch {
+                throw DecodingError.decodingFailed(underlying: error)
+            }
+        }
+
+        let totalCount = dict["totalCount"] as? Int ?? jobs.count
+        let page = dict["page"] as? Int ?? 0
+        let pageSize = dict["pageSize"] as? Int ?? jobs.count
+        let hasMore = dict["hasMore"] as? Bool ?? false
+
+        return JobSummaryListResponse(
+            jobs: jobs,
+            totalCount: UInt32(totalCount),
+            page: UInt32(page),
+            pageSize: UInt32(pageSize),
+            hasMore: hasMore
+        )
     }
 }

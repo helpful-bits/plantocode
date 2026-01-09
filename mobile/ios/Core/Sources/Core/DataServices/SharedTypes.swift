@@ -93,11 +93,14 @@ public struct BackgroundJob: Codable, Identifiable {
     public let systemPromptTemplate: String?
     public var startTime: Int64?
     public var endTime: Int64?
-    public var cacheWriteTokens: Int32?
-    public var cacheReadTokens: Int32?
+    public var cacheWriteTokens: Int64?
+    public var cacheReadTokens: Int64?
     public var isFinalized: Bool?
     public let progressPercentage: Int32?
     public var subStatusMessage: String?
+    public var errorDetails: ErrorDetails?
+    public var planTitle: String?
+    public var markdownConversionStatus: String?
 
     public var jobStatus: JobStatus {
         JobStatus(rawValue: status) ?? .unknown
@@ -111,6 +114,12 @@ public struct BackgroundJob: Codable, Identifiable {
     public var formattedDate: String {
         let date = Date(timeIntervalSince1970: TimeInterval(createdAt) / 1000.0)
         return DateFormatter.medium.string(from: date)
+    }
+
+    /// UI-facing timestamp for ordering/time-ago display.
+    /// Prefers startTime, else updatedAt, else createdAt (all in milliseconds).
+    public var displayTimestampMs: Int64 {
+        startTime ?? updatedAt ?? createdAt
     }
 
     // Duration formatting
@@ -152,11 +161,14 @@ public struct BackgroundJob: Codable, Identifiable {
         systemPromptTemplate: String? = nil,
         startTime: Int64? = nil,
         endTime: Int64? = nil,
-        cacheWriteTokens: Int32? = nil,
-        cacheReadTokens: Int32? = nil,
+        cacheWriteTokens: Int64? = nil,
+        cacheReadTokens: Int64? = nil,
         isFinalized: Bool? = nil,
         progressPercentage: Int32? = nil,
-        subStatusMessage: String? = nil
+        subStatusMessage: String? = nil,
+        errorDetails: ErrorDetails? = nil,
+        planTitle: String? = nil,
+        markdownConversionStatus: String? = nil
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -183,6 +195,47 @@ public struct BackgroundJob: Codable, Identifiable {
         self.isFinalized = isFinalized
         self.progressPercentage = progressPercentage
         self.subStatusMessage = subStatusMessage
+        self.errorDetails = errorDetails
+        self.planTitle = planTitle
+        self.markdownConversionStatus = markdownConversionStatus
+    }
+}
+
+extension BackgroundJob {
+    /// Creates a BackgroundJob from a lightweight summary for UI list compatibility.
+    /// This is a PROJECTION UTILITY ONLY - the resulting job lacks prompt/response content.
+    /// Use this only for building UI lists from summaries, NOT for populating jobsById.
+    /// The canonical jobsById store should only contain real full jobs from job.get / job events.
+    public init(from summary: BackgroundJobListItem) {
+        self.init(
+            id: summary.id,
+            sessionId: summary.sessionId ?? "",
+            taskType: summary.taskType,
+            status: summary.status,
+            prompt: "",
+            response: nil,
+            errorMessage: summary.errorMessage,
+            tokensUsed: nil,
+            actualCost: summary.actualCost,
+            createdAt: summary.createdAt,
+            updatedAt: summary.updatedAt,
+            projectHash: nil,
+            tokensSent: summary.tokensSent.map { Int32($0) },
+            tokensReceived: summary.tokensReceived.map { Int32($0) },
+            modelUsed: summary.modelUsed,
+            durationMs: summary.durationMs.map { Int32($0) },
+            metadata: nil,
+            systemPromptTemplate: nil,
+            startTime: summary.startTime,
+            endTime: summary.endTime,
+            cacheWriteTokens: summary.cacheWriteTokens,
+            cacheReadTokens: summary.cacheReadTokens,
+            isFinalized: summary.isFinalized,
+            progressPercentage: nil,
+            subStatusMessage: nil,
+            planTitle: summary.planTitle,
+            markdownConversionStatus: summary.markdownConversionStatus
+        )
     }
 }
 

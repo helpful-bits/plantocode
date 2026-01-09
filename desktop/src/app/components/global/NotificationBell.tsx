@@ -95,7 +95,6 @@ export function NotificationBell() {
                     e.stopPropagation();
                     const sessionId = n.data?.jobId;
                     if (sessionId) {
-                      window.dispatchEvent(new CustomEvent('open-terminal-session', { detail: { sessionId } }));
                       window.dispatchEvent(new CustomEvent('open-plan-terminal', { detail: { jobId: sessionId } }));
                     }
                     dismissNotification(n.id);

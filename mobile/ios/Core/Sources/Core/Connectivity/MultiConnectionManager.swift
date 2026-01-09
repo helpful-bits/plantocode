@@ -285,8 +285,7 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     /// Performs system ping to verify desktop connection (handshaking step)
-    /// Reduced timeout from 5s to 3s for faster connection verification
-    private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 3) async throws {
+    private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 8) async throws {
         guard relayClient.isConnected else {
             throw MultiConnectionError.connectionFailed("Relay not connected")
         }
@@ -317,7 +316,7 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
-    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 3) async throws {
+    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 8) async throws {
         guard let relayClient = storage[deviceId] else {
             throw MultiConnectionError.connectionFailed("Relay client not found")
         }
@@ -403,7 +402,7 @@ public final class MultiConnectionManager: ObservableObject {
         if let existingClient = storage[deviceId] {
             if existingClient.isConnected {
                 do {
-                    try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
+                    try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 8)
                     await MainActor.run {
                         activeDeviceId = deviceId
                     }
@@ -598,7 +597,7 @@ public final class MultiConnectionManager: ObservableObject {
                 }
 
                 do {
-                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
+                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 8)
 
                     await MainActor.run {
                         let handshake = self.relayHandshakeByDevice[deviceId] ?? ConnectionHandshake(

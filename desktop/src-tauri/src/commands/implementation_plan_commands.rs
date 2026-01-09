@@ -671,6 +671,12 @@ pub async fn update_implementation_plan_content_command(
 
     crate::remote_api::handlers::jobs::invalidate_job_list_for_session(&app_handle, &job.session_id);
 
+    // Resolve project_hash from session and invalidate project cache
+    let session_repo = SessionRepository::new(repo.get_pool());
+    if let Ok(Some(session)) = session_repo.get_session_by_id(&job.session_id).await {
+        crate::remote_api::handlers::jobs::invalidate_job_list_for_project(&app_handle, &session.project_hash);
+    }
+
     info!(
         "Successfully updated implementation plan content for job: {}",
         job_id

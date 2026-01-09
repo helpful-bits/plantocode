@@ -8,7 +8,6 @@ public struct JobsMonitoringView: View {
     @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
     @Environment(\.colorScheme) var colorScheme
     @State private var selectedJobId: IdentifiableString? = nil
-    @State private var isLoading = false
     @State private var cancellingJobs = Set<String>()
     @State private var deletingJobs = Set<String>()
     @State private var errorMessage: String?
@@ -16,7 +15,6 @@ public struct JobsMonitoringView: View {
     @State private var cancellables = Set<AnyCancellable>()
     @State private var successMessage: String?
     @State private var showingSuccess = false
-    @State private var hasDoneInitialLoad = false
 
     public init(jobsService: JobsDataService) {
         self._jobsService = ObservedObject(wrappedValue: jobsService)
@@ -27,8 +25,6 @@ public struct JobsMonitoringView: View {
         guard let currentSessionId = container.sessionService.currentSession?.id else {
             return []
         }
-
-        let excludedIds = planJobIdsForCurrentSession
 
         // Mobile sessions should see all jobs (not filtered by session)
         let shouldFilterBySession = !currentSessionId.hasPrefix("mobile-session-")
@@ -42,13 +38,8 @@ public struct JobsMonitoringView: View {
                 return true
             }
             .filter { job in
-                if job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" {
-                    return false
-                }
-                if excludedIds.contains(job.id) {
-                    return false
-                }
-                return true
+                // Use centralized visibility filter
+                JobTypeFilters.isVisibleInJobsList(job)
             }
     }
 
@@ -73,18 +64,35 @@ public struct JobsMonitoringView: View {
     }
 
     // Whether to show inline loading indicator (when we have jobs but are refreshing)
+    // Once isRefreshing is available from JobsDataService, this should use jobsService.isRefreshing
     private var showInlineLoading: Bool {
-        (isLoading || jobsService.isLoading) && !filteredJobs.isEmpty
+        // Show inline loading when refreshing with existing jobs
+        // This should NOT cause subtree replacement - only shows a small indicator inside the list
+        jobsService.isLoading && jobsService.hasLoadedOnce
+    }
+
+    // Show full loading state ONLY when:
+    // 1. We haven't loaded once yet (hasLoadedOnce == false)
+    // 2. AND we are currently loading
+    // 3. AND the list is empty
+    // This prevents full-screen loading from replacing a previously rendered list
+    private var showFullLoading: Bool {
+        !jobsService.hasLoadedOnce && jobsService.isLoading && filteredJobs.isEmpty
+    }
+
+    // Grouped jobs for display
+    private var groupedJobs: [JobGroup] {
+        groupJobsForDisplay(filteredJobs)
     }
 
     public var body: some View {
         VStack(spacing: 0) {
             VStack(spacing: 0) {
-
-                // Job List
-                // Show loading if we're loading AND have no jobs for current session
-                // (Don't rely on hasLoadedOnce - it's global across all sessions)
-                if isLoading || (jobsService.isLoading && filteredJobs.isEmpty) {
+                // Job List - View tree stability fix:
+                // Only show full-screen loading before first load completes
+                // Once hasLoadedOnce is true, ALWAYS render ScrollView to prevent branch-flip flicker
+                if !jobsService.hasLoadedOnce && showFullLoading {
+                    // Full-screen loading: only shown before first load completes
                     VStack(spacing: 16) {
                         Spacer()
                         ProgressView()
@@ -96,25 +104,9 @@ public struct JobsMonitoringView: View {
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if filteredJobs.isEmpty {
-                    VStack(spacing: 16) {
-                        Spacer()
-                        Image(systemName: "tray")
-                            .font(.system(size: 48))
-                            .foregroundColor(Color.textMuted.opacity(0.6))
-                        Text("No jobs yet")
-                            .h4()
-                            .foregroundColor(Color.textPrimary)
-
-                        Text("Background jobs will appear here once they are created")
-                            .font(.system(size: 15))
-                            .foregroundColor(Color.textMuted)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
+                    // Once hasLoadedOnce is true, ALWAYS keep ScrollView mounted
+                    // Empty state is shown INSIDE the ScrollView to prevent branch swapping
                     ScrollView {
                         LazyVStack(spacing: Theme.Spacing.cardSpacing) {
                             // Inline loading indicator when refreshing with existing jobs
@@ -130,26 +122,61 @@ public struct JobsMonitoringView: View {
                                 .padding(.vertical, 8)
                             }
 
-                            ForEach(filteredJobs) { job in
-                                JobCardView(
-                                    job: job,
-                                    onCancel: job.jobStatus.isActive ? cancelJob : nil,
-                                    onDelete: !job.jobStatus.isActive ? deleteJob : nil,
-                                    onSelect: {
-                                        selectedJobId = IdentifiableString(value: job.id)
-                                    },
-                                    onApplyFiles: applyFilesFromJob,
-                                    onContinueWorkflow: continueWorkflow,
-                                    currentSessionId: container.sessionService.currentSession?.id,
-                                    currentIncludedFiles: container.sessionService.currentSession?.includedFiles ?? [],
-                                    hasContinuationJob: checkHasContinuationJob(for: job),
-                                    isWorkflowActive: checkIsWorkflowActive(for: job)
-                                )
+                            // Show empty state INSIDE the ScrollView when list is empty
+                            // This keeps the container mounted and avoids branch-flip flicker
+                            if filteredJobs.isEmpty && !showInlineLoading {
+                                VStack(spacing: 16) {
+                                    Spacer()
+                                        .frame(height: 80)
+                                    Image(systemName: "tray")
+                                        .font(.system(size: 48))
+                                        .foregroundColor(Color.textMuted.opacity(0.6))
+                                    Text("No jobs yet")
+                                        .h4()
+                                        .foregroundColor(Color.textPrimary)
+
+                                    Text("Background jobs will appear here once they are created")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Color.textMuted)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal, 40)
+                                    Spacer()
+                                        .frame(height: 80)
+                                }
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                // Job list content with row transitions
+                                ForEach(groupedJobs) { group in
+                                    if group.workflowId != nil && group.jobs.count > 1 {
+                                        // Workflow group - wrap in dashed container
+                                        VStack(spacing: Theme.Spacing.cardSpacing) {
+                                            ForEach(group.jobs) { job in
+                                                jobCardView(for: job)
+                                                    .transition(.opacity.combined(with: .move(edge: .top)))
+                                            }
+                                        }
+                                        .padding(Theme.Spacing.sm)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: Theme.Radii.md)
+                                                .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 3]))
+                                                .foregroundColor(Color.border.opacity(0.6))
+                                        )
+                                    } else {
+                                        // Standalone job or single-job workflow
+                                        ForEach(group.jobs) { job in
+                                            jobCardView(for: job)
+                                                .transition(.opacity.combined(with: .move(edge: .top)))
+                                        }
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                         .padding(.top, 4)
+                        // List-level animation driven by jobsVersion when available
+                        // For now, animate on jobs array changes
+                        .animation(.easeInOut(duration: 0.2), value: jobsService.jobs.map { $0.id })
                     }
                 }
             }
@@ -163,7 +190,7 @@ public struct JobsMonitoringView: View {
         }
         .onReceive(container.sessionService.currentSessionPublisher.compactMap { $0 }) { newSession in
             selectedJobId = nil
-            Task { await loadJobs() }
+            Task { await jobsService.reconcileJobs(reason: .sessionChanged) }
         }
         .overlay(
             Group {
@@ -188,25 +215,15 @@ public struct JobsMonitoringView: View {
             // Start session-scoped sync
             container.setJobsViewActive(true)
 
-            // CRITICAL: Do an initial full fetch of ALL jobs (not just active ones)
-            // before starting session-scoped event sync that monitors active jobs
-            // Only do this once per view lifecycle
+            // Trigger reconciliation to load jobs (handles dedup internally)
             Task {
-                if !hasDoneInitialLoad {
-                    hasDoneInitialLoad = true
-                    await loadJobs()
-                }
+                await jobsService.reconcileJobs(reason: .initialLoad)
             }
 
             jobsService.startSessionScopedSync(
                 sessionId: session.id,
                 projectDirectory: session.projectDirectory
             )
-
-            // Load plans for filtering
-            if isConnected {
-                loadPlansForFiltering()
-            }
         }
         .onDisappear {
             // Stop session-scoped sync
@@ -223,92 +240,25 @@ public struct JobsMonitoringView: View {
         }
     }
 
-    private var isConnected: Bool {
-        guard let deviceId = multiConnectionManager.activeDeviceId,
-              let state = multiConnectionManager.connectionStates[deviceId] else {
-            return false
-        }
-        return state.isConnected
-    }
+    // MARK: - View Builders
 
-    private func loadPlansForFiltering() {
-        // NOTE: This function previously used listJobs which replaces all jobs.
-        // Plan job IDs are now computed from the existing jobs array via planJobIdsForCurrentSession,
-        // so no separate fetch is needed. The main job list already includes implementation_plan jobs.
-    }
-
-    private var planJobIdsForCurrentSession: Set<String> {
-        let sid = container.sessionService.currentSession?.id
-        return Set(container.jobsService.jobs
-            .filter { $0.sessionId == sid && $0.taskType.hasPrefix("implementation_plan") }
-            .map { $0.id })
-    }
-
-    private func loadJobs() async {
-        // Gate: only fetch when session exists
-        guard let currentSession = container.sessionService.currentSession else {
-            return
-        }
-
-        // Determine if it's a mobile session
-        let isMobileSession = currentSession.id.hasPrefix("mobile-session-")
-
-        // Set effectiveSessionId to nil for mobile sessions, otherwise use the real session ID
-        let effectiveSessionId: String? = isMobileSession ? nil : currentSession.id
-
-        // Get projectDirectory from session or currentProject
-        let projectDirectory = currentSession.projectDirectory ?? container.currentProject?.directory
-
-        // Guard that for mobile sessions, projectDirectory must be non-empty
-        if isMobileSession {
-            guard let projectDir = projectDirectory, !projectDir.isEmpty else {
-                return
-            }
-        }
-
-        // Guard that for non-mobile sessions, at least one of effectiveSessionId or projectDirectory is non-empty
-        if !isMobileSession {
-            guard effectiveSessionId != nil || (projectDirectory != nil && !projectDirectory!.isEmpty) else {
-                return
-            }
-        }
-
-        // Show loading if we have no jobs for the CURRENT session (not just any jobs)
-        let hasCachedJobsForCurrentSession = !baseFilteredJobs.isEmpty
-        if !hasCachedJobsForCurrentSession {
-            isLoading = true
-        }
-
-        // Capture RAW session ID for verification (not the transformed one)
-        let capturedRawSessionId = currentSession.id
-
-        let request = JobListRequest(
-            projectDirectory: projectDirectory,
-            sessionId: effectiveSessionId,
-            pageSize: 100,
-            sortBy: .createdAt,
-            sortOrder: .desc
+    @ViewBuilder
+    private func jobCardView(for job: BackgroundJob) -> some View {
+        JobCardView(
+            job: job,
+            onCancel: job.jobStatus.isActive ? cancelJob : nil,
+            onDelete: !job.jobStatus.isActive ? deleteJob : nil,
+            onSelect: {
+                selectedJobId = IdentifiableString(value: job.id)
+            },
+            onApplyFiles: applyFilesFromJob,
+            onContinueWorkflow: continueWorkflow,
+            currentSessionId: container.sessionService.currentSession?.id,
+            currentIncludedFiles: container.sessionService.currentSession?.includedFiles ?? [],
+            hasContinuationJob: checkHasContinuationJob(for: job),
+            isWorkflowActive: checkIsWorkflowActive(for: job)
         )
-
-        jobsService.listJobs(request: request)
-            .receive(on: DispatchQueue.main)
-            .sink(
-                receiveCompletion: { [self] _ in
-                    self.isLoading = false
-                },
-                receiveValue: { [self] _ in
-                    // Verify session hasn't changed (compare raw IDs)
-                    guard container.sessionService.currentSession?.id == capturedRawSessionId else {
-                        return
-                    }
-
-                    self.isLoading = false
-                    // Note: Prefetch is now triggered automatically inside JobsDataService for faster loading
-                }
-            )
-            .store(in: &cancellables)
     }
-
 
     // MARK: - Job Actions
 

@@ -66,7 +66,8 @@ public struct PlanDetailView: View {
     }
 
     private var markdownConversionStatus: String? {
-        PlanContentParser.extractMarkdownConversionStatus(from: observedJob?.metadata)
+        // Prefer the summary field (available without metadata), fallback to metadata parsing
+        observedJob?.markdownConversionStatus ?? PlanContentParser.extractMarkdownConversionStatus(from: observedJob?.metadata)
     }
 
     private enum PlanDisplayStatus {
@@ -80,12 +81,17 @@ public struct PlanDetailView: View {
         if isStreaming {
             return .streamingXml
         }
-        if isConvertingToMarkdown || markdownConversionStatus == "pending" {
-            return .convertingToMarkdown
+        // Never show "Converting" if we already have markdown content to display
+        if showingMarkdown && !markdownContent.isEmpty {
+            // Show parsing state while markdown is being parsed in background
+            if parsedMarkdown == nil {
+                return .parsingMarkdown
+            }
+            return .ready
         }
-        // Show parsing state while markdown is being parsed in background
-        if showingMarkdown && !markdownContent.isEmpty && parsedMarkdown == nil {
-            return .parsingMarkdown
+        // Only show converting status when truly converting and no content available
+        if isConvertingToMarkdown || (markdownConversionStatus == "pending" && markdownContent.isEmpty) {
+            return .convertingToMarkdown
         }
         return .ready
     }
@@ -618,16 +624,33 @@ public struct PlanDetailView: View {
     }
 
     private func triggerMarkdownConversionIfNeeded() {
+        // Guard 1: Job must exist
         guard let job = observedJob else { return }
 
-        if PlanContentParser.extractMarkdownResponse(from: job.metadata) != nil {
+        // Guard 2: Job must be in terminal state (no point converting while still running)
+        guard job.jobStatus.isTerminal else { return }
+
+        // Guard 3: Already completed conversion
+        if markdownConversionStatus == "completed" {
             return
         }
 
+        // Guard 4: Conversion already in progress (avoid duplicate triggers)
+        if markdownConversionStatus == "pending" {
+            return
+        }
+
+        // Guard 5: We already have markdown content locally
         if !markdownContent.isEmpty {
             return
         }
 
+        // Guard 6: Metadata already has markdown response
+        if PlanContentParser.extractMarkdownResponse(from: job.metadata) != nil {
+            return
+        }
+
+        // All guards passed - trigger conversion
         isConvertingToMarkdown = true
 
         Task {

@@ -462,7 +462,7 @@ impl SessionCache {
         };
 
         if dirty_sessions.is_empty() {
-            tracing::debug!("SessionCache flush skipped (no dirty)");
+            // No dirty sessions to flush - return silently to avoid log spam
             return Ok(());
         }
 

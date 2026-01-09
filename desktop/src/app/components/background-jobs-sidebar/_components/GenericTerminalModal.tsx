@@ -34,19 +34,29 @@ export const GenericTerminalModal: React.FC<GenericTerminalModalProps> = ({
   // Stabilize function references to avoid effect re-runs
   const startSessionRef = useRef(startSession);
   const getSessionRef = useRef(getSession);
+  const startInFlightRef = useRef(false);
   useEffect(() => {
     startSessionRef.current = startSession;
     getSessionRef.current = getSession;
   });
 
   useEffect(() => {
-    if (!open || !sessionId) return;
+    if (!open || !sessionId || startInFlightRef.current) return;
 
     const currentSession = getSessionRef.current(sessionId);
-    if (!currentSession || currentSession.status !== 'running') {
+    // Only start if session doesn't exist or is in a terminal state (not starting/running)
+    const needsStart = !currentSession ||
+      (currentSession.status !== 'running' &&
+       currentSession.status !== 'starting' &&
+       currentSession.status !== 'initializing');
+
+    if (needsStart) {
+      startInFlightRef.current = true;
       startSessionRef.current(sessionId, {
         jobId: sessionId,
         origin: 'adhoc'
+      }).finally(() => {
+        startInFlightRef.current = false;
       });
     }
   }, [open, sessionId]);

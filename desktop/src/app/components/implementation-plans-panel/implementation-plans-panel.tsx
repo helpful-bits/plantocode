@@ -198,13 +198,18 @@ export function ImplementationPlansPanel({
   useEffect(() => {
     const handleOpenPlanTerminal = (event: CustomEvent) => {
       const { jobId } = event.detail;
-      if (jobId) {
-        if (terminalPlanId === jobId) {
-          setIsTerminalVisible(true);
-        } else {
-          setTerminalPlanId(jobId);
-          setIsTerminalVisible(true);
-        }
+      if (!jobId) return;
+
+      // Idempotent guard: if already visible with same plan, do nothing
+      if (isTerminalVisible && terminalPlanId === jobId) {
+        return;
+      }
+
+      if (terminalPlanId === jobId) {
+        setIsTerminalVisible(true);
+      } else {
+        setTerminalPlanId(jobId);
+        setIsTerminalVisible(true);
       }
     };
 
@@ -212,7 +217,7 @@ export function ImplementationPlansPanel({
     return () => {
       window.removeEventListener('open-plan-terminal', handleOpenPlanTerminal as EventListener);
     };
-  }, [terminalPlanId]);
+  }, [terminalPlanId, isTerminalVisible]);
 
   // Listen for open-plan-content events
   useEffect(() => {
