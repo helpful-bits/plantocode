@@ -23,8 +23,8 @@ impl BackgroundJobRepository {
         let metadata_cost = if let Some(metadata_str) = &job.metadata {
             if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
                 metadata_json
-                    .get("task_data")
-                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .get("taskData")
+                    .and_then(|task_data| task_data.get("actualCost"))
                     .and_then(|v| v.as_f64())
             } else {
                 None
@@ -87,9 +87,9 @@ impl BackgroundJobRepository {
         // Update metadata to include the cost
         let updated_metadata = if let Some(metadata_str) = &job.metadata {
             if let Ok(mut metadata_json) = serde_json::from_str::<Value>(metadata_str) {
-                if let Some(task_data) = metadata_json.get_mut("task_data") {
+                if let Some(task_data) = metadata_json.get_mut("taskData") {
                     if let serde_json::Value::Object(task_map) = task_data {
-                        task_map.insert("actual_cost".to_string(), serde_json::json!(cost));
+                        task_map.insert("actualCost".to_string(), serde_json::json!(cost));
                     }
                 }
                 serde_json::to_string(&metadata_json).map_err(|e| {
@@ -98,8 +98,8 @@ impl BackgroundJobRepository {
             } else {
                 // Invalid JSON, create new metadata with cost
                 serde_json::to_string(&serde_json::json!({
-                    "task_data": {
-                        "actual_cost": cost
+                    "taskData": {
+                        "actualCost": cost
                     }
                 }))
                 .unwrap()
@@ -107,8 +107,8 @@ impl BackgroundJobRepository {
         } else {
             // No existing metadata, create new
             serde_json::to_string(&serde_json::json!({
-                "task_data": {
-                    "actual_cost": cost
+                "taskData": {
+                    "actualCost": cost
                 }
             }))
             .unwrap()

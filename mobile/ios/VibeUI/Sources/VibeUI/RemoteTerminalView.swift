@@ -136,7 +136,7 @@ public struct RemoteTerminalView: View {
         if outputCancellable != nil {
             Task {
                 defer { reattachInFlight = false }
-                try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
+                try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
             }
             return
         }
@@ -151,7 +151,7 @@ public struct RemoteTerminalView: View {
 
         Task {
             defer { reattachInFlight = false }
-            try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
+            try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
         }
     }
 
@@ -541,7 +541,7 @@ public struct RemoteTerminalView: View {
                     }
 
                     Task {
-                        try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: false)
+                        try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
                     }
 
                     if let termView = terminalController.terminalView {

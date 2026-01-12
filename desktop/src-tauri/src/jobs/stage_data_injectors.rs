@@ -198,8 +198,8 @@ impl StageDataInjector {
     ) -> (RegexFileFilterPayload, serde_json::Value) {
         let metadata = serde_json::json!({
             metadata_key: metadata_value,
-            "workflow_stage": "RegexFileFilter",
-            "created_at": chrono::Utc::now().timestamp_millis()
+            "workflowStage": "RegexFileFilter",
+            "createdAt": chrono::Utc::now().timestamp_millis()
         });
         
         (payload, metadata)

@@ -11,6 +11,7 @@ use crate::services::request_tracker::RequestTracker;
 use crate::utils::http_client::new_api_client;
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CancelRequestPayload {
     pub request_id: String,
 }
@@ -241,10 +242,10 @@ pub async fn get_request_status_handler(
     }
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
-        "request_id": tracked_request.request_id,
+        "requestId": tracked_request.request_id,
         "provider": tracked_request.provider,
         "status": "active",
-        "openai_response_id": tracked_request.openai_response_id,
-        "created_at": tracked_request.created_at,
+        "openaiResponseId": tracked_request.openai_response_id,
+        "createdAt": tracked_request.created_at,
     })))
 }

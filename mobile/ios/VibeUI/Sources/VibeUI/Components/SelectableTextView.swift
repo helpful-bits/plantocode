@@ -195,6 +195,7 @@ public struct SelectableTextView: UIViewRepresentable {
             uiView.layer.borderColor = UIColor(Color.border).cgColor
         }
 
+        let forceTextUpdate = forceApplySelection
         if singleLine {
             let sanitizedText = text.replacingOccurrences(of: "\n", with: " ")
             if uiView.text != sanitizedText {
@@ -202,7 +203,7 @@ public struct SelectableTextView: UIViewRepresentable {
             }
         } else {
             // Only update text if not actively editing to prevent cursor jumps
-            if uiView.text != text && !context.coordinator.isUserEditing && !context.coordinator.isUserTyping {
+            if uiView.text != text && (!context.coordinator.isUserEditing && !context.coordinator.isUserTyping || forceTextUpdate) {
                 uiView.text = text
             }
         }

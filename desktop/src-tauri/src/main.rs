@@ -4,7 +4,7 @@ use app::run;
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn main() {
-    fix_path_env::fix();
+    let _ = fix_path_env::fix();
     run();
 }
 

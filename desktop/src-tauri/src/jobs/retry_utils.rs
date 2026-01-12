@@ -12,7 +12,7 @@ pub const MAX_RETRY_COUNT: u32 = 3;
 pub fn get_retry_count_from_job(job: &BackgroundJob) -> Option<u32> {
     if let Some(metadata_str) = &job.metadata {
         if let Ok(ui_metadata) = serde_json::from_str::<JobUIMetadata>(metadata_str) {
-            if let Some(retry_count) = ui_metadata.task_data.get("retry_count") {
+            if let Some(retry_count) = ui_metadata.task_data.get("retryCount") {
                 return retry_count.as_u64().map(|c| c as u32);
             }
         }
@@ -45,19 +45,19 @@ pub async fn prepare_retry_metadata(
 
     // Add retry information to task_data
     let retry_info = json!({
-        "retry_count": new_retry_count,
-        "error_type": format!("{:?}", error),
-        "error_message": error.to_string(),
-        "last_retry_at": chrono::Utc::now().to_rfc3339()
+        "retryCount": new_retry_count,
+        "errorType": format!("{:?}", error),
+        "errorMessage": error.to_string(),
+        "lastRetryAt": chrono::Utc::now().to_rfc3339()
     });
 
     if let serde_json::Value::Object(ref mut task_map) = ui_metadata.task_data {
-        task_map.insert("retry_count".to_string(), json!(new_retry_count));
-        task_map.insert("retry_info".to_string(), retry_info);
+        task_map.insert("retryCount".to_string(), json!(new_retry_count));
+        task_map.insert("retryInfo".to_string(), retry_info);
     } else {
         ui_metadata.task_data = json!({
-            "retry_count": new_retry_count,
-            "retry_info": retry_info
+            "retryCount": new_retry_count,
+            "retryInfo": retry_info
         });
     }
 

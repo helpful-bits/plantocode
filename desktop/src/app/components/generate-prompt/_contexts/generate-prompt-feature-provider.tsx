@@ -46,6 +46,8 @@ export function GeneratePromptFeatureProvider({
 
   // Token estimation state
   const [tokenEstimate, setTokenEstimate] = useState<TokenEstimate | null>(null);
+  const tokenEstimateRunIdRef = useRef(0);
+  const lastTokenEstimateSessionIdRef = useRef<string | null>(null);
 
   // State management hooks
 
@@ -144,18 +146,27 @@ export function GeneratePromptFeatureProvider({
 
   // Token estimation effect (debounced)
   useEffect(() => {
+    const runId = ++tokenEstimateRunIdRef.current;
     const taskDescription = sessionState.currentSession?.taskDescription;
     const includedFiles = sessionState.currentSession?.includedFiles;
     const sessionId = sessionState.currentSession?.id;
     const isSessionLoading = sessionState.isSessionLoading;
+    const model = runtimeConfig?.tasks?.task_refinement?.model;
+    const sessionKey = sessionId ?? null;
+
+    if (lastTokenEstimateSessionIdRef.current !== sessionKey) {
+      lastTokenEstimateSessionIdRef.current = sessionKey;
+      setTokenEstimate(null);
+    }
 
     // Skip estimation if session is loading - wait for complete session data
     // This prevents stale/low estimates when includedFiles hasn't loaded yet
     if (isSessionLoading) {
+      setTokenEstimate(null);
       return;
     }
 
-    if (!taskDescription || !taskDescription.trim() || !sessionId) {
+    if (!taskDescription || !taskDescription.trim() || !sessionId || !projectDirectory || !model) {
       setTokenEstimate(null);
       return;
     }
@@ -165,11 +176,15 @@ export function GeneratePromptFeatureProvider({
         const result = await estimatePromptTokensAction({
           sessionId,
           taskDescription,
-          projectDirectory: projectDirectory || "",
+          projectDirectory,
           relevantFiles: includedFiles && includedFiles.length > 0 ? includedFiles : [],
           taskType: "task_refinement",
-          model: runtimeConfig?.tasks?.task_refinement?.model || runtimeConfig?.tasks?.taskRefinement?.model || ""
+          model
         });
+
+        if (runId !== tokenEstimateRunIdRef.current) {
+          return;
+        }
 
         if (result.isSuccess && result.data) {
           setTokenEstimate(result.data);
@@ -177,6 +192,9 @@ export function GeneratePromptFeatureProvider({
           setTokenEstimate(null);
         }
       } catch (error) {
+        if (runId !== tokenEstimateRunIdRef.current) {
+          return;
+        }
         console.error("Failed to estimate tokens:", error);
         setTokenEstimate(null);
       }

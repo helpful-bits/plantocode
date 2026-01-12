@@ -189,14 +189,14 @@ extension RegisteredDevice {
 
         let deviceCapabilities = dto.capabilities?.value as? [String: Any]
         let capabilities = DeviceCapabilities(
-            supportsVoice: deviceCapabilities?["supports_voice"] as? Bool ?? false,
-            supportsMerge: deviceCapabilities?["supports_merge"] as? Bool ?? false,
-            supportsFileSearch: deviceCapabilities?["supports_file_search"] as? Bool ?? false,
-            supportsResearch: deviceCapabilities?["supports_research"] as? Bool ?? false,
-            supportsTasks: deviceCapabilities?["supports_tasks"] as? Bool ?? false,
-            supportsPlans: deviceCapabilities?["supports_plans"] as? Bool ?? false,
-            maxConcurrentJobs: deviceCapabilities?["max_concurrent_jobs"] as? UInt32 ?? 5,
-            priorityLevel: deviceCapabilities?["priority_level"] as? UInt8 ?? 5,
+            supportsVoice: deviceCapabilities?["supportsVoice"] as? Bool ?? false,
+            supportsMerge: deviceCapabilities?["supportsMerge"] as? Bool ?? false,
+            supportsFileSearch: deviceCapabilities?["supportsFileSearch"] as? Bool ?? false,
+            supportsResearch: deviceCapabilities?["supportsResearch"] as? Bool ?? false,
+            supportsTasks: deviceCapabilities?["supportsTasks"] as? Bool ?? false,
+            supportsPlans: deviceCapabilities?["supportsPlans"] as? Bool ?? false,
+            maxConcurrentJobs: deviceCapabilities?["maxConcurrentJobs"] as? UInt32 ?? 5,
+            priorityLevel: deviceCapabilities?["priorityLevel"] as? UInt8 ?? 5,
             activeProjectDirectory: deviceCapabilities?["activeProjectDirectory"] as? String
         )
 

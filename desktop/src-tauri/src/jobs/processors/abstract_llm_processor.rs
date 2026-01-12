@@ -1,6 +1,6 @@
 use chrono;
 use log::{debug, info, warn};
-use serde_json::Value;
+use serde_json::json;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
@@ -70,6 +70,45 @@ impl LlmTaskRunner {
         &self.config
     }
 
+    async fn annotate_codex_cli_usage(
+        &self,
+        settings_repo: &crate::db_utils::SettingsRepository,
+    ) {
+        let model = self.config.model.to_lowercase();
+        if !model.starts_with("openai/") && !model.starts_with("openai:") {
+            return;
+        }
+
+        let is_enabled = settings_repo
+            .get_bool_setting("codex_cli_enabled")
+            .await
+            .ok()
+            .flatten()
+            .unwrap_or(false);
+        if !is_enabled {
+            return;
+        }
+
+        if let Some(repo) = self
+            .app_handle
+            .try_state::<Arc<crate::db_utils::BackgroundJobRepository>>()
+        {
+            let patch = json!({
+                "taskData": {
+                    "executionRoute": "codex_cli",
+                    "billingSource": "subscription"
+                }
+            });
+
+            if let Err(e) = repo.update_job_metadata(&self.job.id, &patch).await {
+                warn!(
+                    "Failed to annotate Codex CLI usage for job {}: {}",
+                    self.job.id, e
+                );
+            }
+        }
+    }
+
     /// Execute a non-streaming LLM task with unified prompt building
     pub async fn execute_llm_task(
         &self,
@@ -77,6 +116,7 @@ impl LlmTaskRunner {
         settings_repo: &crate::db_utils::SettingsRepository,
     ) -> AppResult<LlmTaskResult> {
         debug!("Executing LLM task for job {}", self.job.id);
+        self.annotate_codex_cli_usage(settings_repo).await;
 
         // Build unified prompt
         let composed_prompt = self.build_prompt(context).await?;
@@ -168,6 +208,7 @@ impl LlmTaskRunner {
         job_id: &str,
     ) -> AppResult<LlmTaskResult> {
         debug!("Executing streaming LLM task for job {}", self.job.id);
+        self.annotate_codex_cli_usage(settings_repo).await;
 
         // Fetch the current job's metadata before starting the stream
         let initial_db_job = repo.get_job_by_id(job_id).await?.ok_or_else(|| {

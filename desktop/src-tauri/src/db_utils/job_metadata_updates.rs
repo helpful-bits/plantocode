@@ -9,7 +9,7 @@ pub async fn update_job_request_id(
     request_id: &str,
 ) -> AppResult<()> {
     let patch = json!({
-        "request_id": request_id
+        "requestId": request_id
     });
 
     repo.update_job_metadata(job_id, &patch).await

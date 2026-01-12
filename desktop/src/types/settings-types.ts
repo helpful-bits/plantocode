@@ -5,5 +5,5 @@
  */
 
 export interface DeviceSettings {
-  allow_remote_access: boolean;
+  allowRemoteAccess: boolean;
 }

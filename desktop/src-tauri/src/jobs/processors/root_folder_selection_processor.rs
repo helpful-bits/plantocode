@@ -116,7 +116,7 @@ impl JobProcessor for RootFolderSelectionProcessor {
             .collect();
 
         let result_json = json!({
-            "root_directories": filtered_paths
+            "rootDirectories": filtered_paths
         });
 
         debug!("Filtered root directories: {:?}", result_json);

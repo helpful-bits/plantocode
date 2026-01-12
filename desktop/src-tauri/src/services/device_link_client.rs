@@ -1,7 +1,9 @@
 use crate::auth::{device_id_manager, header_utils, token_manager::TokenManager};
 use crate::db_utils::SettingsRepository;
+use crate::db_utils::session_repository::SessionRepository;
 use crate::error::AppError;
 use crate::remote_api::desktop_command_handler;
+use crate::remote_api::error::RpcError;
 use crate::remote_api::types::{RpcRequest, RpcResponse, UserContext};
 use futures_util::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
@@ -10,6 +12,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Listener, Manager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::{
@@ -22,14 +25,23 @@ use url::Url;
 static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
 
 // Maximum pending bytes per terminal session before trimming
-const MAX_PENDING_BYTES: usize = 1_048_576; // 1 MiB cap
+const MAX_PENDING_BYTES: usize = 2 * 1_048_576; // 2 MiB cap
 
-const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
+const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 64 * 1024;
 
 // Batching configuration for terminal output
-// This prevents flooding mobile with hundreds of small WebSocket frames per second
-const BATCH_FLUSH_INTERVAL_MS: u64 = 50; // Flush every 50ms
-const BATCH_SIZE_THRESHOLD: usize = 32 * 1024; // Flush immediately if buffer exceeds 32KB
+// Lower frame rate reduces network churn and improves stability on flaky links
+const BATCH_FLUSH_INTERVAL_MS: u64 = 4000; // Flush every 4000ms (~0.25 fps max)
+const BATCH_SIZE_THRESHOLD: usize = 256 * 1024; // Flush immediately if buffer exceeds 256KB
+
+// Low-bandwidth heuristics for terminal streaming
+const LOW_BANDWIDTH_WINDOW_SECS: u64 = 120;
+const LOW_BANDWIDTH_THRESHOLD: usize = 2;
+const LOW_BANDWIDTH_SKIP_SNAPSHOT_THRESHOLD: usize = 3;
+const LOW_BANDWIDTH_BATCH_FLUSH_INTERVAL_MS: u64 = 6000;
+const LOW_BANDWIDTH_SNAPSHOT_BYTES: usize = 32 * 1024;
+const EVENT_ACK_DEBOUNCE_MS: u64 = 1000;
+const EVENT_ACK_BATCH_SIZE: u64 = 10;
 
 /// PTC1 binary framing sentinel: "PTC1" in ASCII
 /// Format: [0x50, 0x54, 0x43, 0x31][session_id_length: u16 big-endian][session_id bytes][payload]
@@ -51,14 +63,55 @@ fn wrap_with_ptc1_frame(session_id: &str, data: &[u8]) -> Vec<u8> {
     frame
 }
 
+fn find_snake_case_key(value: &Value) -> Option<String> {
+    fn visit(value: &Value, path: &str) -> Option<String> {
+        match value {
+            Value::Object(map) => {
+                for (key, nested) in map {
+                    let next_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{}.{}", path, key)
+                    };
+                    if key.contains('_') {
+                        return Some(next_path);
+                    }
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            Value::Array(items) => {
+                for (idx, nested) in items.iter().enumerate() {
+                    let next_path = if path.is_empty() {
+                        format!("[{}]", idx)
+                    } else {
+                        format!("{}[{}]", path, idx)
+                    };
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    visit(value, "")
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RelayEnvelope {
     #[serde(rename = "type")]
     pub kind: String,
     pub payload: serde_json::Value,
-    #[serde(default)]
-    pub target_device_id: Option<String>,
+    #[serde(default, rename = "eventId")]
+    pub event_id: Option<u64>,
+    #[serde(default, rename = "sourceDeviceId")]
+    pub source_device_id: Option<String>,
     #[serde(default)]
     pub timestamp: Option<String>,
 }
@@ -66,10 +119,12 @@ struct RelayEnvelope {
 /// Session data to persist across restarts for connection resumption
 #[derive(Debug, Serialize, Deserialize)]
 struct DeviceLinkSession {
-    #[serde(rename = "sessionId")]
-    session_id: String,
-    #[serde(rename = "resumeToken")]
-    resume_token: String,
+    #[serde(default, rename = "sessionId", skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
+    #[serde(default, rename = "resumeToken", skip_serializing_if = "Option::is_none")]
+    resume_token: Option<String>,
+    #[serde(default, rename = "lastEventId", skip_serializing_if = "Option::is_none")]
+    last_event_id: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,6 +137,8 @@ pub struct RegisterPayload {
     pub session_id: Option<String>,
     #[serde(rename = "resumeToken", skip_serializing_if = "Option::is_none")]
     pub resume_token: Option<String>,
+    #[serde(rename = "lastEventId", skip_serializing_if = "Option::is_none")]
+    pub last_event_id: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,17 +160,17 @@ pub enum DeviceLinkMessage {
     Register {
         payload: RegisterPayload,
     },
-    #[serde(rename = "relay_response")]
-    RelayResponse {
-        #[serde(rename = "clientId")]
-        client_id: String,
-        response: RpcResponse,
+    #[serde(rename = "event-ack")]
+    EventAck {
+        payload: EventAckPayload,
+    },
+    #[serde(rename = "rpc.response")]
+    RpcResponse {
+        payload: RpcResponsePayload,
     },
     #[serde(rename = "event")]
     Event {
-        #[serde(rename = "eventType")]
-        event_type: String,
-        payload: Value,
+        payload: EventPayload,
     },
     #[serde(rename = "heartbeat")]
     Heartbeat {
@@ -125,6 +182,49 @@ pub enum DeviceLinkMessage {
     Pong,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventPayload {
+    #[serde(rename = "eventType")]
+    pub event_type: String,
+    pub payload: Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventAckPayload {
+    #[serde(rename = "lastEventId")]
+    pub last_event_id: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcRequestPayload {
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    #[serde(rename = "userId")]
+    pub user_id: Option<String>,
+    pub id: String,
+    pub method: String,
+    #[serde(default)]
+    pub params: Value,
+    #[serde(rename = "idempotencyKey")]
+    pub idempotency_key: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RpcResponsePayload {
+    #[serde(rename = "clientId")]
+    pub client_id: String,
+    pub id: String,
+    #[serde(default)]
+    pub result: Option<Value>,
+    #[serde(default)]
+    pub error: Option<crate::remote_api::error::RpcError>,
+    #[serde(default)]
+    pub is_final: bool,
+}
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ServerMessage {
@@ -150,13 +250,9 @@ pub enum ServerMessage {
         #[serde(default)]
         code: Option<String>,
     },
-    #[serde(rename = "relay")]
-    Relay {
-        #[serde(rename = "clientId")]
-        client_id: String,
-        #[serde(rename = "userId")]
-        user_id: Option<String>,
-        request: RpcRequest,
+    #[serde(rename = "rpc.request")]
+    RpcRequest {
+        payload: RpcRequestPayload,
     },
     #[serde(rename = "ping")]
     Ping,
@@ -194,7 +290,12 @@ fn load_session(app_handle: &tauri::AppHandle) -> Option<DeviceLinkSession> {
     match std::fs::read_to_string(&session_path) {
         Ok(content) => match serde_json::from_str::<DeviceLinkSession>(&content) {
             Ok(session) => {
-                info!("Loaded persisted session: session_id={}", session.session_id);
+                let session_id = session.session_id.clone().unwrap_or_default();
+                if session_id.is_empty() {
+                    info!("Loaded persisted session metadata without resume credentials");
+                } else {
+                    info!("Loaded persisted session: session_id={}", session_id);
+                }
                 Some(session)
             }
             Err(e) => {
@@ -237,7 +338,12 @@ fn save_session(app_handle: &tauri::AppHandle, sess: &DeviceLinkSession) {
                     if let Err(e) = std::fs::write(&session_path, json) {
                         error!("Failed to write session file: {}", e);
                     } else {
-                        info!("Saved session to disk: session_id={}", sess.session_id);
+                        let session_id = sess.session_id.clone().unwrap_or_default();
+                        if session_id.is_empty() {
+                            info!("Saved session metadata without resume credentials");
+                        } else {
+                            info!("Saved session to disk: session_id={}", session_id);
+                        }
                     }
                 }
                 Err(e) => {
@@ -251,7 +357,69 @@ fn save_session(app_handle: &tauri::AppHandle, sess: &DeviceLinkSession) {
     }
 }
 
-/// Delete persisted session file (e.g., on invalid_resume error)
+fn clear_session_credentials(app_handle: &tauri::AppHandle) {
+    let session_path = match session_file_path(app_handle) {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+
+    if !session_path.exists() {
+        return;
+    }
+
+    let content = match std::fs::read_to_string(&session_path) {
+        Ok(content) => content,
+        Err(_) => return,
+    };
+
+    let mut session: DeviceLinkSession = match serde_json::from_str(&content) {
+        Ok(session) => session,
+        Err(_) => return,
+    };
+
+    session.session_id = None;
+    session.resume_token = None;
+    if let Ok(json) = serde_json::to_string_pretty(&session) {
+        let _ = std::fs::write(&session_path, json);
+    }
+}
+
+fn persist_last_event_id(app_handle: &tauri::AppHandle, event_id: u64) {
+    if event_id == 0 {
+        return;
+    }
+
+    let session_path = match session_file_path(app_handle) {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+
+    if !session_path.exists() {
+        return;
+    }
+
+    let content = match std::fs::read_to_string(&session_path) {
+        Ok(content) => content,
+        Err(_) => return,
+    };
+
+    let mut session: DeviceLinkSession = match serde_json::from_str(&content) {
+        Ok(session) => session,
+        Err(_) => return,
+    };
+
+    let last_event_id = session.last_event_id.unwrap_or(0);
+    if last_event_id >= event_id {
+        return;
+    }
+
+    session.last_event_id = Some(event_id);
+    if let Ok(json) = serde_json::to_string_pretty(&session) {
+        let _ = std::fs::write(&session_path, json);
+    }
+}
+
+/// Delete persisted session file (e.g., on invalidResume error)
 fn delete_session(app_handle: &tauri::AppHandle) {
     if let Ok(session_path) = session_file_path(app_handle) {
         if session_path.exists() {
@@ -282,9 +450,15 @@ pub struct DeviceLinkClient {
     binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     event_listener_id: Mutex<Option<tauri::EventId>>,
     pending_binary_by_session: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    binding_sessions: Mutex<std::collections::HashSet<String>>,
     /// Batch buffer for terminal output - accumulates data before sending to reduce frame count
     /// This is separate from pending_binary_by_session which holds data for unbound sessions
     batch_buffer_by_session: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
+    recent_disconnects: Mutex<Vec<Instant>>,
+    last_event_id: AtomicU64,
+    last_ack_sent_id: AtomicU64,
+    last_ack_sent_at: Mutex<Instant>,
+    last_event_persisted_id: AtomicU64,
 }
 
 impl DeviceLinkClient {
@@ -296,7 +470,13 @@ impl DeviceLinkClient {
             binary_sender: Mutex::new(None),
             event_listener_id: Mutex::new(None),
             pending_binary_by_session: Mutex::new(std::collections::HashMap::new()),
+            binding_sessions: Mutex::new(std::collections::HashSet::new()),
             batch_buffer_by_session: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            recent_disconnects: Mutex::new(Vec::new()),
+            last_event_id: AtomicU64::new(0),
+            last_ack_sent_id: AtomicU64::new(0),
+            last_ack_sent_at: Mutex::new(Instant::now()),
+            last_event_persisted_id: AtomicU64::new(0),
         }
     }
 
@@ -320,6 +500,111 @@ impl DeviceLinkClient {
             info!("Updating DeviceLinkClient server URL to {}", server_url);
             *guard = server_url;
         }
+    }
+
+    fn record_disconnect(&self) {
+        let now = Instant::now();
+        let mut disconnects = self.recent_disconnects.lock().unwrap();
+        disconnects.retain(|t| now.duration_since(*t) <= Duration::from_secs(LOW_BANDWIDTH_WINDOW_SECS));
+        disconnects.push(now);
+    }
+
+    fn recent_disconnect_count(&self) -> usize {
+        let now = Instant::now();
+        let mut disconnects = self.recent_disconnects.lock().unwrap();
+        disconnects.retain(|t| now.duration_since(*t) <= Duration::from_secs(LOW_BANDWIDTH_WINDOW_SECS));
+        disconnects.len()
+    }
+
+    fn note_event_id(
+        &self,
+        event_id: u64,
+        tx: &mpsc::UnboundedSender<DeviceLinkMessage>,
+    ) {
+        let current = self.last_event_id.load(Ordering::Relaxed);
+        if event_id > current {
+            self.last_event_id.store(event_id, Ordering::Relaxed);
+        }
+
+        let last_ack = self.last_ack_sent_id.load(Ordering::Relaxed);
+        if event_id <= last_ack {
+            return;
+        }
+
+        let now = Instant::now();
+        let mut last_ack_at = self.last_ack_sent_at.lock().unwrap();
+        let should_send = event_id.saturating_sub(last_ack) >= EVENT_ACK_BATCH_SIZE
+            || now.duration_since(*last_ack_at) >= Duration::from_millis(EVENT_ACK_DEBOUNCE_MS);
+
+        if should_send {
+            self.last_ack_sent_id.store(event_id, Ordering::Relaxed);
+            *last_ack_at = now;
+            let _ = tx.send(DeviceLinkMessage::EventAck {
+                payload: EventAckPayload {
+                    last_event_id: event_id,
+                },
+            });
+
+            let last_persisted = self.last_event_persisted_id.load(Ordering::Relaxed);
+            if event_id > last_persisted {
+                self.last_event_persisted_id.store(event_id, Ordering::Relaxed);
+                persist_last_event_id(&self.app_handle, event_id);
+            }
+        }
+    }
+
+    async fn build_session_snapshot(app_handle: &AppHandle) -> Option<Value> {
+        let pool = app_handle.try_state::<Arc<sqlx::SqlitePool>>()?.inner().clone();
+        let settings_repo = SettingsRepository::new(pool.clone());
+        let session_repo = SessionRepository::new(pool);
+
+        let active_session_id = settings_repo.get_active_session_id().await.ok().flatten()?;
+        let session = session_repo.get_session_by_id(&active_session_id).await.ok().flatten()?;
+        let session_json = serde_json::to_value(&session).ok()?;
+
+        let mut snapshot = serde_json::Map::new();
+        snapshot.insert("sessionId".to_string(), serde_json::Value::String(session.id.clone()));
+        snapshot.insert("session".to_string(), session_json);
+
+        if let Ok(task_state) = session_repo.get_task_history_state(&active_session_id).await {
+            snapshot.insert(
+                "taskHistory".to_string(),
+                serde_json::json!({
+                    "version": task_state.version,
+                    "checksum": task_state.checksum
+                }),
+            );
+        }
+
+        if let Ok(file_state) = session_repo.get_file_history_state(&active_session_id).await {
+            snapshot.insert(
+                "fileHistory".to_string(),
+                serde_json::json!({
+                    "version": file_state.version,
+                    "checksum": file_state.checksum
+                }),
+            );
+        }
+
+        Some(serde_json::Value::Object(snapshot))
+    }
+
+    async fn send_session_snapshot(
+        app_handle: &AppHandle,
+        tx: &mpsc::UnboundedSender<DeviceLinkMessage>,
+    ) {
+        let Some(payload) = Self::build_session_snapshot(app_handle).await else {
+            return;
+        };
+
+        let msg = DeviceLinkMessage::Event {
+            payload: EventPayload {
+                event_type: "session-snapshot".to_string(),
+                payload,
+            },
+        };
+
+        let _ = tx.send(msg);
     }
 
     /// Start the device link client and connect to the server
@@ -408,6 +693,26 @@ impl DeviceLinkClient {
             .map_err(|e| AppError::NetworkError(format!("WebSocket connection failed: {}", e)))?;
 
         let (mut ws_sender, mut ws_receiver) = ws_stream.split();
+        let disconnect_count = self.recent_disconnect_count();
+        let low_bandwidth_mode = disconnect_count >= LOW_BANDWIDTH_THRESHOLD;
+        let skip_snapshot = disconnect_count >= LOW_BANDWIDTH_SKIP_SNAPSHOT_THRESHOLD;
+        let flush_interval_ms = if low_bandwidth_mode {
+            LOW_BANDWIDTH_BATCH_FLUSH_INTERVAL_MS
+        } else {
+            BATCH_FLUSH_INTERVAL_MS
+        };
+        let snapshot_limit = if low_bandwidth_mode {
+            LOW_BANDWIDTH_SNAPSHOT_BYTES
+        } else {
+            MAX_TERMINAL_SNAPSHOT_BYTES
+        };
+
+        if low_bandwidth_mode {
+            info!(
+                "Low-bandwidth mode enabled for terminal streaming (recent_disconnects={})",
+                disconnect_count
+            );
+        }
 
         // Create message channel
         let (tx, mut rx) = mpsc::unbounded_channel::<DeviceLinkMessage>();
@@ -451,15 +756,27 @@ impl DeviceLinkClient {
                     return;
                 }
 
+                let payload_value = event_payload.unwrap().clone();
+
                 // Validate JSON encodability
-                if serde_json::to_string(event_payload.unwrap()).is_err() {
+                if serde_json::to_string(&payload_value).is_err() {
                     warn!("Dropping device-link-event: payload not JSON-encodable");
                     return;
                 }
 
+                if let Some(path) = find_snake_case_key(&payload_value) {
+                    error!(
+                        "Dropping device-link-event: snake_case key detected at {}",
+                        path
+                    );
+                    return;
+                }
+
                 let msg = DeviceLinkMessage::Event {
-                    event_type: event_type.unwrap().to_string(),
-                    payload: event_payload.unwrap().clone(),
+                    payload: EventPayload {
+                        event_type: event_type.unwrap().to_string(),
+                        payload: payload_value,
+                    },
                 };
 
                 if let Err(e) = tx_for_events.send(msg) {
@@ -477,18 +794,39 @@ impl DeviceLinkClient {
 
         // Load persisted session if available for resumption
         let persisted_session = load_session(&self.app_handle);
+        if let Some(last_event_id) = persisted_session.as_ref().and_then(|s| s.last_event_id) {
+            self.last_event_id.store(last_event_id, Ordering::Relaxed);
+            self.last_ack_sent_id.store(last_event_id, Ordering::Relaxed);
+            self.last_event_persisted_id.store(last_event_id, Ordering::Relaxed);
+        }
+        let last_event_id = self.last_event_id.load(Ordering::Relaxed);
+        let resume_credentials = persisted_session.as_ref().and_then(|session| {
+            let session_id = session.session_id.as_ref().and_then(|id| {
+                let trimmed = id.trim();
+                if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+            });
+            let resume_token = session.resume_token.as_ref().and_then(|token| {
+                let trimmed = token.trim();
+                if trimmed.is_empty() { None } else { Some(trimmed.to_string()) }
+            });
+            match (session_id, resume_token) {
+                (Some(session_id), Some(resume_token)) => Some((session_id, resume_token)),
+                _ => None,
+            }
+        });
 
         // Send register message with optional session resumption data
         let register_msg = DeviceLinkMessage::Register {
             payload: RegisterPayload {
                 device_id: device_id.clone(),
                 device_name,
-                session_id: persisted_session.as_ref().map(|s| s.session_id.clone()),
-                resume_token: persisted_session.as_ref().map(|s| s.resume_token.clone()),
+                session_id: resume_credentials.as_ref().map(|(session_id, _)| session_id.clone()),
+                resume_token: resume_credentials.as_ref().map(|(_, resume_token)| resume_token.clone()),
+                last_event_id: if last_event_id > 0 { Some(last_event_id) } else { None },
             },
         };
 
-        if persisted_session.is_some() {
+        if resume_credentials.is_some() {
             info!("Attempting to resume previous session");
         }
 
@@ -511,7 +849,7 @@ impl DeviceLinkClient {
             let batch_buffers = Arc::clone(&self.batch_buffer_by_session);
             tokio::spawn(async move {
                 let mut flush_interval = tokio::time::interval(
-                    tokio::time::Duration::from_millis(BATCH_FLUSH_INTERVAL_MS)
+                    tokio::time::Duration::from_millis(flush_interval_ms)
                 );
                 // Don't tick immediately on start
                 flush_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -615,7 +953,10 @@ impl DeviceLinkClient {
                                 if let Some(session_id_str) = session_id_opt {
                                     let session_id = session_id_str.to_string();
 
-                                    // Add session to bound set (supports multiple concurrent sessions)
+                                    if let Ok(mut binding) = this.binding_sessions.lock() {
+                                        binding.insert(session_id.clone());
+                                    }
+
                                     if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
                                         let was_new = bound_sessions.insert(session_id.clone());
                                         if was_new {
@@ -627,164 +968,157 @@ impl DeviceLinkClient {
                                         error!("Failed to lock bound_session_ids mutex");
                                     }
 
-                                    if include_snapshot {
+                                    let has_pending = {
+                                        let pending = this.pending_binary_by_session.lock().unwrap();
+                                        pending.get(&session_id).map(|buf| !buf.is_empty()).unwrap_or(false)
+                                    };
+
+                                    let should_send_snapshot = include_snapshot && !has_pending && !skip_snapshot;
+                                    if should_send_snapshot {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
-                                            if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(MAX_TERMINAL_SNAPSHOT_BYTES)) {
+                                            if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(snapshot_limit)) {
                                                 if !snapshot.is_empty() {
-                                                    // Wrap snapshot with PTC1 framing for multi-session support
                                                     let framed_snapshot = wrap_with_ptc1_frame(&session_id, &snapshot);
                                                     info!("Binary uplink: sending snapshot for session {}, {} bytes (framed: {})", session_id, snapshot.len(), framed_snapshot.len());
                                                     let _ = bin_tx_for_receiver.send(framed_snapshot);
                                                 }
                                             }
                                         }
+                                    } else if include_snapshot && skip_snapshot {
+                                        info!(
+                                            "Binary uplink: skipping snapshot for session {} (low-bandwidth mode)",
+                                            session_id
+                                        );
                                     }
 
-                                    // Always drop pending data on bind - mobile should only receive live output
-                                    // This prevents "endless scrolling" from accumulated historical data
-                                    let mut pending = this.pending_binary_by_session.lock().unwrap();
-                                    if let Some(buffer) = pending.remove(&session_id) {
-                                        if !buffer.is_empty() {
-                                            info!("Binary uplink: dropping {} pending bytes for session {} (mobile bind)", buffer.len(), session_id);
-                                        }
+                                    this.flush_pending_for_session(&session_id, &bin_tx_for_receiver);
+
+                                    if let Ok(mut binding) = this.binding_sessions.lock() {
+                                        binding.remove(&session_id);
                                     }
                                 } else {
                                     warn!("Binary uplink: no sessionId provided in bind request");
                                 }
                             } else if env.kind == "terminal.binary.unbind" {
-                                // Handle terminal binary unbind request
                                 let session_id = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 info!("Bound terminal: unbind requested for sessionId={:?}", session_id);
 
                                 if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
                                     if let Some(sid) = session_id {
-                                        // Remove specific session from bound set
                                         if bound_sessions.remove(sid) {
                                             info!("Removed session {} from bound set (remaining: {})", sid, bound_sessions.len());
                                         } else {
                                             info!("Session {} was not in bound set", sid);
                                         }
                                     } else {
-                                        // No sessionId provided - clear all (backward compatibility)
                                         let count = bound_sessions.len();
                                         bound_sessions.clear();
                                         info!("Cleared all {} bound sessions", count);
                                     }
                                 }
-                            } else if env.kind == "device-status" {
-                                // Forward device status changes to local event bus
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": "device-status",
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit device-status event: {}", e);
-                                }
-                            } else if env.kind == "device-unlinked" {
-                                // Forward device unlinked events to local event bus
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": "device-unlinked",
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit device-unlinked event: {}", e);
-                                }
-                            } else if env.kind.starts_with("job:") {
-                                // Forward job events to local event bus
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": env.kind,
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit job event: {}", e);
+
+                                if let Ok(mut binding) = this.binding_sessions.lock() {
+                                    if let Some(sid) = session_id {
+                                        binding.remove(sid);
+                                    } else {
+                                        binding.clear();
+                                    }
                                 }
 
-                                // Also emit canonical job:* event locally so frontend listeners receive it
-                                let _ = app_handle.emit(&env.kind, env.payload.clone());
-                            } else if ["session-updated", "session-files-updated", "session-file-browser-state-updated",
-                                       "session-history-synced", "session-created", "session-deleted", "session:auto-files-applied"]
-                                       .contains(&env.kind.as_str()) {
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": env.kind,
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit session event: {}", e);
+                                this.clear_terminal_buffers_for_session(session_id);
+                            } else if env.kind == "event" {
+                                let event_type = env.payload.get("eventType").and_then(|v| v.as_str()).unwrap_or("");
+                                let inner_payload = env.payload.get("payload").cloned().unwrap_or_else(|| serde_json::Value::Null);
+
+                                if let Some(event_id) = env.event_id {
+                                    this.note_event_id(event_id, &tx_for_receiver);
                                 }
-                            } else if env.kind == "active-session-changed" {
-                                // Emit device-link-event with relayOrigin marker
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": "active-session-changed",
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit active-session-changed device-link-event: {}", e);
+
+                                if event_type.is_empty() {
+                                    warn!("Received event without eventType");
+                                    continue;
                                 }
-                                // Emit canonical active-session-changed event
-                                if let Err(e) = app_handle.emit("active-session-changed", env.payload) {
-                                    error!("Failed to emit active-session-changed event: {}", e);
+
+                                if let Some(path) = find_snake_case_key(&inner_payload) {
+                                    error!(
+                                        "Dropping relay event with snake_case key at {} (eventType={})",
+                                        path,
+                                        event_type
+                                    );
+                                    continue;
                                 }
-                            } else if env.kind == "project-directory-updated" {
-                                // Forward project directory changes from relay to frontend
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": "project-directory-updated",
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to emit project-directory-updated device-link-event: {}", e);
-                                }
-                            } else if env.kind == "history-state-changed" {
-                                // Forward history state changes from relay to frontend
-                                if let Err(e) = app_handle.emit("device-link-event", json!({
-                                    "type": "history-state-changed",
-                                    "payload": env.payload,
-                                    "relayOrigin": "remote"
-                                })) {
-                                    error!("Failed to relay history-state-changed: {}", e);
+
+                                if event_type == "event-replay-gap" {
+                                    warn!("Relay replay gap detected: {}", inner_payload);
+                                    let _ = app_handle.emit("device-link-event", json!({
+                                        "type": "event-replay-gap",
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    }));
+                                } else if event_type == "device-status" || event_type == "device-unlinked" {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": event_type,
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to emit {} event: {}", event_type, e);
+                                    }
+                                } else if event_type.starts_with("job:") {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": event_type,
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to emit job event: {}", e);
+                                    }
+                                    let _ = app_handle.emit(event_type, inner_payload.clone());
+                                } else if ["session-updated", "session-files-updated", "session-task-updated",
+                                           "session-file-browser-state-updated", "session-created", "session-deleted",
+                                           "session-snapshot"]
+                                           .contains(&event_type) {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": event_type,
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to emit session event: {}", e);
+                                    }
+                                } else if event_type == "active-session-changed" {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": "active-session-changed",
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to emit active-session-changed device-link-event: {}", e);
+                                    }
+                                    if let Err(e) = app_handle.emit("active-session-changed", inner_payload) {
+                                        error!("Failed to emit active-session-changed event: {}", e);
+                                    }
+                                } else if event_type == "project-directory-updated" {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": "project-directory-updated",
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to emit project-directory-updated device-link-event: {}", e);
+                                    }
+                                } else if event_type == "history-state-changed" {
+                                    if let Err(e) = app_handle.emit("device-link-event", json!({
+                                        "type": "history-state-changed",
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    })) {
+                                        error!("Failed to relay history-state-changed: {}", e);
+                                    }
+                                } else {
+                                    let _ = app_handle.emit("device-link-event", json!({
+                                        "type": event_type,
+                                        "payload": inner_payload,
+                                        "relayOrigin": "remote"
+                                    }));
                                 }
                             }
-                            // Continue to next message
                             continue;
-                        }
-
-                        // Legacy compatibility shim: handle messageType-based messages
-                        if let Ok(root) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if let Some(mt) = root.get("messageType").and_then(|v| v.as_str()) {
-                                let payload = root.get("payload").cloned().unwrap_or_else(|| root.clone());
-
-                                match mt {
-                                    "device-status" => {
-                                        let _ = app_handle.emit("device-link-event", json!({
-                                            "type": "device-status",
-                                            "payload": payload,
-                                            "relayOrigin": "remote"
-                                        }));
-                                        continue;
-                                    }
-                                    "event" => {
-                                        // unwrap payload.eventType / payload.payload
-                                        if let Some(event_type) = payload.get("eventType").and_then(|v| v.as_str()) {
-                                            let inner_payload = payload.get("payload").cloned().unwrap_or_else(|| serde_json::Value::Null);
-
-                                            let _ = app_handle.emit("device-link-event", json!({
-                                                "type": event_type,
-                                                "payload": inner_payload,
-                                                "relayOrigin": "remote"
-                                            }));
-                                            continue;
-                                        }
-                                    }
-                                    _ => {
-                                        // Fallback: treat messageType itself as an event type
-                                        let _ = app_handle.emit("device-link-event", json!({
-                                            "type": mt,
-                                            "payload": payload,
-                                            "relayOrigin": "remote"
-                                        }));
-                                        continue;
-                                    }
-                                }
-                            }
                         }
 
                         let now = std::time::SystemTime::now()
@@ -894,6 +1228,24 @@ impl DeviceLinkClient {
             }
         }
 
+        if let Ok(mut sender) = self.sender.lock() {
+            sender.take();
+        }
+
+        if let Ok(mut binary_sender) = self.binary_sender.lock() {
+            binary_sender.take();
+        }
+
+        if let Ok(mut bound_sessions) = get_bound_session_ids().lock() {
+            bound_sessions.clear();
+        }
+
+        if let Ok(mut binding) = self.binding_sessions.lock() {
+            binding.clear();
+        }
+
+        self.record_disconnect();
+
         Err(AppError::NetworkError(
             "Device link tasks completed, reconnecting".to_string(),
         ))
@@ -921,9 +1273,12 @@ impl DeviceLinkClient {
                 // Save session to disk if both session_id and resume_token are present
                 if let (Some(sid), Some(token)) = (&session_id, &resume_token) {
                     if !sid.is_empty() && !token.is_empty() {
+                        let existing_last_event_id = load_session(app_handle)
+                            .and_then(|sess| sess.last_event_id);
                         let session = DeviceLinkSession {
-                            session_id: sid.clone(),
-                            resume_token: token.clone(),
+                            session_id: Some(sid.clone()),
+                            resume_token: Some(token.clone()),
+                            last_event_id: existing_last_event_id,
                         };
                         save_session(app_handle, &session);
                     }
@@ -931,14 +1286,15 @@ impl DeviceLinkClient {
 
                 let payload = serde_json::json!({
                     "status": "registered",
-                    "session_id": session_id,
-                    "resume_token": resume_token,
-                    "expires_at": expires_at,
+                    "sessionId": session_id,
+                    "resumeToken": resume_token,
+                    "expiresAt": expires_at,
                 });
                 debug!("device-link-status event about to be emitted: registered");
                 if let Err(e) = app_handle.emit("device-link-status", payload) {
                     warn!("Failed to emit device link status event: {}", e);
                 }
+                Self::send_session_snapshot(app_handle, tx).await;
                 Ok(())
             }
             ServerMessage::Resumed { session_id, expires_at } => {
@@ -949,56 +1305,96 @@ impl DeviceLinkClient {
 
                 let payload = serde_json::json!({
                     "status": "resumed",
-                    "session_id": session_id,
-                    "expires_at": expires_at,
+                    "sessionId": session_id,
+                    "expiresAt": expires_at,
                 });
                 debug!("device-link-status event about to be emitted: resumed");
                 if let Err(e) = app_handle.emit("device-link-status", payload) {
                     warn!("Failed to emit device link status event: {}", e);
                 }
+                Self::send_session_snapshot(app_handle, tx).await;
                 Ok(())
             }
             ServerMessage::Error { message, code } => {
                 error!("Server error: {}", message);
 
-                // Check if this is an invalid_resume error and delete persisted session
-                let is_invalid_resume = code.as_deref() == Some("invalid_resume")
-                    || message.contains("invalid_resume")
-                    || message.contains("Invalid resume token");
+                let error_code = code.as_deref().unwrap_or("");
+                // Check if this is an invalidResume error and re-register without resume token
+                let is_invalid_resume = error_code == "invalidResume";
 
                 if is_invalid_resume {
-                    warn!("Session resume failed, deleting persisted session");
-                    delete_session(app_handle);
+                    warn!("Session resume failed, clearing resume credentials and re-registering");
+                    clear_session_credentials(app_handle);
+
+                    let device_id = device_id_manager::get_or_create(app_handle)
+                        .map_err(|e| AppError::AuthError(format!("Failed to get device ID: {}", e)))?;
+                    let device_name = crate::utils::get_device_display_name();
+                    let persisted_last_event_id = load_session(app_handle)
+                        .and_then(|sess| sess.last_event_id)
+                        .unwrap_or(0);
+
+                    let register_msg = DeviceLinkMessage::Register {
+                        payload: RegisterPayload {
+                            device_id,
+                            device_name,
+                            session_id: None,
+                            resume_token: None,
+                            last_event_id: if persisted_last_event_id > 0 {
+                                Some(persisted_last_event_id)
+                            } else {
+                                None
+                            },
+                        },
+                    };
+
+                    if let Err(e) = tx.send(register_msg) {
+                        error!("Failed to send re-register message: {}", e);
+                    }
+
+                    return Ok(());
                 }
 
                 Err(AppError::NetworkError(format!("Server error: {}", message)))
             }
-            // Expected server → desktop relay schema:
+            // Expected server → desktop RPC schema:
             // {
-            //   "type": "relay",
-            //   "clientId": "<mobile-uuid>",
-            //   "request": {
+            //   "type": "rpc.request",
+            //   "payload": {
+            //     "clientId": "<mobile-uuid>",
+            //     "userId": "<user-id>",
+            //     "id": "<request-id>",
             //     "method": "<method-name>",
             //     "params": {...},
-            //     "correlationId": "<correlation-id>"
+            //     "idempotencyKey": "<optional>"
             //   }
             // }
-            ServerMessage::Relay { client_id, user_id, request } => {
-                debug!("Received relay request from client {}: method={}", client_id, request.method);
+            ServerMessage::RpcRequest { payload } => {
+                debug!(
+                    "Received rpc.request from client {}: method={}",
+                    payload.client_id,
+                    payload.method
+                );
 
                 let _ = app_handle.emit("relay-request-received", serde_json::json!({
-                    "method": request.method
+                    "method": payload.method
                 }));
 
-                if client_id.trim().is_empty() {
+                if payload.client_id.trim().is_empty() {
                     warn!("Invalid client_id in relay request; dropping response");
                     return Ok(());
                 }
 
+                let request = RpcRequest {
+                    method: payload.method.clone(),
+                    params: payload.params.clone(),
+                    correlation_id: payload.id.clone(),
+                    idempotency_key: payload.idempotency_key.clone(),
+                };
+
                 let app_handle_clone = app_handle.clone();
                 let tx_clone = tx.clone();
                 tokio::spawn(async move {
-                    let user_ctx_id = user_id.unwrap_or_else(|| "remote_user".to_string());
+                    let user_ctx_id = payload.user_id.unwrap_or_else(|| "remote_user".to_string());
                     let device_id = device_id_manager::get_or_create(&app_handle_clone)
                         .unwrap_or_else(|_| "unknown".to_string());
                     let user_context = UserContext {
@@ -1013,8 +1409,56 @@ impl DeviceLinkClient {
                         &user_context
                     ).await;
 
-                    let relay_response = DeviceLinkMessage::RelayResponse { client_id, response };
-                    if let Err(e) = tx_clone.send(relay_response) {
+                    let mut result = response.result.clone();
+                    if let Some(value) = result.as_ref() {
+                        if let Some(path) = find_snake_case_key(value) {
+                            error!(
+                                "RPC response contains snake_case key at {} (method={})",
+                                path,
+                                payload.method
+                            );
+                            let rpc_response = DeviceLinkMessage::RpcResponse {
+                                payload: RpcResponsePayload {
+                                    client_id: payload.client_id.clone(),
+                                    id: response.correlation_id.clone(),
+                                    result: None,
+                                    error: Some(RpcError::validation_error(
+                                        "RPC response contains snake_case keys"
+                                    )),
+                                    is_final: true,
+                                },
+                            };
+                            if let Err(e) = tx_clone.send(rpc_response) {
+                                error!("Failed to send relay response: {}", e);
+                            }
+                            return;
+                        }
+                    }
+
+                    let mut error = response.error.clone();
+                    if let Some(err) = error.as_mut() {
+                        if let Some(data) = err.data.as_ref() {
+                            if let Some(path) = find_snake_case_key(data) {
+                                error!(
+                                    "RPC error data contains snake_case key at {} (method={})",
+                                    path,
+                                    payload.method
+                                );
+                                err.data = None;
+                            }
+                        }
+                    }
+
+                    let rpc_response = DeviceLinkMessage::RpcResponse {
+                        payload: RpcResponsePayload {
+                            client_id: payload.client_id.clone(),
+                            id: response.correlation_id.clone(),
+                            result,
+                            error,
+                            is_final: response.is_final,
+                        },
+                    };
+                    if let Err(e) = tx_clone.send(rpc_response) {
                         error!("Failed to send relay response: {}", e);
                     }
                 });
@@ -1047,9 +1491,9 @@ impl DeviceLinkClient {
 
         // Get project directory if available
         let mut capabilities_map = serde_json::Map::new();
-        capabilities_map.insert("supports_terminal".to_string(), serde_json::Value::Bool(true));
-        capabilities_map.insert("supports_file_browser".to_string(), serde_json::Value::Bool(true));
-        capabilities_map.insert("supports_implementation_plans".to_string(), serde_json::Value::Bool(true));
+        capabilities_map.insert("supportsTerminal".to_string(), serde_json::Value::Bool(true));
+        capabilities_map.insert("supportsFileBrowser".to_string(), serde_json::Value::Bool(true));
+        capabilities_map.insert("supportsImplementationPlans".to_string(), serde_json::Value::Bool(true));
 
         // Include project directory in capabilities if available
         if let Some(sqlite_pool) = self.app_handle.try_state::<Arc<sqlx::SqlitePool>>() {
@@ -1141,6 +1585,11 @@ impl DeviceLinkClient {
     /// Check if a session is bound for binary streaming
     /// Supports multiple concurrent bound sessions for multi-terminal streaming
     pub fn is_session_bound(&self, session_id: &str) -> bool {
+        if let Ok(binding) = self.binding_sessions.lock() {
+            if binding.contains(session_id) {
+                return false;
+            }
+        }
         let bound_sessions = get_bound_session_ids().lock().unwrap();
         let result = bound_sessions.contains(session_id);
         if !result && !bound_sessions.is_empty() {
@@ -1155,8 +1604,8 @@ impl DeviceLinkClient {
     }
 
     /// Send raw terminal output bytes using batching to reduce WebSocket frame count
-    /// Data is accumulated in a batch buffer and flushed periodically (every 50ms) or
-    /// immediately when the buffer exceeds 32KB threshold.
+    /// Data is accumulated in a batch buffer and flushed periodically (adaptive, >= 1000ms) or
+    /// immediately when the buffer exceeds 128KB threshold.
     /// Only active when connected AND the session is bound.
     pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
         // Early return if not connected
@@ -1223,11 +1672,20 @@ impl DeviceLinkClient {
 
     /// Send an event to the server
     pub async fn send_event(&self, event_type: String, payload: Value) -> Result<(), AppError> {
+        if let Some(path) = find_snake_case_key(&payload) {
+            return Err(AppError::InvalidArgument(format!(
+                "Event payload contains snake_case key at {}",
+                path
+            )));
+        }
+
         let sender = self.sender.lock().unwrap();
         if let Some(tx) = sender.as_ref() {
             let msg = DeviceLinkMessage::Event {
-                event_type: event_type,
-                payload,
+                payload: EventPayload {
+                    event_type,
+                    payload,
+                },
             };
 
             tx
@@ -1299,8 +1757,83 @@ impl DeviceLinkClient {
             pending.clear();
         }
 
+        if let Ok(mut binding) = self.binding_sessions.lock() {
+            binding.clear();
+        }
+
         if let Ok(mut batch) = self.batch_buffer_by_session.lock() {
             batch.clear();
+        }
+    }
+
+    fn flush_pending_for_session(
+        &self,
+        session_id: &str,
+        bin_tx: &mpsc::UnboundedSender<Vec<u8>>,
+    ) {
+        let pending = {
+            let mut pending_map = self.pending_binary_by_session.lock().unwrap();
+            pending_map.remove(session_id).unwrap_or_default()
+        };
+
+        if pending.is_empty() {
+            return;
+        }
+
+        let mut sent_bytes = 0usize;
+        for chunk in pending.chunks(BATCH_SIZE_THRESHOLD) {
+            let framed = wrap_with_ptc1_frame(session_id, chunk);
+            if bin_tx.send(framed).is_err() {
+                warn!("Binary uplink: failed to flush pending bytes for session {}", session_id);
+                break;
+            }
+            sent_bytes += chunk.len();
+        }
+
+        if sent_bytes < pending.len() {
+            let remaining = pending[sent_bytes..].to_vec();
+            if let Ok(mut pending_map) = self.pending_binary_by_session.lock() {
+                pending_map
+                    .entry(session_id.to_string())
+                    .and_modify(|buf| {
+                        buf.splice(0..0, remaining.iter().cloned());
+                        if buf.len() > MAX_PENDING_BYTES {
+                            let overflow = buf.len() - MAX_PENDING_BYTES;
+                            buf.drain(0..overflow);
+                        }
+                    })
+                    .or_insert_with(|| {
+                        let mut buf = remaining;
+                        if buf.len() > MAX_PENDING_BYTES {
+                            let overflow = buf.len() - MAX_PENDING_BYTES;
+                            buf.drain(0..overflow);
+                        }
+                        buf
+                    });
+            }
+        }
+
+        info!(
+            "Binary uplink: flushed {} pending bytes for session {}",
+            sent_bytes, session_id
+        );
+    }
+
+    fn clear_terminal_buffers_for_session(&self, session_id: Option<&str>) {
+        if let Ok(mut pending) = self.pending_binary_by_session.lock() {
+            if let Some(sid) = session_id {
+                pending.remove(sid);
+            } else {
+                pending.clear();
+            }
+        }
+
+        if let Ok(mut batch) = self.batch_buffer_by_session.lock() {
+            if let Some(sid) = session_id {
+                batch.remove(sid);
+            } else {
+                batch.clear();
+            }
         }
     }
 

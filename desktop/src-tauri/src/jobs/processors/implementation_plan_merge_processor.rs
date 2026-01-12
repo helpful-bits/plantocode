@@ -263,7 +263,7 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
             Some(ref json) => {
                 if let Some(title) = json.get("planTitle").and_then(|v| v.as_str()) {
                     title.to_string()
-                } else if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
+                } else if let Some(title) = json.get("generatedTitle").and_then(|v| v.as_str()) {
                     crate::utils::path_utils::sanitize_filename(title)
                 } else {
                     format!("Merged Implementation Plan (from {} sources)", payload.source_job_ids.len())
@@ -274,10 +274,10 @@ impl JobProcessor for ImplementationPlanMergeProcessor {
 
         // Extract metadata about the merge operation
         let merge_metadata = json!({
-            "source_job_ids": payload.source_job_ids,
-            "merge_instructions": payload.merge_instructions,
-            "source_count": payload.source_job_ids.len(),
-            "merged_at": get_timestamp(),
+            "sourceJobIds": payload.source_job_ids,
+            "mergeInstructions": payload.merge_instructions,
+            "sourceCount": payload.source_job_ids.len(),
+            "mergedAt": get_timestamp(),
             "planTitle": final_title.clone(),
             "summary": human_readable_summary.clone(),
             "isStructured": false,

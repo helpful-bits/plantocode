@@ -64,7 +64,7 @@ pub async fn restore_from_backup_command(
             );
             Ok(serde_json::json!({
                 "success": true,
-                "backup_file": backup_filename,
+                "backupFile": backup_filename,
                 "message": "Database restored successfully. Please restart the application."
             }))
         }
@@ -90,7 +90,7 @@ pub async fn auto_restore_latest_backup_command(
             );
             Ok(serde_json::json!({
                 "success": true,
-                "backup_file": restored_backup,
+                "backupFile": restored_backup,
                 "message": "Database automatically restored from latest backup. Please restart the application."
             }))
         }
@@ -123,8 +123,8 @@ pub async fn create_manual_backup_command(
             info!("[BackupCommands] Manual backup created: {}", filename);
             Ok(serde_json::json!({
                 "success": true,
-                "backup_file": filename,
-                "backup_path": backup_path.to_string_lossy(),
+                "backupFile": filename,
+                "backupPath": backup_path.to_string_lossy(),
                 "message": "Manual backup created successfully."
             }))
         }
@@ -157,9 +157,9 @@ pub async fn verify_backup_command(
 
     Ok(serde_json::json!({
         "filename": backup_info.filename,
-        "is_valid": backup_info.is_valid,
-        "size_bytes": backup_info.size_bytes,
-        "created_timestamp": backup_info.created_timestamp,
+        "isValid": backup_info.is_valid,
+        "sizeBytes": backup_info.size_bytes,
+        "createdTimestamp": backup_info.created_timestamp,
         "message": if backup_info.is_valid {
             "Backup is valid and can be restored"
         } else {
@@ -198,7 +198,7 @@ pub async fn delete_backup_command(
             );
             Ok(serde_json::json!({
                 "success": true,
-                "backup_file": backup_filename,
+                "backupFile": backup_filename,
                 "message": "Backup deleted successfully."
             }))
         }

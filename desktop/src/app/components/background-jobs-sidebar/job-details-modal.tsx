@@ -196,10 +196,10 @@ export function JobDetailsModal({ job, onClose }: JobDetailsModalProps) {
 
         case 'root_folder_selection':
           // Display root directories as a simple list
-          if (response.root_directories && Array.isArray(response.root_directories)) {
+          if (response.rootDirectories && Array.isArray(response.rootDirectories)) {
             return (
               <div className="space-y-1">
-                {response.root_directories.map((dir: string, index: number) => (
+                {response.rootDirectories.map((dir: string, index: number) => (
                   <div key={index} className="text-sm font-mono bg-muted p-2 rounded">
                     {dir}
                   </div>

@@ -136,7 +136,7 @@ public struct FileManagementView: View {
         }
 
         // Error Message Overlay
-        if let errorMessage = errorMessage {
+        if let errorMessage = errorMessage, shouldShowErrorMessage(errorMessage) {
             VStack {
                 StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
                     .padding()
@@ -144,7 +144,7 @@ public struct FileManagementView: View {
             }
         }
 
-        if let findFilesError = findFilesError {
+        if let findFilesError = findFilesError, shouldShowErrorMessage(findFilesError) {
             VStack {
                 StatusAlertView(variant: .destructive, title: "Error", message: findFilesError)
                     .padding()
@@ -533,15 +533,55 @@ public struct FileManagementView: View {
         return state.isConnected
     }
 
+    private var shouldSuppressConnectionAlerts: Bool {
+        !multiConnectionManager.activeDeviceIsConnectedOrReconnecting
+    }
+
+    private func shouldShowErrorMessage(_ message: String) -> Bool {
+        if !shouldSuppressConnectionAlerts {
+            return true
+        }
+        return !isConnectionErrorMessage(message)
+    }
+
+    private func isConnectionErrorMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("connection")
+            || normalized.contains("not connected")
+            || normalized.contains("offline")
+            || normalized.contains("relay")
+            || normalized.contains("network")
+            || normalized.contains("timeout")
+    }
+
     private func refreshUndoRedoState() async {
         guard let session = sessionService.currentSession else { return }
         do {
-            let state = try await container.filesService.getFileHistoryState(sessionId: session.id)
-            let entries = (state["entries"] as? [Any]) ?? []
-            let current = (state["currentIndex"] as? Int) ?? Int(state["currentIndex"] as? Int64 ?? 0)
+            let stateDict = try await container.filesService.getFileHistoryState(sessionId: session.id)
+            let decoded = try FileHistoryStateCodec.decodeState(from: stateDict)
+            guard !decoded.entries.isEmpty else {
+                await MainActor.run {
+                    canUndoFiles = false
+                    canRedoFiles = false
+                }
+                return
+            }
+
+            let rawIndex = Int(decoded.currentIndex)
+            let clampedIndex = max(0, min(rawIndex, decoded.entries.count - 1))
+            let entry = decoded.entries[clampedIndex]
+            let includedFiles = FileHistoryStateCodec.parseFileList(from: entry.includedFiles)
+            let forceExcludedFiles = FileHistoryStateCodec.parseFileList(from: entry.forceExcludedFiles)
+
             await MainActor.run {
-                canUndoFiles = current > 0
-                canRedoFiles = current < max(0, entries.count - 1)
+                canUndoFiles = clampedIndex > 0
+                canRedoFiles = clampedIndex < max(0, decoded.entries.count - 1)
+                sessionService.updateSessionFilesInMemory(
+                    sessionId: session.id,
+                    includedFiles: includedFiles,
+                    forceExcludedFiles: forceExcludedFiles
+                )
+                updateFileCounts()
             }
         } catch {
         }
@@ -656,7 +696,6 @@ public struct FileManagementView: View {
         )
 
         Task {
-            // Use legacy method for now - will migrate to HistoryState later
             try? await sessionService.updateSessionFiles(
                 sessionId: session.id,
                 addIncluded: isIncluded ? nil : [path],

@@ -12,31 +12,6 @@ function commonSuffix(a: string, b: string): number {
   return i;
 }
 
-function computeDeltaBeforeCursor(base: string, local: string, cursorPos: number): number {
-  const prefixLen = commonPrefix(base, local);
-  if (cursorPos <= prefixLen) return 0;
-
-  const suffixLen = commonSuffix(base, local);
-  const baseMiddleStart = prefixLen;
-  const baseMiddleEnd = base.length - suffixLen;
-  const localMiddleStart = prefixLen;
-  const localMiddleEnd = local.length - suffixLen;
-
-  const baseMiddle = base.slice(baseMiddleStart, baseMiddleEnd);
-  const localMiddle = local.slice(localMiddleStart, localMiddleEnd);
-
-  const deltaLength = localMiddle.length - baseMiddle.length;
-  if (cursorPos <= localMiddleEnd) return deltaLength;
-
-  return deltaLength;
-}
-
-function computeDeltaWindow(base: string, _remote: string, localCursorInBase: number, windowChars: number): { start: number; end: number } {
-  const start = Math.max(0, localCursorInBase - windowChars);
-  const end = Math.min(base.length, localCursorInBase + windowChars);
-  return { start, end };
-}
-
 function clamp(val: number, min: number, max: number): number {
   return Math.max(min, Math.min(val, max));
 }
@@ -48,16 +23,20 @@ export function mergeThreeWayWithCursor(
   localCursor: number
 ): { merged: string; newCursor: number } {
   if (base === local) {
-    return { merged: remote, newCursor: localCursor };
+    const clampedCursor = clamp(localCursor, 0, remote.length);
+    return { merged: remote, newCursor: clampedCursor };
   }
   if (base === remote) {
-    return { merged: local, newCursor: localCursor };
+    const clampedCursor = clamp(localCursor, 0, local.length);
+    return { merged: local, newCursor: clampedCursor };
   }
 
   const prefixLen = Math.min(commonPrefix(base, local), commonPrefix(base, remote));
   const suffixLen = Math.min(commonSuffix(base, local), commonSuffix(base, remote));
-
-  const effectiveSuffixLen = Math.min(suffixLen, base.length - prefixLen);
+  const maxSuffixBase = Math.max(0, base.length - prefixLen);
+  const maxSuffixLocal = Math.max(0, local.length - prefixLen);
+  const maxSuffixRemote = Math.max(0, remote.length - prefixLen);
+  const effectiveSuffixLen = Math.min(suffixLen, maxSuffixBase, maxSuffixLocal, maxSuffixRemote);
 
   const prefix = base.slice(0, prefixLen);
   const suffix = base.slice(base.length - effectiveSuffixLen);
@@ -74,19 +53,7 @@ export function mergeThreeWayWithCursor(
   } else if (baseMiddle === remoteMiddle) {
     mergedMiddle = localMiddle;
   } else {
-    const WINDOW_CHARS = 50;
-    const localDelta = computeDeltaBeforeCursor(base, local, localCursor);
-    const localCursorInBase = localCursor - localDelta;
-    const { start: wStart, end: wEnd } = computeDeltaWindow(base, remote, localCursorInBase, WINDOW_CHARS);
-
-    const baseWindow = base.slice(wStart, wEnd);
-    const remoteWindow = remote.slice(wStart, wEnd + (remote.length - base.length));
-
-    if (baseWindow === remoteWindow) {
-      mergedMiddle = localMiddle;
-    } else {
-      mergedMiddle = localMiddle + '\n' + remoteMiddle;
-    }
+    mergedMiddle = localMiddle + '\n' + remoteMiddle;
   }
 
   const merged = prefix + mergedMiddle + suffix;

@@ -302,7 +302,7 @@ pub async fn create_and_queue_background_job(
                     ),
                 );
                 task_data_map.insert(
-                    "max_tokens".to_string(),
+                    "maxTokens".to_string(),
                     serde_json::Value::Number(serde_json::Number::from(max_tokens)),
                 );
             }
@@ -323,7 +323,7 @@ pub async fn create_and_queue_background_job(
                 serde_json::Number::from_f64(temp as f64)
                     .unwrap_or_else(|| serde_json::Number::from(0)),
             );
-            task_data["max_tokens"] =
+            task_data["maxTokens"] =
                 serde_json::Value::Number(serde_json::Number::from(max_tokens));
         }
 
@@ -590,7 +590,7 @@ async fn update_job_title_metadata(
         .clone();
 
     let patch = serde_json::json!({
-        "generated_title": generated_title,
+        "generatedTitle": generated_title,
         "planTitle": generated_title,
         "titleSource": "generated"
     });

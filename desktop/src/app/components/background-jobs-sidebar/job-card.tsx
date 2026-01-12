@@ -480,9 +480,9 @@ export const JobCard = ({ job, handleCancel, handleDelete, isCancelling, isDelet
                         
                         // Handle video analysis tasks
                         if (job.taskType === "video_analysis") {
-                          const videoPath = parsedMeta?.taskData?.videoPath || 
-                                          parsedMeta?.jobPayloadForWorker?.VideoAnalysis?.video_path ||
-                                          parsedMeta?.jobPayloadForWorker?.videoAnalysis?.video_path;
+                          const jobPayloadForWorker = parsedMeta?.jobPayloadForWorker as any;
+                          const payloadData = jobPayloadForWorker?.type === "VideoAnalysis" ? jobPayloadForWorker.data : undefined;
+                          const videoPath = parsedMeta?.taskData?.videoPath || payloadData?.videoPath;
                           
                           if (videoPath && typeof videoPath === 'string') {
                             const pathParts = videoPath.split(/[/\\]/);

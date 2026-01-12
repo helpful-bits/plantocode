@@ -8,7 +8,7 @@ export function JobDetailsModelConfigSection() {
   // Extract model settings from structured metadata
   const taskData = parsedMetadata?.taskData || {};
   const temperature = taskData.temperature;
-  const maxTokens = taskData.maxTokens || taskData.max_tokens;
+  const maxTokens = taskData.maxTokens;
   
   if (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false) {
     return (

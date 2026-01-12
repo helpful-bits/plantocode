@@ -467,6 +467,7 @@ impl BackupService {
 
 /// Statistics about backups
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackupStats {
     pub backup_count: usize,
     pub total_size_bytes: u64,
@@ -476,6 +477,7 @@ pub struct BackupStats {
 
 /// Information about a single backup file
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BackupInfo {
     pub filename: String,
     pub full_path: String,

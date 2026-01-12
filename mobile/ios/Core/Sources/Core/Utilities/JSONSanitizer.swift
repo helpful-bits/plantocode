@@ -189,6 +189,15 @@ public enum JSONSanitizer {
             return true
         }
     }
+
+    /// Encode a string array into a JSON array string.
+    public static func stringifyStringArray(_ values: [String]) -> String {
+        guard JSONSerialization.isValidJSONObject(values),
+              let data = try? JSONSerialization.data(withJSONObject: values) else {
+            return "[]"
+        }
+        return String(data: data, encoding: .utf8) ?? "[]"
+    }
 }
 
 private protocol OptionalProtocol { var wrappedValue: Any? { get } }

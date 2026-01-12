@@ -222,7 +222,7 @@ public class PlanContentParser {
             if let planTitle = metadataDict["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             }
-            if let generatedTitle = metadataDict["generated_title"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let generatedTitle = metadataDict["generatedTitle"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 return generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             if let uiTitle = metadataDict["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -237,7 +237,7 @@ public class PlanContentParser {
                 if let planTitle = taskData["planTitle"] as? String, !planTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return planTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
-                if let generatedTitle = taskData["generated_title"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if let generatedTitle = taskData["generatedTitle"] as? String, !generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     return generatedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
                 if let uiTitle = taskData["uiTitle"] as? String, !uiTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -373,19 +373,12 @@ public class PlanContentParser {
         if let model = json["model"] as? String, !model.isEmpty {
             return model
         }
-        if let model = json["model_id"] as? String, !model.isEmpty {
-            return model
-        }
-
         // Nested under taskData or similar
         if let taskData = json["taskData"] as? [String: Any] {
             if let model = taskData["modelName"] as? String, !model.isEmpty {
                 return model
             }
             if let model = taskData["model"] as? String, !model.isEmpty {
-                return model
-            }
-            if let model = taskData["model_id"] as? String, !model.isEmpty {
                 return model
             }
         }

@@ -225,6 +225,20 @@ export function useOrchestratedBackgroundJobsState({
     }
   }, [sessionId, projectDirectory, refreshJobs]);
 
+  // Refresh jobs on relay replay gaps to recover from missed events
+  useEffect(() => {
+    const handleReplayGap = () => {
+      if (!projectDirectory) return;
+      void refreshJobs();
+    };
+
+    window.addEventListener('relay-replay-gap', handleReplayGap);
+
+    return () => {
+      window.removeEventListener('relay-replay-gap', handleReplayGap);
+    };
+  }, [projectDirectory, refreshJobs]);
+
   // Cancel a job using Tauri command
   const cancelJob = useCallback(
     async (jobId: string): Promise<void> => {

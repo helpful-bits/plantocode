@@ -3,10 +3,12 @@ use crate::models::{
     CreateSessionRequest, FileSelectionHistoryEntryWithTimestamp,
     JobStatus, Session,
 };
-use crate::utils::hash_utils::hash_string;
+use crate::utils::hash_utils::{hash_string, sha256_hash};
 use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, FileHistoryState};
 use crate::services::history_state_sequencer::HistoryStateSequencer;
+use serde::Serialize;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
@@ -107,11 +109,18 @@ pub async fn update_session_command(
 
     let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
 
+    let mut sanitized = session_data.clone();
+    if let Ok(existing) = cache.get_session(&app_handle, &session_data.id).await {
+        sanitized.task_description = existing.task_description;
+        sanitized.included_files = existing.included_files;
+        sanitized.force_excluded_files = existing.force_excluded_files;
+    }
+
     // Update the session via cache (cache emits events)
-    cache.upsert_session(&app_handle, &session_data).await?;
+    cache.upsert_session(&app_handle, &sanitized).await?;
 
     // Return the updated session
-    Ok(session_data)
+    Ok(sanitized)
 }
 
 /// Delete a session and cancel any related background jobs
@@ -400,21 +409,182 @@ pub async fn update_session_files_command(
     excluded_to_remove: Vec<String>,
 ) -> AppResult<Session> {
     let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
+    let repo = app_handle
+        .state::<Arc<crate::db_utils::session_repository::SessionRepository>>()
+        .inner()
+        .clone();
+    let sequencer = app_handle.state::<Arc<HistoryStateSequencer>>();
+
+    let current_state = repo.get_file_history_state(&session_id).await?;
+
+    let current_entry = current_state.entries.get(current_state.current_index as usize);
+    let (current_included, current_excluded) = if let Some(entry) = current_entry {
+        (
+            parse_file_list(&entry.included_files),
+            parse_file_list(&entry.force_excluded_files),
+        )
+    } else if let Ok(existing) = cache.get_session(&app_handle, &session_id).await {
+        (existing.included_files, existing.force_excluded_files)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    let mut included: HashSet<String> = current_included.iter().cloned().collect();
+    let mut excluded: HashSet<String> = current_excluded.iter().cloned().collect();
+
+    for file in &files_to_remove {
+        included.remove(file);
+    }
+    for file in &excluded_to_remove {
+        excluded.remove(file);
+    }
+    for file in &files_to_add {
+        if !file.trim().is_empty() {
+            included.insert(file.clone());
+            excluded.remove(file);
+        }
+    }
+    for file in &excluded_to_add {
+        if !file.trim().is_empty() {
+            excluded.insert(file.clone());
+            included.remove(file);
+        }
+    }
+
+    if included == current_included.iter().cloned().collect::<HashSet<_>>()
+        && excluded == current_excluded.iter().cloned().collect::<HashSet<_>>() {
+        return cache.get_session(&app_handle, &session_id).await;
+    }
+
+    let now = crate::utils::date_utils::get_timestamp();
+    let device_id = crate::auth::device_id_manager::get_or_create(&app_handle).ok();
+
+    let mut included_vec: Vec<String> = included.iter().cloned().collect();
+    let mut excluded_vec: Vec<String> = excluded.iter().cloned().collect();
+    included_vec.sort();
+    excluded_vec.sort();
+
+    let included_json = serde_json::to_string(&included_vec)
+        .unwrap_or_else(|_| "[]".to_string());
+    let excluded_json = serde_json::to_string(&excluded_vec)
+        .unwrap_or_else(|_| "[]".to_string());
+
+    let next_sequence = current_state
+        .entries
+        .iter()
+        .map(|entry| entry.sequence_number)
+        .max()
+        .unwrap_or(-1)
+        + 1;
+
+    let new_entry = crate::db_utils::session_repository::FileSelectionHistoryEntry {
+        included_files: included_json,
+        force_excluded_files: excluded_json,
+        created_at: now,
+        device_id,
+        op_type: Some("user-edit".to_string()),
+        sequence_number: next_sequence,
+        version: current_state.version,
+    };
+
+    let current_index = if current_state.entries.is_empty() {
+        0
+    } else {
+        current_state.current_index as usize
+    };
+
+    let mut updated_entries: Vec<_> = if current_state.entries.is_empty() {
+        Vec::new()
+    } else {
+        current_state.entries[..=current_index].to_vec()
+    };
+    updated_entries.push(new_entry);
+
+    if updated_entries.len() > 50 {
+        let trim_start = updated_entries.len() - 50;
+        updated_entries = updated_entries.split_off(trim_start);
+    }
+
+    let new_index = if updated_entries.is_empty() {
+        0
+    } else {
+        (updated_entries.len() - 1) as i64
+    };
+
+    let checksum = compute_file_history_checksum(&updated_entries, new_index, current_state.version);
+    let new_state = FileHistoryState {
+        entries: updated_entries,
+        current_index: new_index,
+        version: current_state.version,
+        checksum,
+    };
+
+    let _ = sequencer.enqueue_sync_files(session_id.clone(), new_state, current_state.version).await?;
 
     // Update files via cache (cache emits session-files-updated event)
-    cache.update_files_delta(
-        &app_handle,
-        &session_id,
-        &files_to_add,
-        &files_to_remove,
-        &excluded_to_add,
-        &excluded_to_remove
-    ).await?;
-
     // Get updated session from cache
     let updated_session = cache.get_session(&app_handle, &session_id).await?;
 
     Ok(updated_session)
+}
+
+fn compute_file_history_checksum(
+    entries: &[crate::db_utils::session_repository::FileSelectionHistoryEntry],
+    current_index: i64,
+    version: i64,
+) -> String {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumEntry {
+        included_files: String,
+        force_excluded_files: String,
+        timestamp_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        sequence_number: i64,
+        version: i64,
+    }
+
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumData {
+        current_index: i64,
+        entries: Vec<ChecksumEntry>,
+        version: i64,
+    }
+
+    let checksum_entries = entries
+        .iter()
+        .map(|entry| ChecksumEntry {
+            included_files: entry.included_files.clone(),
+            force_excluded_files: entry.force_excluded_files.clone(),
+            timestamp_ms: entry.created_at,
+            device_id: entry.device_id.clone(),
+            sequence_number: entry.sequence_number,
+            version: entry.version,
+        })
+        .collect();
+
+    let data = ChecksumData {
+        current_index,
+        entries: checksum_entries,
+        version,
+    };
+
+    let json = serde_json::to_string(&data).unwrap_or_default();
+    sha256_hash(&json)
+}
+
+fn parse_file_list(raw: &str) -> Vec<String> {
+    if raw.trim().is_empty() {
+        return Vec::new();
+    }
+
+    if let Ok(values) = serde_json::from_str::<Vec<String>>(raw) {
+        return values.into_iter().filter(|v| !v.trim().is_empty()).collect();
+    }
+
+    Vec::new()
 }
 
 #[tauri::command]
@@ -781,5 +951,3 @@ pub fn get_device_id_command(app: AppHandle) -> Result<String, String> {
     device_id_manager::get_or_create(&app)
         .map_err(|e| e.to_string())
 }
-
-

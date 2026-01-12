@@ -15,6 +15,7 @@ import { extractErrorInfo, createUserFriendlyErrorMessage, logError } from "@/ut
 import { useNotification } from "@/contexts/notification-context";
 
 import TaskModelSettings from "./task-model-settings";
+import CodexCliSettings from "./codex-cli-settings";
 
 
 
@@ -107,6 +108,7 @@ export default function SettingsForm({}: SettingsFormProps) {
 
   return (
     <div className="space-y-6">
+      <CodexCliSettings />
       {taskSettings && (
         <TaskModelSettings
           taskSettings={taskSettings}

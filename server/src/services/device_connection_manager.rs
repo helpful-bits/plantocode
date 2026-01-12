@@ -1,12 +1,17 @@
 use actix::Addr;
 use dashmap::DashMap;
 use serde_json::Value as JsonValue;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
+use chrono::{DateTime, Utc};
 
 use crate::services::device_link_ws::{DeviceLinkWs, CloseConnection};
+
+const MAX_BUFFERED_EVENTS: usize = 500;
+const BUFFER_TTL_SECS: i64 = 300;
+const MAX_BUFFERED_EVENT_BYTES: usize = 256 * 1024;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ClientType {
@@ -19,8 +24,11 @@ pub enum ClientType {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceMessage {
+    #[serde(rename = "type")]
     pub message_type: String,
     pub payload: JsonValue,
+    #[serde(default, rename = "eventId", skip_serializing_if = "Option::is_none")]
+    pub event_id: Option<u64>,
     pub target_device_id: Option<String>,
     pub source_device_id: Option<String>,
     pub timestamp: chrono::DateTime<chrono::Utc>,
@@ -38,6 +46,13 @@ pub struct DeviceConnection {
     pub client_type: ClientType,
 }
 
+#[derive(Clone, Debug)]
+struct BufferedEvent {
+    id: u64,
+    message: DeviceMessage,
+    timestamp: DateTime<Utc>,
+}
+
 /// Manages WebSocket connections for devices
 /// Uses a two-level map: user_id -> device_id -> connection
 #[derive(Clone)]
@@ -46,6 +61,9 @@ pub struct DeviceConnectionManager {
     connections: Arc<DashMap<Uuid, DashMap<String, DeviceConnection>>>,
     // (user_id, producer_device_id, session_id) -> consumer_device_id
     binary_routes: Arc<RwLock<HashMap<(Uuid, String, String), String>>>,
+    event_buffers: Arc<RwLock<HashMap<Uuid, VecDeque<BufferedEvent>>>>,
+    event_sequences: Arc<RwLock<HashMap<Uuid, u64>>>,
+    last_event_ack: Arc<RwLock<HashMap<(Uuid, String), u64>>>,
 }
 
 impl DeviceConnectionManager {
@@ -53,7 +71,194 @@ impl DeviceConnectionManager {
         Self {
             connections: Arc::new(DashMap::new()),
             binary_routes: Arc::new(RwLock::new(HashMap::new())),
+            event_buffers: Arc::new(RwLock::new(HashMap::new())),
+            event_sequences: Arc::new(RwLock::new(HashMap::new())),
+            last_event_ack: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    fn next_event_id(&self, user_id: &Uuid) -> u64 {
+        let mut seq = self.event_sequences.write().unwrap();
+        let entry = seq.entry(*user_id).or_insert(0);
+        *entry = entry.saturating_add(1);
+        *entry
+    }
+
+    fn should_buffer_event(message: &DeviceMessage) -> bool {
+        if message.message_type != "event" {
+            return false;
+        }
+
+        let event_type = message
+            .payload
+            .get("eventType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if event_type == "job:response-appended" {
+            return false;
+        }
+
+        let approx_size = message.payload.to_string().len();
+        approx_size <= MAX_BUFFERED_EVENT_BYTES
+    }
+
+    fn coalesce_buffered_events(buffer: &mut VecDeque<BufferedEvent>, message: &DeviceMessage) {
+        let event_type = message
+            .payload
+            .get("eventType")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if event_type != "history-state-changed" {
+            return;
+        }
+
+        let payload = message.payload.get("payload").and_then(|v| v.as_object());
+        let session_id = payload.and_then(|p| p.get("sessionId")).and_then(|v| v.as_str());
+        let kind = payload.and_then(|p| p.get("kind")).and_then(|v| v.as_str());
+
+        if session_id.is_none() || kind.is_none() {
+            return;
+        }
+
+        buffer.retain(|evt| {
+            let evt_type = evt
+                .message
+                .payload
+                .get("eventType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if evt_type != "history-state-changed" {
+                return true;
+            }
+            let evt_payload = evt.message.payload.get("payload").and_then(|v| v.as_object());
+            let evt_session = evt_payload.and_then(|p| p.get("sessionId")).and_then(|v| v.as_str());
+            let evt_kind = evt_payload.and_then(|p| p.get("kind")).and_then(|v| v.as_str());
+            !(evt_session == session_id && evt_kind == kind)
+        });
+    }
+
+    fn record_event_for_user(&self, user_id: &Uuid, message: &mut DeviceMessage) {
+        if message.message_type != "event" {
+            return;
+        }
+
+        let event_id = self.next_event_id(user_id);
+        message.event_id = Some(event_id);
+
+        if !Self::should_buffer_event(message) {
+            return;
+        }
+
+        let mut buffers = self.event_buffers.write().unwrap();
+        let buffer = buffers.entry(*user_id).or_insert_with(VecDeque::new);
+
+        Self::coalesce_buffered_events(buffer, message);
+
+        buffer.push_back(BufferedEvent {
+            id: event_id,
+            message: message.clone(),
+            timestamp: chrono::Utc::now(),
+        });
+
+        let cutoff = chrono::Utc::now() - chrono::Duration::seconds(BUFFER_TTL_SECS);
+        while let Some(front) = buffer.front() {
+            if buffer.len() <= MAX_BUFFERED_EVENTS && front.timestamp >= cutoff {
+                break;
+            }
+            buffer.pop_front();
+        }
+    }
+
+    pub async fn send_buffered_events_since(
+        &self,
+        user_id: &Uuid,
+        device_id: &str,
+        last_event_id: u64,
+    ) -> usize {
+        let buffer_opt = {
+            let buffers = self.event_buffers.read().unwrap();
+            buffers.get(user_id).cloned()
+        };
+
+        let Some(buffer) = buffer_opt else {
+            return 0;
+        };
+
+        let oldest_id = buffer.front().map(|evt| evt.id).unwrap_or(0);
+        let latest_id = buffer.back().map(|evt| evt.id).unwrap_or(0);
+
+        if last_event_id > 0 && oldest_id > 0 && last_event_id < oldest_id {
+            let mut gap_message = DeviceMessage {
+                message_type: "event".to_string(),
+                payload: serde_json::json!({
+                    "eventType": "event-replay-gap",
+                    "payload": {
+                        "lastEventId": last_event_id,
+                        "oldestBufferedId": oldest_id,
+                        "latestBufferedId": latest_id
+                    }
+                }),
+                event_id: None,
+                target_device_id: None,
+                source_device_id: None,
+                timestamp: chrono::Utc::now(),
+            };
+
+            self.record_event_for_user(user_id, &mut gap_message);
+            let _ = self.send_to_device(user_id, device_id, gap_message).await;
+        }
+
+        let mut sent = 0usize;
+        for evt in buffer.iter() {
+            if evt.id <= last_event_id {
+                continue;
+            }
+            if self.send_to_device(user_id, device_id, evt.message.clone()).await.is_ok() {
+                sent += 1;
+            }
+        }
+
+        sent
+    }
+
+    pub fn update_last_event_ack(&self, user_id: &Uuid, device_id: &str, last_event_id: u64) {
+        let device_id_lower = device_id.to_lowercase();
+        let mut acks = self.last_event_ack.write().unwrap();
+        acks.insert((*user_id, device_id_lower), last_event_id);
+    }
+
+    fn close_other_desktops(&self, user_id: Uuid, keep_device_id: &str) {
+        let Some(user_devices) = self.connections.get(&user_id) else { return };
+        let mut to_close: Vec<String> = Vec::new();
+        for entry in user_devices.iter() {
+            let connection = entry.value();
+            if matches!(connection.client_type, ClientType::Desktop)
+                && connection.device_id != keep_device_id
+            {
+                to_close.push(connection.device_id.clone());
+                connection.ws_addr.do_send(CloseConnection);
+            }
+        }
+
+        for device_id in to_close {
+            user_devices.remove(&device_id);
+            info!(
+                user_id = %user_id,
+                device_id = %device_id,
+                "Closed previous desktop connection to enforce single-desktop policy"
+            );
+        }
+    }
+
+    pub fn get_primary_desktop_device_id(&self, user_id: &Uuid) -> Option<String> {
+        let user_devices = self.connections.get(user_id)?;
+        user_devices
+            .iter()
+            .filter(|entry| matches!(entry.value().client_type, ClientType::Desktop))
+            .max_by_key(|entry| entry.value().connected_at)
+            .map(|entry| entry.value().device_id.clone())
     }
 
     /// Register a new device connection
@@ -88,6 +293,8 @@ impl DeviceConnectionManager {
             }
         }
 
+        let is_desktop = matches!(client_type, ClientType::Desktop);
+
         let connection = DeviceConnection {
             device_id: device_id_lower.clone(),
             user_id,
@@ -105,6 +312,10 @@ impl DeviceConnectionManager {
                 .entry(user_id)
                 .or_insert_with(DashMap::new);
             user_devices.insert(device_id_lower.clone(), connection);
+        }
+
+        if is_desktop {
+            self.close_other_desktops(user_id, &device_id_lower);
         }
 
         info!(
@@ -240,6 +451,9 @@ impl DeviceConnectionManager {
         user_id: &Uuid,
         message: DeviceMessage,
     ) -> Result<usize, String> {
+        let mut message = message;
+        self.record_event_for_user(user_id, &mut message);
+
         let devices = self.get_user_devices(user_id);
 
         if devices.is_empty() {
@@ -283,6 +497,9 @@ impl DeviceConnectionManager {
         message: DeviceMessage,
         exclude_device_id: Option<&str>,
     ) -> Result<usize, String> {
+        let mut message = message;
+        self.record_event_for_user(user_id, &mut message);
+
         // Normalize exclude device ID to lowercase for case-insensitive comparisons
         let exclude_device_id_lower = exclude_device_id.map(|id| id.to_lowercase());
 
@@ -656,6 +873,7 @@ mod tests {
         let message = DeviceMessage {
             message_type: "test".to_string(),
             payload: serde_json::json!({"key": "value"}),
+            event_id: None,
             target_device_id: Some("device-123".to_string()),
             source_device_id: Some("device-456".to_string()),
             timestamp: chrono::Utc::now(),

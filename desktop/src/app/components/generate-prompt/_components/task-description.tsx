@@ -29,6 +29,7 @@ export interface TaskDescriptionHandle {
   flushPendingChanges: () => string;
   setValue: (value: string, opts?: { silent?: boolean }) => void;
   setValueFromHistory: (value: string) => void;
+  setSelectionRange: (start: number, end: number) => void;
   getValue: () => string;
   value: string;
   selectionStart: number;
@@ -179,6 +180,14 @@ const TaskDescriptionArea = forwardRef<TaskDescriptionHandle, TaskDescriptionPro
       setValueFromHistory: (value: string) => {
         suppressNextDebounceRef.current = true;
         handleValueChange(value);
+      },
+      setSelectionRange: (start: number, end: number) => {
+        const el = internalTextareaRef.current;
+        if (!el) return;
+        const length = el.value.length;
+        const safeStart = Math.max(0, Math.min(start, length));
+        const safeEnd = Math.max(safeStart, Math.min(end, length));
+        el.setSelectionRange(safeStart, safeEnd);
       },
       getValue: () => valueRef.current,
       flushPendingChanges: () => valueRef.current,

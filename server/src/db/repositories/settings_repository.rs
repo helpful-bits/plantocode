@@ -13,6 +13,7 @@ use tracing::{info, instrument};
 pub struct DatabaseAIModelSettings {
     pub tasks: BTreeMap<String, TaskConfig>,
     pub max_concurrent_jobs: Option<u32>,
+    pub codex_cli: Option<CodexCliSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +23,16 @@ pub struct TaskConfig {
     pub max_tokens: u32,
     pub copy_buttons: Option<Vec<serde_json::Value>>,
     pub allowed_models: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexCliSettings {
+    pub preferred_model: Option<String>,
+    pub mini_model: Option<String>,
+    pub fallback_model: Option<String>,
+    pub model_overrides: Option<HashMap<String, String>>,
+    pub reasoning_effort: Option<String>,
+    pub mini_reasoning_effort: Option<String>,
 }
 
 impl DatabaseAIModelSettings {

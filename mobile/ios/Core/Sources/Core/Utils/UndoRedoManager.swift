@@ -11,20 +11,25 @@ public class UndoRedoManager: ObservableObject {
     @Published public private(set) var canRedo: Bool = false
 
     // MARK: - Private Properties
-    private var history: [String] = []
+    private var history: [HistoryEntry] = []
     private var currentIndex: Int = -1
     private let maxHistorySize: Int
     private var isNavigating: Bool = false
     private var version: Int64 = 0
     private var deviceId: String?
+    private var nextSequenceNumber: Int64 = 0
 
     // MARK: - Initialization
-    public init(maxHistorySize: Int = 20, deviceId: String? = nil) {
+    public init(maxHistorySize: Int = 200, deviceId: String? = nil) {
         self.maxHistorySize = maxHistorySize
-        self.deviceId = deviceId
+        self.deviceId = deviceId?.lowercased()
     }
 
     // MARK: - Public Methods
+
+    public func setDeviceId(_ deviceId: String?) {
+        self.deviceId = deviceId?.lowercased()
+    }
 
     /// Save a new state to history (called when user makes changes)
     public func saveState(_ text: String) {
@@ -33,7 +38,7 @@ public class UndoRedoManager: ObservableObject {
 
         // Don't save if it's the same as current
         if currentIndex >= 0 && currentIndex < history.count {
-            let currentText = history[currentIndex]
+            let currentText = history[currentIndex].value
             if currentText == text {
                 return
             }
@@ -45,7 +50,17 @@ public class UndoRedoManager: ObservableObject {
         }
 
         // Add new state
-        history.append(text)
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let newEntry = HistoryEntry(
+            value: text,
+            createdAt: timestamp,
+            deviceId: deviceId,
+            opType: "edit",
+            sequenceNumber: Int32(nextSequenceNumber),
+            version: version
+        )
+        nextSequenceNumber += 1
+        history.append(newEntry)
         currentIndex = history.count - 1
 
         // Trim history if needed (keep most recent entries)
@@ -60,12 +75,26 @@ public class UndoRedoManager: ObservableObject {
 
     /// Initialize history with an existing array of entries
     public func initializeHistory(entries: [String], currentIndex: Int? = nil) {
-        self.history = Array(entries.suffix(maxHistorySize))
+        let trimmed = Array(entries.suffix(maxHistorySize))
+        let baseTimestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        self.history = trimmed.enumerated().map { index, value in
+            HistoryEntry(
+                value: value,
+                createdAt: baseTimestamp + Int64(index),
+                deviceId: deviceId,
+                opType: "init",
+                sequenceNumber: Int32(index),
+                version: version
+            )
+        }
+        nextSequenceNumber = Int64(history.count)
 
-        if let index = currentIndex {
+        if self.history.isEmpty {
+            self.currentIndex = -1
+        } else if let index = currentIndex {
             self.currentIndex = min(index, self.history.count - 1)
         } else {
-            self.currentIndex = max(0, self.history.count - 1)
+            self.currentIndex = self.history.count - 1
         }
 
         updateUndoRedoState()
@@ -73,7 +102,7 @@ public class UndoRedoManager: ObservableObject {
 
     /// Get the current history entries
     public func getHistory() -> [String] {
-        return history
+        return history.map { $0.value }
     }
 
     /// Undo to previous state
@@ -92,7 +121,7 @@ public class UndoRedoManager: ObservableObject {
         currentIndex -= 1
         updateUndoRedoState()
 
-        return history[currentIndex]
+        return history[currentIndex].value
     }
 
     /// Redo to next state
@@ -110,21 +139,31 @@ public class UndoRedoManager: ObservableObject {
         currentIndex += 1
         updateUndoRedoState()
 
-        return history[currentIndex]
+        return history[currentIndex].value
     }
 
     /// Clear all history
     public func clear() {
         history.removeAll()
         currentIndex = -1
+        nextSequenceNumber = 0
         updateUndoRedoState()
     }
 
     /// Reset with a single initial state
     public func reset(with text: String) {
-        history = [text]
+        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        history = [HistoryEntry(
+            value: text,
+            createdAt: timestamp,
+            deviceId: deviceId,
+            opType: "init",
+            sequenceNumber: 0,
+            version: version
+        )]
         currentIndex = 0
         isNavigating = false
+        nextSequenceNumber = 1
         updateUndoRedoState()
     }
 
@@ -147,7 +186,7 @@ public class UndoRedoManager: ObservableObject {
         }
 
         // Convert entries to history
-        history = state.entries.map { $0.value }
+        history = state.entries
 
         // Set current index (clamp to valid range, handle empty case)
         if history.isEmpty {
@@ -158,6 +197,7 @@ public class UndoRedoManager: ObservableObject {
 
         // Update version
         version = state.version
+        nextSequenceNumber = (history.compactMap { $0.sequenceNumber }.map { Int64($0) }.max() ?? -1) + 1
 
         // Restore navigation flag
         if suppressRecording {
@@ -171,27 +211,24 @@ public class UndoRedoManager: ObservableObject {
     @MainActor
     public func mergeRemoteHistoryState(_ remote: HistoryState) -> HistoryState {
         // Convert local history to entries
-        let localEntries = history.enumerated().map { index, value -> HistoryEntry in
-            let timestamp = Int64(Date().timeIntervalSince1970 * 1000) - Int64(history.count - index) * 1000
-            return HistoryEntry(
-                value: value,
-                createdAt: timestamp,
-                deviceId: deviceId,
-                opType: "edit",
-                sequenceNumber: Int32(index),
-                version: version
-            )
-        }
+        let localEntries = history
 
         // Combine local and remote entries
         var allEntries = localEntries + remote.entries
 
-        // Sort by createdAt ascending
+        // Sort by sequenceNumber when available, then createdAt/deviceId for deterministic ordering
         allEntries.sort { entry1, entry2 in
+            let id1 = entry1.deviceId ?? ""
+            let id2 = entry2.deviceId ?? ""
+            if id1 == id2 {
+                let seq1 = Int64(entry1.sequenceNumber ?? -1)
+                let seq2 = Int64(entry2.sequenceNumber ?? -1)
+                if seq1 != seq2 {
+                    return seq1 < seq2
+                }
+            }
+
             if abs(entry1.createdAt - entry2.createdAt) <= 100 {
-                // Within 100ms, sort by deviceId for deterministic ordering
-                let id1 = entry1.deviceId ?? ""
-                let id2 = entry2.deviceId ?? ""
                 return id1 < id2
             }
             return entry1.createdAt < entry2.createdAt
@@ -213,15 +250,14 @@ public class UndoRedoManager: ObservableObject {
             deduplicated = Array(deduplicated.suffix(200))
         }
 
-        // Calculate merged currentIndex (use max of local/remote, clamped)
-        let mergedIndex = Int64(max(currentIndex, Int(remote.currentIndex)))
-        let clampedIndex = min(max(0, mergedIndex), Int64(deduplicated.count - 1))
+        // Use most recent entry as the active index to avoid stale rollbacks after merge
+        let clampedIndex = deduplicated.isEmpty ? 0 : Int64(deduplicated.count - 1)
 
         // Bump version
         let newVersion = max(version, remote.version) + 1
 
-        // Calculate checksum
-        let checksum = calculateChecksum(entries: deduplicated)
+        // Calculate checksum (match desktop: JSON of {currentIndex, entries, version})
+        let checksum = calculateChecksum(entries: deduplicated, currentIndex: clampedIndex, version: newVersion)
 
         return HistoryState(
             entries: deduplicated,
@@ -234,19 +270,9 @@ public class UndoRedoManager: ObservableObject {
     /// Export current state as HistoryState
     @MainActor
     public func exportState() -> HistoryState {
-        let entries = history.enumerated().map { index, value -> HistoryEntry in
-            let timestamp = Int64(Date().timeIntervalSince1970 * 1000) - Int64(history.count - index) * 1000
-            return HistoryEntry(
-                value: value,
-                createdAt: timestamp,
-                deviceId: deviceId,
-                opType: "edit",
-                sequenceNumber: Int32(index),
-                version: version
-            )
-        }
+        let entries = history
 
-        let checksum = calculateChecksum(entries: entries)
+        let checksum = calculateChecksum(entries: entries, currentIndex: Int64(currentIndex), version: version)
 
         return HistoryState(
             entries: entries,
@@ -256,10 +282,48 @@ public class UndoRedoManager: ObservableObject {
         )
     }
 
-    /// Calculate SHA-256 checksum of entries
-    private func calculateChecksum(entries: [HistoryEntry]) -> String {
-        let values = entries.map { $0.value }.joined(separator: "\n")
-        guard let data = values.data(using: .utf8) else {
+    /// Calculate SHA-256 checksum matching desktop: JSON of {currentIndex, entries, version}
+    private func calculateChecksum(entries: [HistoryEntry], currentIndex: Int64, version: Int64) -> String {
+        struct ChecksumEntry: Encodable {
+            let value: String
+            let timestampMs: Int64
+            let deviceId: String?
+            let sequenceNumber: Int64
+            let version: Int64
+
+            enum CodingKeys: String, CodingKey {
+                case value
+                case timestampMs
+                case deviceId
+                case sequenceNumber
+                case version
+            }
+        }
+
+        struct ChecksumPayload: Encodable {
+            let currentIndex: Int64
+            let entries: [ChecksumEntry]
+            let version: Int64
+
+            enum CodingKeys: String, CodingKey {
+                case currentIndex
+                case entries
+                case version
+            }
+        }
+
+        let checksumEntries = entries.map { entry in
+            ChecksumEntry(
+                value: entry.value,
+                timestampMs: entry.createdAt,
+                deviceId: entry.deviceId,
+                sequenceNumber: Int64(entry.sequenceNumber ?? 0),
+                version: entry.version
+            )
+        }
+
+        let payload = ChecksumPayload(currentIndex: currentIndex, entries: checksumEntries, version: version)
+        guard let data = try? JSONEncoder().encode(payload) else {
             return ""
         }
 
@@ -284,8 +348,7 @@ public struct HistoryEntry: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case value
-        case createdAt
-        case timestampMs  // Desktop sends this field name
+        case timestampMs
         case deviceId
         case opType
         case sequenceNumber
@@ -304,12 +367,7 @@ public struct HistoryEntry: Codable, Equatable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         value = try container.decode(String.self, forKey: .value)
-        // Try timestampMs first (from desktop), fall back to createdAt
-        if let timestampMs = try? container.decode(Int64.self, forKey: .timestampMs) {
-            createdAt = timestampMs
-        } else {
-            createdAt = try container.decode(Int64.self, forKey: .createdAt)
-        }
+        createdAt = try container.decode(Int64.self, forKey: .timestampMs)
         deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId)
         opType = try container.decodeIfPresent(String.self, forKey: .opType)
         sequenceNumber = try container.decodeIfPresent(Int32.self, forKey: .sequenceNumber)

@@ -32,30 +32,30 @@ export interface OpenRouterStreamChunk {
 
 // Usage update information sent during streaming
 export interface UsageUpdate {
-  request_id: string;
-  tokens_input: number;
-  tokens_output: number;
-  cache_read_tokens?: number;
-  cache_write_tokens?: number;
-  estimated_cost: number;
-  tokens_total: number;
-  is_final: boolean;
+  requestId: string;
+  tokensInput: number;
+  tokensOutput: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  estimatedCost: number;
+  tokensTotal: number;
+  isFinal: boolean;
 }
 
 // Stream event types
 export type StreamEvent = 
   | { event: 'content_chunk'; data: OpenRouterStreamChunk }
   | { event: 'usage_update'; data: UsageUpdate }
-  | { event: 'stream_started'; data: { request_id: string } }
-  | { event: 'stream_cancelled'; data: { request_id: string; reason: string } }
-  | { event: 'error_details'; data: { request_id: string; error: ErrorDetails } }
+  | { event: 'stream_started'; data: { requestId: string } }
+  | { event: 'stream_cancelled'; data: { requestId: string; reason: string } }
+  | { event: 'error_details'; data: { requestId: string; error: ErrorDetails } }
   | { event: 'stream_completed'; data: {
-      request_id: string;
-      final_cost: number;
-      tokens_input: number;
-      tokens_output: number;
-      cache_read_tokens: number;
-      cache_write_tokens: number;
+      requestId: string;
+      finalCost: number;
+      tokensInput: number;
+      tokensOutput: number;
+      cacheReadTokens: number;
+      cacheWriteTokens: number;
     }
   };
 
@@ -66,14 +66,14 @@ export const isContentChunk = (event: StreamEvent): event is { event: 'content_c
 export const isUsageUpdate = (event: StreamEvent): event is { event: 'usage_update'; data: UsageUpdate } => 
   event.event === 'usage_update';
 
-export const isStreamStarted = (event: StreamEvent): event is { event: 'stream_started'; data: { request_id: string } } => 
+export const isStreamStarted = (event: StreamEvent): event is { event: 'stream_started'; data: { requestId: string } } => 
   event.event === 'stream_started';
 
-export const isStreamCancelled = (event: StreamEvent): event is { event: 'stream_cancelled'; data: { request_id: string; reason: string } } => 
+export const isStreamCancelled = (event: StreamEvent): event is { event: 'stream_cancelled'; data: { requestId: string; reason: string } } => 
   event.event === 'stream_cancelled';
 
-export const isErrorDetails = (event: StreamEvent): event is { event: 'error_details'; data: { request_id: string; error: ErrorDetails } } => 
+export const isErrorDetails = (event: StreamEvent): event is { event: 'error_details'; data: { requestId: string; error: ErrorDetails } } => 
   event.event === 'error_details';
 
-export const isStreamCompleted = (event: StreamEvent): event is { event: 'stream_completed'; data: { request_id: string; final_cost: number; tokens_input: number; tokens_output: number; cache_read_tokens: number; cache_write_tokens: number } } => 
+export const isStreamCompleted = (event: StreamEvent): event is { event: 'stream_completed'; data: { requestId: string; finalCost: number; tokensInput: number; tokensOutput: number; cacheReadTokens: number; cacheWriteTokens: number } } => 
   event.event === 'stream_completed';

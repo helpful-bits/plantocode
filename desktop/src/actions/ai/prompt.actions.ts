@@ -2,17 +2,43 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { type ActionState } from "@/types";
 import { handleActionError } from "@/utils/action-utils";
+import { hashString } from "@/utils/hash";
 import { type TaskType } from "@/types/task-type-defs";
 
 // Debounce state for token estimation
 let lastEstimateCallTs = 0;
-let lastEstimateSessionId: string | null = null;
+let lastEstimateKey: string | null = null;
 let inFlightEstimate: Promise<ActionState<{
   estimatedTokens: number;
   systemPromptTokens: number;
   userPromptTokens: number;
   totalTokens: number;
 }>> | null = null;
+
+function buildEstimateKey(params: {
+  sessionId: string;
+  taskDescription: string;
+  projectDirectory: string;
+  relevantFiles: string[];
+  selectedRootDirectories?: string[];
+  taskType: TaskType;
+  model: string;
+  includeProjectStructure?: boolean;
+}) {
+  const relevantFiles = [...params.relevantFiles].sort();
+  const selectedRoots = [...(params.selectedRootDirectories ?? [])].sort();
+  const payload = [
+    params.sessionId,
+    params.taskType,
+    params.model,
+    params.projectDirectory,
+    params.includeProjectStructure ? "1" : "0",
+    relevantFiles.join("|"),
+    selectedRoots.join("|"),
+    params.taskDescription,
+  ].join("::");
+  return hashString(payload);
+}
 
 export async function estimatePromptTokensAction(params: {
   sessionId: string;
@@ -31,15 +57,16 @@ export async function estimatePromptTokensAction(params: {
 }>> {
   const now = performance.now();
   const MIN_INTERVAL_MS = 250;
+  const estimateKey = buildEstimateKey(params);
 
   // Return existing in-flight request if called too frequently AND same session
-  // Invalidate cache when session changes to prevent returning stale estimates
-  if (inFlightEstimate && now - lastEstimateCallTs < MIN_INTERVAL_MS && lastEstimateSessionId === params.sessionId) {
+  // Invalidate cache when parameters change to prevent returning stale estimates
+  if (inFlightEstimate && now - lastEstimateCallTs < MIN_INTERVAL_MS && lastEstimateKey === estimateKey) {
     return inFlightEstimate;
   }
 
   lastEstimateCallTs = now;
-  lastEstimateSessionId = params.sessionId;
+  lastEstimateKey = estimateKey;
   inFlightEstimate = (async () => {
     try {
       const result = await invoke<{

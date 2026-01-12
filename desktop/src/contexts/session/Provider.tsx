@@ -115,6 +115,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   useAutoSessionLoader({
     projectDirectory,
     activeSessionId: activeSessionManager.activeSessionId,
+    hasResolvedActiveSessionId: activeSessionManager.hasResolvedActiveSessionId,
     currentSession: sessionStateHook.currentSession,
     isSessionLoading: sessionStateHook.isSessionLoading,
     loadSessionById: sessionLoader.loadSessionById,
@@ -307,16 +308,16 @@ export function SessionProvider({ children }: SessionProviderProps) {
     const setupListener = async () => {
       try {
         unlisten = await listen<{
-          session_id: string;
-          job_id: string;
-          task_type: string;
+          sessionId: string;
+          jobId: string;
+          taskType: string;
           files: string[];
         }>('session:auto-files-applied', async (event) => {
           try {
             const payload = event.payload;
 
             // Only process for current session
-            if (!sessionStateHook.currentSession?.id || payload.session_id !== sessionStateHook.currentSession.id) {
+            if (!sessionStateHook.currentSession?.id || payload.sessionId !== sessionStateHook.currentSession.id) {
               return;
             }
 
@@ -342,9 +343,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
             // Use centralized action to ensure additive merge + dirty flag
             // This action already handles window event dispatch
-            const source = payload.task_type === 'extended_path_finder'
+            const source = payload.taskType === 'extended_path_finder'
               ? 'AI Path Finder'
-              : (payload.task_type === 'file_relevance_assessment' ? 'AI Relevance' : 'backend');
+              : (payload.taskType === 'file_relevance_assessment' ? 'AI Relevance' : 'backend');
 
             sessionActions.applyBackendFileUpdate(filtered, source);
 
@@ -481,6 +482,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
         // Invalidate list when new session created
         sessionStateHook.setSessionListVersion((v) => v + 1);
       },
+      onRelayReplayGap: () => {
+        // Replay gaps can leave session lists stale; force list refresh
+        sessionStateHook.setSessionListVersion((v) => v + 1);
+      },
     });
 
     return unregister;
@@ -534,10 +539,31 @@ export function SessionProvider({ children }: SessionProviderProps) {
 
   // Reset session state when project directory changes (but not on initial mount)
   useEffect(() => {
-    if (!projectDirectory) return;
+    const previousProjectDirectory = previousProjectDirectoryRef.current;
+    const shouldResetInit = previousProjectDirectory !== projectDirectory;
+    const hasChanged =
+      previousProjectDirectory !== null && previousProjectDirectory !== projectDirectory;
+
+    if (shouldResetInit) {
+      hasCompletedInitRef.current = false;
+      loadingSessionRef.current = { id: null, timestamp: 0 };
+    }
+
+    if (!projectDirectory) {
+      if (previousProjectDirectory !== null) {
+        // Project directory cleared - reset init state for next selection.
+        sessionStateHook.setCurrentSession(null);
+        sessionStateHook.setSessionModified(false);
+        sessionStateHook.setSessionError(null);
+
+        sessionActions.setActiveSessionId(null).catch(() => {});
+      }
+      previousProjectDirectoryRef.current = null;
+      return;
+    }
 
     // Check if this is a real change (not initial mount)
-    if (previousProjectDirectoryRef.current !== null && previousProjectDirectoryRef.current !== projectDirectory) {
+    if (hasChanged) {
       // Clear the current session data immediately to remove old task description and files from UI
       sessionStateHook.setCurrentSession(null);
       sessionStateHook.setSessionModified(false);

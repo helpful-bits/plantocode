@@ -324,7 +324,7 @@ pub async fn log_error_to_db(error: &AppError, context: &str, metadata: Option<V
             // Enhance metadata with additional context
             let mut final_metadata = serde_json::json!({
                 "source": "rust_backend",
-                "thread_id": format!("{:?}", std::thread::current().id()),
+                "threadId": format!("{:?}", std::thread::current().id()),
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             });
 

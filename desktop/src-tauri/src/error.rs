@@ -372,7 +372,7 @@ impl From<AppError> for SerializableError {
                     // Create metadata with additional context
                     let metadata = serde_json::json!({
                         "source": "rust_backend",
-                        "thread_id": format!("{:?}", std::thread::current().id()),
+                        "threadId": format!("{:?}", std::thread::current().id()),
                         "timestamp": chrono::Utc::now().to_rfc3339(),
                     });
 

@@ -122,7 +122,15 @@ VALUES (
         "temperature": 0.5
       }
     },
-    "max_concurrent_jobs": 20
+    "max_concurrent_jobs": 20,
+    "codex_cli": {
+      "preferred_model": "gpt-5.2-codex",
+      "mini_model": "gpt-5.1-codex-mini",
+      "fallback_model": "gpt-5.2-codex",
+      "reasoning_effort": "xhigh",
+      "mini_reasoning_effort": null,
+      "model_overrides": {}
+    }
 }'::jsonb,
   'Task-driven AI settings with no global default models - complete original data preserved'
 )

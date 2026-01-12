@@ -75,7 +75,7 @@ struct ResponseFormatter {
     }
 
     private static func formatRootFolderSelection(_ data: [String: Any]?) -> AnyView {
-        let directories = data?["root_directories"] as? [String] ?? []
+        let directories = data?["rootDirectories"] as? [String] ?? []
         return AnyView(
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {

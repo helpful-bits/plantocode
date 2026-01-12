@@ -11,14 +11,8 @@ public struct ServerEvent: Codable {
     public let userId: String?
     public let priority: UInt8
 
-    // Alias for backward compatibility
-    public var payload: AnyCodable { data }
-
     enum CodingKeys: String, CodingKey {
-        case id, data, timestamp, sequence, priority
-        case eventType = "event_type"
-        case sourceDevice = "source_device"
-        case userId = "user_id"
+        case id, data, timestamp, sequence, priority, eventType, sourceDevice, userId
     }
 
     public init(id: String, eventType: String, data: AnyCodable, timestamp: Date, sequence: UInt64, sourceDevice: String? = nil, userId: String? = nil, priority: UInt8 = 0) {

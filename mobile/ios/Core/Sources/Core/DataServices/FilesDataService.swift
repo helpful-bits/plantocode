@@ -91,7 +91,8 @@ public final class FilesDataService: ObservableObject {
         }
 
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let _ = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+              let _ = MultiConnectionManager.shared.relayConnection(for: deviceId),
+              MultiConnectionManager.shared.connectionStates[deviceId]?.isConnected == true else {
             throw DataServiceError.connectionError("No active device connection")
         }
 
@@ -553,7 +554,12 @@ public final class FilesDataService: ObservableObject {
     }
 
     public func getFileHistoryState(sessionId: String) async throws -> [String: Any] {
-        try await CommandRouter.sessionGetHistoryStateRaw(sessionId: sessionId, kind: "files")
+        try await CommandRouter.sessionGetHistoryStateRaw(
+            sessionId: sessionId,
+            kind: "files",
+            summaryOnly: false,
+            maxEntries: 50
+        )
     }
 
     public func syncFileHistoryState(sessionId: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
@@ -561,55 +567,73 @@ public final class FilesDataService: ObservableObject {
     }
 
     public func undoFileSelection(sessionId: String) async throws {
-        // Must use raw dict approach for "files" because file history entries have
-        // included_files/force_excluded_files fields, NOT a "value" field like generic HistoryEntry
-        var state = try await getFileHistoryState(sessionId: sessionId)
-        let entries = (state["entries"] as? [Any]) ?? []
-        guard !entries.isEmpty else { return }
-        let rawIndex: Int
-        if let idx = state["currentIndex"] as? Int {
-            rawIndex = idx
-        } else if let idx64 = state["currentIndex"] as? Int64 {
-            rawIndex = Int(idx64)
-        } else {
-            rawIndex = 0
-        }
-        let clampedCurrent = max(0, min(rawIndex, entries.count - 1))
-        guard clampedCurrent > 0 else { return }
-        state["currentIndex"] = Int64(clampedCurrent - 1)
-        let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
-        _ = try await CommandRouter.sessionSyncHistoryStateRaw(
-            sessionId: sessionId,
-            kind: "files",
-            state: state,
-            expectedVersion: version
-        )
+        try await updateFileHistoryIndex(sessionId: sessionId, delta: -1)
     }
 
     public func redoFileSelection(sessionId: String) async throws {
-        // Must use raw dict approach for "files" because file history entries have
-        // included_files/force_excluded_files fields, NOT a "value" field like generic HistoryEntry
-        var state = try await getFileHistoryState(sessionId: sessionId)
-        let entries = (state["entries"] as? [Any]) ?? []
-        guard !entries.isEmpty else { return }
-        let rawIndex: Int
-        if let idx = state["currentIndex"] as? Int {
-            rawIndex = idx
-        } else if let idx64 = state["currentIndex"] as? Int64 {
-            rawIndex = Int(idx64)
-        } else {
-            rawIndex = 0
+        try await updateFileHistoryIndex(sessionId: sessionId, delta: 1)
+    }
+
+    private func updateFileHistoryIndex(sessionId: String, delta: Int) async throws {
+        func applyDelta(state: FileHistoryStatePayload, delta: Int) -> FileHistoryStatePayload? {
+            guard !state.entries.isEmpty else { return nil }
+            let clampedCurrent = max(0, min(Int(state.currentIndex), state.entries.count - 1))
+            let nextIndex = clampedCurrent + delta
+            guard nextIndex >= 0, nextIndex < state.entries.count else { return nil }
+            var updated = state
+            updated.currentIndex = Int64(nextIndex)
+            updated.checksum = FileHistoryStateCodec.computeChecksum(
+                entries: updated.entries,
+                currentIndex: updated.currentIndex,
+                version: updated.version
+            )
+            return updated
         }
-        let clampedCurrent = max(0, min(rawIndex, entries.count - 1))
-        guard clampedCurrent < entries.count - 1 else { return }
-        state["currentIndex"] = Int64(clampedCurrent + 1)
-        let version = (state["version"] as? Int64) ?? Int64(state["version"] as? Int ?? 0)
-        _ = try await CommandRouter.sessionSyncHistoryStateRaw(
-            sessionId: sessionId,
-            kind: "files",
-            state: state,
-            expectedVersion: version
-        )
+
+        let rawState = try await getFileHistoryState(sessionId: sessionId)
+        let initialState = try FileHistoryStateCodec.decodeState(from: rawState)
+        guard let updated = applyDelta(state: initialState, delta: delta) else { return }
+
+        do {
+            let encodedState = try FileHistoryStateCodec.encodeState(updated)
+            let syncKey = "file-history-index:\(sessionId):\(updated.checksum)"
+            _ = try await CommandRouter.sessionSyncHistoryStateRaw(
+                sessionId: sessionId,
+                kind: "files",
+                state: encodedState,
+                expectedVersion: updated.version,
+                idempotencyKey: syncKey
+            )
+        } catch {
+            guard isHistoryConflict(error) else { throw error }
+
+            let latestRaw = try await getFileHistoryState(sessionId: sessionId)
+            let latestState = try FileHistoryStateCodec.decodeState(from: latestRaw)
+            guard let retryState = applyDelta(state: latestState, delta: delta) else { return }
+            let encodedRetry = try FileHistoryStateCodec.encodeState(retryState)
+            let syncKey = "file-history-index:\(sessionId):\(retryState.checksum)"
+            _ = try await CommandRouter.sessionSyncHistoryStateRaw(
+                sessionId: sessionId,
+                kind: "files",
+                state: encodedRetry,
+                expectedVersion: retryState.version,
+                idempotencyKey: syncKey
+            )
+        }
+    }
+
+    private func isHistoryConflict(_ error: Error) -> Bool {
+        guard let relayError = error as? ServerRelayError else { return false }
+        switch relayError {
+        case .serverError(let code, let message):
+            if code == "-32003" || code.lowercased() == "conflict" {
+                return true
+            }
+            let lower = message.lowercased()
+            return lower.contains("version mismatch") || lower.contains("conflict")
+        default:
+            return false
+        }
     }
 }
 

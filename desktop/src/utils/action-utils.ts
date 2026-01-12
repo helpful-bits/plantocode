@@ -26,7 +26,6 @@ function parseNestedJsonError(input: string, depth = 0): any | null {
             type: nestedParsed.type || parsed.type,
             details: nestedParsed.details || parsed.details,
             workflowContext: nestedParsed.workflowContext || parsed.workflowContext,
-            workflow_context: nestedParsed.workflow_context || parsed.workflow_context,
             category: nestedParsed.category || parsed.category
           };
         }
@@ -238,7 +237,7 @@ export function handleActionError(
         const rustCode = (typeof parsed.code === 'string' && parsed.code) ? parsed.code : null;
         
         // Extract workflow context if available - ensure proper structure
-        const workflowContext = parsed.workflowContext || parsed.workflow_context;
+        const workflowContext = parsed.workflowContext;
         
         // Extract error message from parsed JSON
         let errorMessage: string;

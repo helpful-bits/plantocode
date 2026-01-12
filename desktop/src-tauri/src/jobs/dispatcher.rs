@@ -342,9 +342,9 @@ async fn handle_job_success(
 
             let metadata_string = merged_metadata;
 
-            // Extract model_used from metadata if present
+            // Extract modelUsed from metadata if present
             let model_used = if let Some(metadata) = &result.metadata {
-                metadata.get("model_used").and_then(|v| v.as_str())
+                metadata.get("modelUsed").and_then(|v| v.as_str())
             } else {
                 None
             };
@@ -374,7 +374,7 @@ async fn handle_job_success(
             };
 
             // Update job status to completed with comprehensive result data
-            // mark_job_completed will handle all fields including actual_cost
+            // mark_job_completed will handle all fields including actualCost
             background_job_repo
                 .mark_job_completed(
                     job_id,
@@ -424,6 +424,15 @@ async fn handle_job_success(
                     // Even if no new files were applied, normalization/dedup may have changed the state
                     // Fetch fresh session state from DB after auto-apply commit
                     if let Ok(Some(updated_session)) = session_repo.get_session_by_id(&completed_job.session_id).await {
+                        let payload = json!({
+                            "sessionId": completed_job.session_id,
+                            "jobId": job_id,
+                            "taskType": completed_job.task_type,
+                            "files": updated_session.included_files,
+                        });
+
+                        let _ = app_handle.emit("session:auto-files-applied", payload.clone());
+
                         // Emit unified session-files-updated event with fresh state
                         let _ = session_events::emit_session_files_updated(
                             app_handle,
@@ -717,11 +726,10 @@ async fn handle_job_failure_or_retry_internal(
     // Check if it's a workflow job from job_copy.metadata
     let is_workflow_job = if let Some(meta_str) = &job_copy.metadata {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(meta_str) {
-            // Check for workflowId in metadata (could be at root or in task_data)
+            // Check for workflowId in metadata (could be at root or in taskData)
             metadata_json.get("workflowId").is_some()
-                || metadata_json.get("workflow_id").is_some()
                 || (metadata_json
-                    .get("task_data")
+                    .get("taskData")
                     .and_then(|td| td.get("workflowId"))
                     .is_some())
         } else {
@@ -1044,7 +1052,7 @@ fn log_job_metadata_context(job_id: &str, metadata: &Option<String>) {
             {
                 error!("Failed job {} had priority: {}", job_id, priority);
             }
-            if let Some(app_error_type) = meta_json.get("app_error_type").and_then(|t| t.as_str()) {
+            if let Some(app_error_type) = meta_json.get("appErrorType").and_then(|t| t.as_str()) {
                 error!(
                     "Failed job {} detected AppError type: {}",
                     job_id, app_error_type
@@ -1071,7 +1079,7 @@ fn log_retry_history_context(job_id: &str, metadata: &Option<String>) {
                             .and_then(|t| t.as_str())
                             .unwrap_or("Unknown");
                         let error_type = error_entry
-                            .get("app_error_type")
+                            .get("appErrorType")
                             .and_then(|t| t.as_str())
                             .unwrap_or("Unknown");
                         error!(
@@ -1134,7 +1142,7 @@ async fn report_cancelled_job_cost_if_needed(
     app_handle: &AppHandle,
     job: &BackgroundJob,
 ) -> AppResult<()> {
-    // Extract cost and token information from job metadata or actual_cost field
+    // Extract cost and token information from job metadata or actualCost field
     let (final_cost, token_counts) = extract_job_cost_data(job)?;
 
     // Only report if there is an actual cost incurred
@@ -1159,34 +1167,34 @@ async fn report_cancelled_job_cost_if_needed(
 
 /// Extract cost and token count data from a background job
 fn extract_job_cost_data(job: &BackgroundJob) -> AppResult<(Option<f64>, serde_json::Value)> {
-    // First check the actual_cost field from the database
+    // First check the actualCost field from the database
     let final_cost = job.actual_cost;
 
     // Extract token counts from job fields and metadata
     let mut token_counts = serde_json::json!({
-        "input_tokens": job.tokens_sent,
-        "output_tokens": job.tokens_received
+        "inputTokens": job.tokens_sent,
+        "outputTokens": job.tokens_received
     });
 
     // Try to extract additional token information from metadata
     if let Some(metadata_str) = &job.metadata {
         if let Ok(metadata_value) = serde_json::from_str::<serde_json::Value>(metadata_str) {
             // Extract cache token information if available
-            if let Some(task_data) = metadata_value.get("task_data") {
+            if let Some(task_data) = metadata_value.get("taskData") {
                 if let Some(cached_input) = task_data.get("cachedInputTokens") {
-                    token_counts["cached_input_tokens"] = cached_input.clone();
+                    token_counts["cachedInputTokens"] = cached_input.clone();
                 }
                 if let Some(cache_write) = task_data.get("cacheWriteTokens") {
-                    token_counts["cache_write_tokens"] = cache_write.clone();
+                    token_counts["cacheWriteTokens"] = cache_write.clone();
                 }
                 if let Some(cache_read) = task_data.get("cacheReadTokens") {
-                    token_counts["cache_read_tokens"] = cache_read.clone();
+                    token_counts["cacheReadTokens"] = cache_read.clone();
                 }
 
                 // Also check for cost in metadata if not in actual_cost field
                 if final_cost.is_none() {
                     if let Some(metadata_cost) =
-                        task_data.get("actual_cost").and_then(|v| v.as_f64())
+                        task_data.get("actualCost").and_then(|v| v.as_f64())
                     {
                         return Ok((Some(metadata_cost), token_counts));
                     }
@@ -1230,7 +1238,7 @@ async fn send_implementation_plan_notification(
             metadata_json
                 .get("planTitle")
                 .and_then(|v| v.as_str())
-                .or_else(|| metadata_json.get("generated_title").and_then(|v| v.as_str()))
+                .or_else(|| metadata_json.get("generatedTitle").and_then(|v| v.as_str()))
                 .map(|s| s.to_string())
         } else {
             None
@@ -1267,10 +1275,10 @@ async fn send_implementation_plan_notification(
     };
 
     let payload = json!({
-        "job_id": job_id,
+        "jobId": job_id,
         "title": notification_title,
         "body": notification_body,
-        "custom_data": custom_data
+        "customData": custom_data
     });
 
     // Send the notification via server proxy client

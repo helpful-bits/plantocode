@@ -30,16 +30,16 @@ impl JobUIMetadataBuilder {
 
     pub fn retry_info(mut self, retry_count: u32, error_info: Option<Value>) -> Self {
         if let Value::Object(ref mut map) = self.task_data {
-            map.insert("retry_count".to_string(), json!(retry_count));
+            map.insert("retryCount".to_string(), json!(retry_count));
             if let Some(error) = error_info {
-                map.insert("retry_error_info".to_string(), error);
+                map.insert("retryErrorInfo".to_string(), error);
             }
         } else {
             let mut retry_data = json!({
-                "retry_count": retry_count
+                "retryCount": retry_count
             });
             if let Some(error) = error_info {
-                retry_data["retry_error_info"] = error;
+                retry_data["retryErrorInfo"] = error;
             }
             self.task_data = retry_data;
         }
@@ -48,12 +48,12 @@ impl JobUIMetadataBuilder {
 
     pub fn streaming_progress(mut self, progress: f64, is_active: bool) -> Self {
         if let Value::Object(ref mut map) = self.task_data {
-            map.insert("streaming_progress".to_string(), json!(progress));
-            map.insert("is_streaming".to_string(), json!(is_active));
+            map.insert("streamProgress".to_string(), json!(progress));
+            map.insert("isStreaming".to_string(), json!(is_active));
         } else {
             self.task_data = json!({
-                "streaming_progress": progress,
-                "is_streaming": is_active
+                "streamProgress": progress,
+                "isStreaming": is_active
             });
         }
         self

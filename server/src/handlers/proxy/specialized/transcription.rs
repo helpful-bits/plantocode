@@ -242,7 +242,7 @@ pub async fn transcription_handler(
         metadata: Some(serde_json::json!({
             "transcription": true,
             "provider": model_with_provider.provider_code,
-            "duration_ms": duration_ms,
+            "durationMs": duration_ms,
             "timestamp": chrono::Utc::now().to_rfc3339()
         })),
         provider_reported_cost: Some(final_cost.clone()),
@@ -389,7 +389,7 @@ pub async fn streaming_transcription_handler(
             "transcription": true,
             "streaming": true,
             "provider": model_with_provider.provider_code,
-            "duration_ms": duration_ms,
+            "durationMs": duration_ms,
             "timestamp": chrono::Utc::now().to_rfc3339()
         })),
         provider_reported_cost: Some(final_cost.clone()),

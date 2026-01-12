@@ -6,6 +6,41 @@ use log::{debug, error};
 use serde_json::Value;
 use tauri::AppHandle;
 
+fn find_snake_case_key(value: &Value, path: &str) -> Option<String> {
+    match value {
+        Value::Object(map) => {
+            for (key, nested) in map {
+                let next_path = if path.is_empty() {
+                    key.to_string()
+                } else {
+                    format!("{path}.{key}")
+                };
+                if key.contains('_') {
+                    return Some(next_path);
+                }
+                if let Some(found) = find_snake_case_key(nested, &next_path) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        Value::Array(items) => {
+            for (idx, nested) in items.iter().enumerate() {
+                let next_path = if path.is_empty() {
+                    format!("[{idx}]")
+                } else {
+                    format!("{path}[{idx}]")
+                };
+                if let Some(found) = find_snake_case_key(nested, &next_path) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 /// Dispatch a remote command request to the appropriate handler
 ///
 /// This function takes an RPC request and routes it through the router,
@@ -20,6 +55,13 @@ pub async fn dispatch_remote_command(
         "Dispatching remote command: method={}, correlation_id={}",
         request.method, request.correlation_id
     );
+
+    if let Some(path) = find_snake_case_key(&request.params, "") {
+        return serialize_error_result(
+            request.correlation_id,
+            RpcError::invalid_params(format!("snake_case key not allowed: {}", path)),
+        );
+    }
 
     // Route the request through the existing router
     let response = router::dispatch(app_handle, request, user_context).await;

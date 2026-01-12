@@ -593,7 +593,7 @@ pub async fn read_implementation_plan_command(
     let title = if let Some(metadata) = job.metadata.as_ref() {
         if let Ok(metadata_json) = serde_json::from_str::<serde_json::Value>(metadata) {
             metadata_json["planTitle"].as_str()
-                .or(metadata_json["generated_title"].as_str())
+                .or(metadata_json["generatedTitle"].as_str())
                 .or(metadata_json["title"].as_str())
                 .map(|s| s.to_string())
         } else {
@@ -716,7 +716,7 @@ pub async fn mark_implementation_plan_signed_off_command(
         "state": state_value,
         "timestamp": Utc::now().to_rfc3339(),
     });
-    meta["user_signoff"] = sign;
+    meta["userSignoff"] = sign;
 
     let metadata_str = serde_json::to_string(&meta)
         .map_err(|e| AppError::ValidationError(format!("Failed to serialize metadata: {}", e)))?;

@@ -58,7 +58,7 @@ extension JobsDataService {
                     statusFilter: nil,
                     taskTypeFilter: nil,
                     page: 0,
-                    pageSize: 100,
+                    pageSize: 50,
                     bypassCache: bypassCache,
                     includeContent: true
                 )
@@ -137,7 +137,7 @@ extension JobsDataService {
                     statusFilter: nil,
                     taskTypeFilter: nil,
                     page: 0,
-                    pageSize: 100,
+                    pageSize: 50,
                     bypassCache: bypassCache,
                     includeContent: false
                 )
@@ -466,7 +466,7 @@ extension JobsDataService {
                 do {
                     var jobDetailsData: [String: Any]?
 
-                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                    for try await rpcResponse in relayClient.invoke(request: rpcRequest) {
                         if let error = rpcResponse.error {
                             promise(.failure(.serverError(error.message)))
                             return
@@ -528,7 +528,7 @@ extension JobsDataService {
                 do {
                     var deleteSucceeded = false
 
-                    for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                    for try await response in relayClient.invoke(request: rpcRequest) {
                         if let error = response.error {
                             promise(.failure(.serverError("Failed to delete job: \(error.message)")))
                             return
@@ -586,7 +586,7 @@ extension JobsDataService {
                 do {
                     var cancelData: [String: Any]?
 
-                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                    for try await rpcResponse in relayClient.invoke(request: rpcRequest) {
                         if let error = rpcResponse.error {
                             promise(.failure(.serverError(error.message)))
                             return

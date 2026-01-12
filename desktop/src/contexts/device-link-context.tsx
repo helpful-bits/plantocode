@@ -29,7 +29,7 @@ export type DeviceLinkConnectionState = "connected" | "disconnected" | "error";
  */
 interface DeviceLinkStatusPayload {
   status: DeviceLinkStatusRaw | string;
-  backoff_ms?: number;
+  backoffMs?: number;
   attempt?: number;
   message?: string;
 }
@@ -153,7 +153,7 @@ export function DeviceLinkProvider({ children }: { children: React.ReactNode }) 
               }
 
               // Update backoff and attempt
-              setBackoffMs(payload.backoff_ms ?? null);
+              setBackoffMs(payload.backoffMs ?? null);
               setAttempt(payload.attempt ?? null);
 
               // Mark as initialized after first event

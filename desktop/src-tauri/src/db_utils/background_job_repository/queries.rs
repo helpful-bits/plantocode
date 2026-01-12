@@ -617,7 +617,7 @@ impl BackgroundJobRepository {
         let offset = page * page_size;
         let limit = page_size + 1;
 
-        let summary_columns = "id, session_id, task_type, status, error_message, tokens_sent, tokens_received, cache_write_tokens, cache_read_tokens, model_used, actual_cost, created_at, updated_at, start_time, end_time, is_finalized, COALESCE(json_extract(metadata, '$.planTitle'), json_extract(metadata, '$.generated_title'), json_extract(metadata, '$.taskData.planTitle')) as plan_title, json_extract(metadata, '$.markdownConversionStatus') as markdown_conversion_status";
+        let summary_columns = "id, session_id, task_type, status, error_message, tokens_sent, tokens_received, cache_write_tokens, cache_read_tokens, model_used, actual_cost, created_at, updated_at, start_time, end_time, is_finalized, COALESCE(json_extract(metadata, '$.planTitle'), json_extract(metadata, '$.generatedTitle'), json_extract(metadata, '$.taskData.planTitle')) as plan_title, json_extract(metadata, '$.markdownConversionStatus') as markdown_conversion_status";
 
         let (data_query, count_query) = if use_session_join {
             (

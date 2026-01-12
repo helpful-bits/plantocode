@@ -840,6 +840,7 @@ pub async fn set_app_setting(app_handle: AppHandle, key: String, value: String) 
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct BackgroundPrefs {
     pub background_run_enabled: bool,
     pub start_with_system: bool,

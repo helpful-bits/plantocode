@@ -50,9 +50,9 @@ public final class MultiConnectionManager: ObservableObject {
 
     private struct ReconnectPolicy {
         let attemptDelays: [TimeInterval] = [0.0, 0.5, 1, 2, 4, 8, 16, 30]
-        let backgroundRetryInterval: TimeInterval = 120
-        let maxAggressiveAttempts: Int = 8
-        let maxAggressiveWindowSeconds: TimeInterval = 90
+        let backgroundRetryInterval: TimeInterval = 30
+        let maxAggressiveAttempts: Int = 12
+        let maxAggressiveWindowSeconds: TimeInterval = 180
         let jitterFactor: Double = 0.15
         /// Time connection must remain stable before resetting backoff state
         let stabilityPeriodSeconds: TimeInterval = 5.0
@@ -293,12 +293,17 @@ public final class MultiConnectionManager: ObservableObject {
         do {
             var receivedResponse = false
             for try await response in relayClient.invoke(
-                targetDeviceId: deviceId.uuidString,
                 request: RpcRequest(method: "system.ping", params: [:]),
                 timeout: TimeInterval(timeoutSeconds)
             ) {
                 receivedResponse = true
                 if let error = response.error {
+                    let lower = error.message.lowercased()
+                    if error.code == -32010 ||
+                        lower.contains("desktop is offline") ||
+                        lower.contains("device not connected") {
+                        throw MultiConnectionError.desktopOffline
+                    }
                     throw MultiConnectionError.connectionFailed("Desktop ping failed: \(error.message)")
                 }
                 if response.isFinal {
@@ -309,7 +314,10 @@ public final class MultiConnectionManager: ObservableObject {
             if !receivedResponse {
                 throw MultiConnectionError.connectionFailed("Desktop did not respond to ping.")
             }
-        } catch is ServerRelayError {
+        } catch let relayError as ServerRelayError {
+            if case .timeout = relayError {
+                throw MultiConnectionError.desktopOffline
+            }
             throw MultiConnectionError.connectionFailed("Desktop did not respond to ping.")
         } catch {
             throw error
@@ -408,14 +416,23 @@ public final class MultiConnectionManager: ObservableObject {
                     }
                     return .success(deviceId)
                 } catch {
-                    existingClient.disconnect()
+                    if let multiError = error as? MultiConnectionError,
+                       case .desktopOffline = multiError {
+                        await MainActor.run {
+                            connectionStates[deviceId] = .reconnecting
+                            updateConnectionHealth(for: deviceId, state: .reconnecting)
+                            verifyingDevices.remove(deviceId)
+                        }
+                        return .failure(multiError)
+                    }
+                    existingClient.disconnect(isUserInitiated: false)
                     await MainActor.run {
                         storage.removeValue(forKey: deviceId)
                         connectionStates.removeValue(forKey: deviceId)
                     }
                 }
             } else {
-                existingClient.disconnect()
+                existingClient.disconnect(isUserInitiated: false)
                 await MainActor.run {
                     storage.removeValue(forKey: deviceId)
                     connectionStates.removeValue(forKey: deviceId)
@@ -600,6 +617,12 @@ public final class MultiConnectionManager: ObservableObject {
                     try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 8)
 
                     await MainActor.run {
+                        let otherDeviceIds = self.storage.keys.filter { $0 != deviceId }
+                        for otherDeviceId in otherDeviceIds {
+                            self.removeConnection(deviceId: otherDeviceId)
+                            self.clearReconnectState(for: otherDeviceId)
+                        }
+
                         let handshake = self.relayHandshakeByDevice[deviceId] ?? ConnectionHandshake(
                             sessionId: UUID().uuidString,
                             clientId: DeviceManager.shared.getOrCreateDeviceID(),
@@ -616,12 +639,26 @@ public final class MultiConnectionManager: ObservableObject {
                         UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
                     }
                 } catch {
+                    if let multiError = error as? MultiConnectionError,
+                       case .desktopOffline = multiError {
+                        await MainActor.run {
+                            self.connectionStates[deviceId] = .reconnecting
+                            self.updateConnectionHealth(for: deviceId, state: .reconnecting)
+                            self.verifyingDevices.remove(deviceId)
+                            self.persistConnectedDevice(deviceId)
+                            if self.activeDeviceId == nil {
+                                self.setActive(deviceId)
+                            }
+                        }
+                        return .failure(multiError)
+                    }
+
                     await MainActor.run {
                         self.connectionStates[deviceId] = .failed(error)
                         self.updateConnectionHealth(for: deviceId, state: .failed(error))
                         self.verifyingDevices.remove(deviceId)
                     }
-                    relayClient.disconnect()
+                    relayClient.disconnect(isUserInitiated: false)
                     throw error
                 }
 
@@ -837,6 +874,27 @@ public final class MultiConnectionManager: ObservableObject {
         // Trigger reconnect if reason provided
         if let reason = reason {
             triggerAggressiveReconnect(reason: reason, deviceIds: [deviceId])
+        }
+    }
+
+    /// Marks a device as online while preserving the existing relay connection.
+    @MainActor
+    public func markDeviceOnline(_ deviceId: UUID) {
+        guard storage[deviceId] != nil else { return }
+
+        let handshake = relayHandshakeByDevice[deviceId] ?? ConnectionHandshake(
+            sessionId: UUID().uuidString,
+            clientId: DeviceManager.shared.getOrCreateDeviceID(),
+            transport: "relay"
+        )
+
+        connectionStates[deviceId] = .connected(handshake)
+        updateConnectionHealth(for: deviceId, state: .connected(handshake))
+        verifyingDevices.remove(deviceId)
+        reconnectStates[deviceId]?.backgroundTimer?.invalidate()
+        reconnectStates[deviceId] = nil
+        if deviceId == activeDeviceId {
+            isActivelyReconnecting = false
         }
     }
 
@@ -1306,17 +1364,10 @@ public final class MultiConnectionManager: ObservableObject {
         }
 
         let deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
-        for idStr in deviceIds {
-            guard let uuid = UUID(uuidString: idStr) else { continue }
-            let result = await addConnection(for: uuid)
-        }
+        let candidateId = activeDeviceId ?? deviceIds.compactMap { UUID(uuidString: $0) }.first
 
-        // Auto-assign if exactly one device connected successfully and no active device
-        if activeDeviceId == nil {
-            let connected = connectedDeviceIds
-            if connected.count == 1, let deviceId = connected.first {
-                setActive(deviceId)
-            }
+        if let uuid = candidateId {
+            _ = await addConnection(for: uuid)
         }
     }
 
@@ -1334,12 +1385,7 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     private func persistConnectedDevice(_ deviceId: UUID) {
-        var deviceIds = UserDefaults.standard.array(forKey: connectedDevicesKey) as? [String] ?? []
-        let idStr = deviceId.uuidString
-        if !deviceIds.contains(idStr) {
-            deviceIds.append(idStr)
-            UserDefaults.standard.set(deviceIds, forKey: connectedDevicesKey)
-        }
+        persistConnectedDevices([deviceId])
     }
 
     private func persistConnectedDevices(_ ids: [UUID]) {
@@ -1421,6 +1467,7 @@ public final class MultiConnectionManager: ObservableObject {
 public enum MultiConnectionError: Error, LocalizedError {
     case authenticationRequired
     case invalidConfiguration
+    case desktopOffline
     case connectionFailed(String)
     case deviceNotFound(UUID)
 
@@ -1430,6 +1477,8 @@ public enum MultiConnectionError: Error, LocalizedError {
             return "Authentication token is required to establish connection"
         case .invalidConfiguration:
             return "Invalid server configuration"
+        case .desktopOffline:
+            return "Desktop is offline"
         case .connectionFailed(let reason):
             return "Connection failed: \(reason)"
         case .deviceNotFound(let deviceId):

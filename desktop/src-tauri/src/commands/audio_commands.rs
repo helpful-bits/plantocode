@@ -65,18 +65,7 @@ pub async fn transcribe_audio_command(
         }
     }
 
-    // Get the API client (server proxy)
-    let api_client = client_factory::get_api_client(&app_handle).await?;
-
-    // Get the server proxy client to access transcription functionality
-    let server_proxy = api_client
-        .as_any()
-        .downcast_ref::<crate::api_clients::server_proxy_client::ServerProxyClient>()
-        .ok_or_else(|| {
-            crate::error::AppError::InternalError(
-                "Failed to get server proxy client for transcription".to_string(),
-            )
-        })?;
+    let server_proxy = client_factory::get_server_proxy_client(&app_handle).await?;
 
     // Model must be provided by the caller - no default
     let model_to_use = model.ok_or_else(|| {
@@ -87,7 +76,7 @@ pub async fn transcribe_audio_command(
 
     // Call the transcription method with extended parameters
     let text = transcribe_with_extended_params(
-        server_proxy,
+        server_proxy.as_ref(),
         &app_handle,
         &audio_data,
         &filename,
@@ -153,7 +142,7 @@ async fn transcribe_with_extended_params(
     // Build multipart form with all parameters
     let mut form = multipart::Form::new()
         .text("model", model.to_string())
-        .text("duration_ms", duration_ms.to_string())
+        .text("durationMs", duration_ms.to_string())
         .part(
             "file",
             multipart::Part::bytes(audio_data.to_vec())

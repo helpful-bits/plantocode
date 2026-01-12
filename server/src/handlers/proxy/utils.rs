@@ -236,14 +236,14 @@ pub(crate) fn create_standardized_usage_response(
     usage: &ProviderUsage,
     cost: &BigDecimal,
 ) -> Result<serde_json::Value, AppError> {
-    // Create response with snake_case field names to match desktop client's OpenRouterUsage
+    // Create response with camelCase field names to match desktop client's OpenRouterUsage
     let response = serde_json::json!({
-        "prompt_tokens": usage.prompt_tokens,
-        "completion_tokens": usage.completion_tokens,
-        "total_tokens": usage.prompt_tokens + usage.completion_tokens,
+        "promptTokens": usage.prompt_tokens,
+        "completionTokens": usage.completion_tokens,
+        "totalTokens": usage.prompt_tokens + usage.completion_tokens,
         "cost": cost.to_string().parse::<f64>().unwrap_or(0.0),
-        "cache_write_tokens": usage.cache_write_tokens,
-        "cache_read_tokens": usage.cache_read_tokens
+        "cacheWriteTokens": usage.cache_write_tokens,
+        "cacheReadTokens": usage.cache_read_tokens
     });
 
     Ok(response)

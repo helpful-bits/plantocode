@@ -462,6 +462,8 @@ final class SessionWorkspaceViewModel: ObservableObject {
                         reconnectionMessage = "Authentication required. Please sign in again."
                     case .invalidConfiguration:
                         reconnectionMessage = "Invalid server configuration. Check your settings."
+                    case .desktopOffline:
+                        reconnectionMessage = "Desktop is offline. Keep the desktop app open to reconnect."
                     case .connectionFailed(let reason):
                         reconnectionMessage = "Connection failed: \(reason). Ensure desktop app is running."
                     case .deviceNotFound:

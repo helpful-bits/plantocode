@@ -100,6 +100,14 @@ export function ImplementationPlansPanel({
            modelLower.startsWith("o3-") ||
            modelLower.startsWith("o4-");
   }, [selectedModelId, currentModel]);
+
+  useEffect(() => {
+    if (currentModel === undefined) {
+      setSelectedModelId(undefined);
+      return;
+    }
+    setSelectedModelId(currentModel || undefined);
+  }, [currentModel]);
   const {
     implementationPlans,
     isLoading,
@@ -246,6 +254,8 @@ export function ImplementationPlansPanel({
   const [estimatedTokens, setEstimatedTokens] = useState<number | null>(null);
   const [previousEstimatedTokens, setPreviousEstimatedTokens] = useState<number | null>(null);
   const [isEstimatingTokens, setIsEstimatingTokens] = useState(false);
+  const estimateRunIdRef = useRef(0);
+  const lastEstimateSessionIdRef = useRef<string | null>(null);
   
   // Runtime config for model context windows
   const { config: runtimeConfig } = useRuntimeConfig();
@@ -447,6 +457,16 @@ export function ImplementationPlansPanel({
 
   // Token estimation effect
   useEffect(() => {
+    const runId = ++estimateRunIdRef.current;
+    const sessionKey = sessionId ?? null;
+    const sessionChanged = lastEstimateSessionIdRef.current !== sessionKey;
+
+    if (sessionChanged) {
+      lastEstimateSessionIdRef.current = sessionKey;
+      setEstimatedTokens(null);
+      setPreviousEstimatedTokens(null);
+    }
+
     // Check if we have the required data for token estimation (not including isCreatingPlan check)
     const hasRequiredData = Boolean(
       projectDirectory &&
@@ -458,10 +478,13 @@ export function ImplementationPlansPanel({
 
     if (!hasRequiredData) {
       setEstimatedTokens(null);
+      setPreviousEstimatedTokens(null);
+      setIsEstimatingTokens(false);
       return;
     }
 
     const estimateTokens = async () => {
+      const previousTokens = sessionChanged ? null : estimatedTokens;
       setIsEstimatingTokens(true);
       try {
         const finalTaskDescription = taskDescription || currentSession?.taskDescription || "";
@@ -478,18 +501,25 @@ export function ImplementationPlansPanel({
           includeProjectStructure: includeProjectStructure
         });
 
+        if (runId !== estimateRunIdRef.current) return;
+
         if (result.isSuccess && result.data) {
-          setPreviousEstimatedTokens(estimatedTokens);
+          setPreviousEstimatedTokens(previousTokens);
           setEstimatedTokens(result.data.totalTokens);
         } else {
-          setPreviousEstimatedTokens(estimatedTokens);
+          setPreviousEstimatedTokens(previousTokens);
           setEstimatedTokens(null);
         }
       } catch (error) {
+        if (runId !== estimateRunIdRef.current) return;
+
         console.error("Failed to estimate tokens:", error);
+        setPreviousEstimatedTokens(previousTokens);
         setEstimatedTokens(null);
       } finally {
-        setIsEstimatingTokens(false);
+        if (runId === estimateRunIdRef.current) {
+          setIsEstimatingTokens(false);
+        }
       }
     };
 
@@ -982,7 +1012,7 @@ export function ImplementationPlansPanel({
             (() => { try { return JSON.parse(terminalPlan.metadata); } catch { return {}; } })() :
             terminalPlan.metadata) :
           {};
-        const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
+        const planTitle = parsedMeta?.planTitle || parsedMeta?.generatedTitle || "Implementation Plan";
 
         return (
           <PlanTerminalModal

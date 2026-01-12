@@ -101,28 +101,9 @@ public final class SettingsDataService: ObservableObject {
     public func getRawProjectTaskSetting(projectDirectory: String, taskKey: String, settingKey: String) async throws -> Any? {
         for try await res in CommandRouter.settingsGetProjectTaskModelSettings(projectDirectory: projectDirectory) {
             if let dict = res.resultDict {
-                // Try camelCase task key first
-                if let taskSettings = dict[taskKey] as? [String: Any] {
-                    // Try exact settingKey
-                    if let value = taskSettings[settingKey] {
-                        return value
-                    }
-                    // Try snake_case variant for language_code
-                    if settingKey == "languageCode", let value = taskSettings["language_code"] {
-                        return value
-                    }
-                }
-                // Try snake_case task key
-                let snakeCaseTaskKey = toSnakeCase(taskKey)
-                if let taskSettings = dict[snakeCaseTaskKey] as? [String: Any] {
-                    // Try exact settingKey
-                    if let value = taskSettings[settingKey] {
-                        return value
-                    }
-                    // Try snake_case variant
-                    if settingKey == "languageCode", let value = taskSettings["language_code"] {
-                        return value
-                    }
+                if let taskSettings = dict[taskKey] as? [String: Any],
+                   let value = taskSettings[settingKey] {
+                    return value
                 }
             }
         }
@@ -374,7 +355,6 @@ public final class SettingsDataService: ObservableObject {
         for (task, value) in raw {
             guard var settings = value as? [String: Any] else { continue }
 
-            if settings["maxTokens"] == nil, let v = settings["max_tokens"] { settings["maxTokens"] = v }
             if let v = settings["maxTokens"] {
                 settings["maxTokens"] = coerceInt(v)
             }

@@ -487,7 +487,7 @@ public final class JobsDataService: ObservableObject {
                 do {
                     var jobData: [String: Any]?
 
-                    for try await rpcResponse in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: rpcRequest) {
+                    for try await rpcResponse in relayClient.invoke(request: rpcRequest) {
                         if let error = rpcResponse.error {
                             promise(.failure(.serverError(error.message)))
                             return
@@ -751,6 +751,11 @@ public final class JobsDataService: ObservableObject {
         }
     }
 
+    @MainActor
+    public func isViewingImplementationPlan(jobId: String) -> Bool {
+        return viewedImplementationPlanId == jobId
+    }
+
     /// Fast-path job fetch with local cache first, then direct network call
     public func getJobFast(jobId: String) -> AnyPublisher<BackgroundJob, DataServiceError> {
         // Local cache fast-path: check if job exists with non-empty response
@@ -849,7 +854,7 @@ public final class JobsDataService: ObservableObject {
             projectDirectory: self.activeProjectDirectory,
             sessionId: sessionId,
             statusFilter: activeStatuses,
-            pageSize: 100
+            pageSize: 50
         )
 
         // Fetch without replacing - routes through reducer which handles all state updates

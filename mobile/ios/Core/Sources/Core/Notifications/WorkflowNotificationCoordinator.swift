@@ -10,6 +10,7 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
     private let logger = Logger(subsystem: "PlanToCode", category: "WorkflowNotificationCoordinator")
     private var cancellables = Set<AnyCancellable>()
     private var lastStatuses = [String: String]() // jobId -> last known status
+    private var lastPlanMarkdownStatus = [String: String]() // jobId -> last known markdown status
     private var notifiedPlanJobIds = Set<String>() // Track which plan jobs have been notified (to avoid duplicates)
 
     // Task type sets for matching different job types (normalized to lowercase)
@@ -60,19 +61,28 @@ public final class WorkflowNotificationCoordinator: ObservableObject {
             // This ensures the plan is fully ready before notifying the user
             else if planTypes.contains(taskType) {
                 let isJobCompleted = currentStatus == "completed" || currentStatus == "completed_by_tag"
-                let markdownStatus = PlanContentParser.extractMarkdownConversionStatus(from: job.metadata)
-                let isMarkdownCompleted = markdownStatus == "completed"
+                let markdownStatus = job.markdownConversionStatus
+                    ?? PlanContentParser.extractMarkdownConversionStatus(from: job.metadata)
+                let normalizedMarkdown = markdownStatus?.lowercased() ?? ""
+                let isMarkdownCompleted = normalizedMarkdown == "completed"
+                let wasMarkdownCompleted = (lastPlanMarkdownStatus[job.id] ?? "").lowercased() == "completed"
 
                 // Only notify if: job completed, markdown completed, and we haven't notified yet
                 // We check notifiedPlanJobIds instead of previousStatus to handle cases where
                 // markdown completes after status (which is the normal flow)
-                if isJobCompleted && isMarkdownCompleted && !notifiedPlanJobIds.contains(job.id) {
+                if isJobCompleted && isMarkdownCompleted && !wasMarkdownCompleted && !notifiedPlanJobIds.contains(job.id) {
                     // Only notify if we've seen this job before (prevents notification on app launch)
                     if previousStatus != nil {
-                        handleImplementationPlanCompletion(job)
+                        let isViewing = PlanToCodeCore.shared.dataServices?.jobsService
+                            .isViewingImplementationPlan(jobId: job.id) ?? false
+                        if !isViewing {
+                            handleImplementationPlanCompletion(job)
+                        }
+                        notifiedPlanJobIds.insert(job.id)
                     }
-                    notifiedPlanJobIds.insert(job.id)
                 }
+
+                lastPlanMarkdownStatus[job.id] = normalizedMarkdown
             }
 
             // Update status tracking

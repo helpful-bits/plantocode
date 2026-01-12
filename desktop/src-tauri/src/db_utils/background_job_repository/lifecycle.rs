@@ -44,6 +44,7 @@ impl BackgroundJobRepository {
             if let Ok(Some(created_job)) = self.get_job_by_id(&job.id).await {
                 emit_job_created(app_handle, JobCreatedEvent {
                     job: created_job.clone(),
+                    job_id: created_job.id.clone(),
                     session_id: created_job.session_id.clone(),
                 });
             }

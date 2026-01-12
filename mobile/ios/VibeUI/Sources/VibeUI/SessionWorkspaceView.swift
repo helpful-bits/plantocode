@@ -23,7 +23,8 @@ public struct SessionWorkspaceView: View {
     private var mainContentView: some View {
         VStack(spacing: 0) {
             // Inline connection status banner - keeps workspace visible
-            if viewModel.shouldShowInlineBanner {
+            if viewModel.workspaceConnectivityState == .transientReconnecting
+                && !viewModel.shouldShowConnectionOverlay {
                 HStack {
                     Image(systemName: "wifi.exclamationmark")
                         .foregroundColor(Color.appWarning)
@@ -752,57 +753,69 @@ struct ConnectionStatusBanner: View {
     @ObservedObject private var appState = AppState.shared
 
     var body: some View {
+        let titleText = isReconnecting ? "Reconnecting to desktop" : "Disconnected from desktop"
+        let subtitleText = isReconnecting
+            ? "Trying to restore your connection. We'll keep retrying in the background."
+            : "Reconnect to continue working on your tasks."
+
         VStack(spacing: 0) {
-            VStack(spacing: 16) {
+            VStack(spacing: 14) {
                 // Alert message
                 HStack(alignment: .top, spacing: 12) {
-                    if isReconnecting {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: Color.appWarning))
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(Color.appWarning)
+                    ZStack {
+                        Circle()
+                            .fill(Color.appWarning.opacity(0.15))
+                            .frame(width: 36, height: 36)
+
+                        if isReconnecting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: Color.appWarning))
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "wifi.exclamationmark")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(Color.appWarning)
+                        }
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(isReconnecting ? "Reconnecting..." : "Disconnected from desktop")
+                        Text(titleText)
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Color.appWarningForeground)
 
-                        Text(isReconnecting ? "Please wait while we restore your connection" : "Reconnect to continue working on your tasks")
+                        Text(subtitleText)
                             .font(.system(size: 14))
                             .foregroundColor(Color.appMutedForeground)
                     }
 
                     Spacer()
-
-                    if failureMessage != nil {
-                        Button(action: onDismissFailure) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(Color.mutedForeground)
-                        }
-                    }
                 }
 
-                // Failure diagnostic message
                 if let failureMessage = failureMessage {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "info.circle.fill")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(Color.destructive)
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(Color.appWarning)
 
                         Text(failureMessage)
-                            .font(.system(size: 14))
-                            .foregroundColor(Color.cardForeground)
+                            .font(.footnote)
+                            .foregroundColor(Color.appMutedForeground)
                             .multilineTextAlignment(.leading)
 
                         Spacer()
+
+                        Button(action: onDismissFailure) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(Color.mutedForeground)
+                        }
                     }
-                    .padding(12)
-                    .background(Color.destructive.opacity(0.1))
+                    .padding(10)
+                    .background(Color.appWarningBackground.opacity(0.6))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.appWarningBorder.opacity(0.6), lineWidth: 1)
+                    )
                     .cornerRadius(8)
                 }
 
@@ -811,14 +824,7 @@ struct ConnectionStatusBanner: View {
                     // Primary action - full width
                     Button(action: {
                         isReconnecting = true
-                        Task {
-                            onReconnect()
-                            // Reset reconnecting state after a delay
-                            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds
-                            await MainActor.run {
-                                isReconnecting = false
-                            }
-                        }
+                        onReconnect()
                     }) {
                         HStack(spacing: 8) {
                             if isReconnecting {
@@ -870,10 +876,19 @@ struct ConnectionStatusBanner: View {
             }
             .padding(16)
             .background(Color.appWarningBackground)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.appWarningBorder, lineWidth: 1)
+            )
+            .cornerRadius(12)
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
         }
         .onChange(of: state) { newState in
-            // Reset reconnecting state when connection succeeds
-            if newState.isConnected {
+            switch newState {
+            case .connecting, .handshaking, .authenticating, .reconnecting:
+                isReconnecting = true
+            case .connected, .failed, .disconnected, .closing:
                 isReconnecting = false
             }
         }

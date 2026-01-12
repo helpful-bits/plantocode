@@ -34,7 +34,7 @@ export async function generateRegexPatternsAction(
 
   try {
     // Call the Tauri command to generate regex patterns
-    const result = await invoke<{ jobId: string; duration_ms?: number }>("generate_regex_patterns_command", {
+    const result = await invoke<{ jobId: string; durationMs?: number }>("generate_regex_patterns_command", {
       sessionId,
       projectDirectory,
       taskDescription,
@@ -53,7 +53,7 @@ export async function generateRegexPatternsAction(
         jobId: result.jobId,
         isBackgroundJob: true,
         targetField: "regexPatterns",
-        duration_ms: result.duration_ms,
+        durationMs: result.durationMs,
       },
     };
   } catch (error) {

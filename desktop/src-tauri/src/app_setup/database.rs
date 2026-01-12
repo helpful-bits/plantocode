@@ -7,6 +7,8 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tracing::{error as tracing_error, info as tracing_info, warn as tracing_warn};
 
+const HISTORY_DEVICE_IDS_NORMALIZED_KEY: &str = "history_device_ids_normalized";
+
 pub async fn initialize_database_light(app_handle: &AppHandle) -> Result<(), AppError> {
     // Initialize the SQLite database connection pool
     let app_data_dir = app_handle.path().app_local_data_dir().map_err(|e| {
@@ -329,6 +331,70 @@ pub async fn run_deferred_db_tasks(
             warn!("Failed to check stored version: {}", e);
             // Continue anyway - migrations will handle this
         }
+    }
+
+    // One-time normalization for history device_id casing (avoids checksum drift)
+    match sqlx::query_scalar::<_, String>("SELECT value FROM key_value_store WHERE key = ?")
+        .bind(HISTORY_DEVICE_IDS_NORMALIZED_KEY)
+        .fetch_optional(&*pool_arc)
+        .await
+    {
+        Ok(None) => {
+            if let Ok(mut tx) = pool_arc.begin().await {
+                let task_rows = sqlx::query(
+                    "UPDATE task_description_history
+                     SET device_id = lower(device_id)
+                     WHERE device_id IS NOT NULL AND device_id != lower(device_id)"
+                )
+                .execute(&mut *tx)
+                .await
+                .map(|res| res.rows_affected())
+                .unwrap_or(0);
+
+                let file_rows = sqlx::query(
+                    "UPDATE file_selection_history
+                     SET device_id = lower(device_id)
+                     WHERE device_id IS NOT NULL AND device_id != lower(device_id)"
+                )
+                .execute(&mut *tx)
+                .await
+                .map(|res| res.rows_affected())
+                .unwrap_or(0);
+
+                let _ = sqlx::query(
+                    "INSERT OR REPLACE INTO key_value_store (key, value, updated_at)
+                     VALUES (?, 'true', strftime('%s','now'))"
+                )
+                .bind(HISTORY_DEVICE_IDS_NORMALIZED_KEY)
+                .execute(&mut *tx)
+                .await;
+
+                let _ = tx.commit().await;
+
+                if task_rows > 0 || file_rows > 0 {
+                    info!(
+                        "Deferred DB: normalized history device_id casing (task_rows={}, file_rows={})",
+                        task_rows, file_rows
+                    );
+                }
+            } else {
+                warn!("Deferred DB: failed to start transaction for history device_id normalization");
+            }
+        }
+        Ok(Some(_)) => {}
+        Err(e) => {
+            warn!("Deferred DB: failed to check history normalization flag: {}", e);
+        }
+    }
+
+    if let Err(e) = sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_background_jobs_status_created_at
+         ON background_jobs(status, created_at)"
+    )
+    .execute(&*pool_arc)
+    .await
+    {
+        warn!("Deferred DB: failed to ensure background job status index: {}", e);
     }
 
     // Ensure database permissions

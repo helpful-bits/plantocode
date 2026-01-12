@@ -47,7 +47,9 @@ public class DataServicesManager: ObservableObject {
     private var lastReconnectionSyncAt: Date?
     private var lastBroadcastedSessionId: String? = nil
     private var activeDeviceOfflineGraceTasks: [UUID: Task<Void, Never>] = [:]
-    private let activeDeviceOfflineGraceSeconds: TimeInterval = 20
+    private let activeDeviceOfflineGraceSeconds: TimeInterval = 45
+    private var reconnectionSyncTask: Task<Void, Never>?
+    private let reconnectionStableDelaySeconds: TimeInterval = 1.5
 
     // MARK: - Initialization
     public init(baseURL: URL, deviceId: String) {
@@ -81,8 +83,9 @@ public class DataServicesManager: ObservableObject {
         self.accountService = AccountDataService()
         self.consentService = ConsentDataService()
 
-        Task { [weak settingsService] in
-            try? await settingsService?.loadNotificationSettings()
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.settingsService.loadNotificationSettings()
         }
 
         setupConnectionMonitoring()
@@ -205,12 +208,6 @@ public class DataServicesManager: ObservableObject {
             activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
         }
 
-        // Trigger aggressive reconnect without evicting active device
-        MultiConnectionManager.shared.triggerAggressiveReconnect(
-            reason: .connectionLoss(deviceId),
-            deviceIds: [deviceId]
-        )
-
         let graceSeconds = activeDeviceOfflineGraceSeconds
         let task = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(graceSeconds * 1_000_000_000))
@@ -229,6 +226,7 @@ public class DataServicesManager: ObservableObject {
                     return
                 }
 
+                MultiConnectionManager.shared.markDeviceTemporarilyOffline(deviceId, reason: nil)
                 self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
             }
         }
@@ -462,6 +460,7 @@ public class DataServicesManager: ObservableObject {
         
         // Guard by authentication before triggering orchestrator
         guard AuthService.shared.isAuthenticated else { return }
+        guard MultiConnectionManager.shared.connectionStates[newActive]?.isConnected == true else { return }
         
         // Trigger orchestrator once if not already running
         if !orchestratorTriggerInFlight {
@@ -585,6 +584,7 @@ public class DataServicesManager: ObservableObject {
                                     existing.cancel()
                                     self.activeDeviceOfflineGraceTasks.removeValue(forKey: deviceId)
                                 }
+                                MultiConnectionManager.shared.markDeviceOnline(deviceId)
                             default:
                                 break
                             }
@@ -634,23 +634,42 @@ public class DataServicesManager: ObservableObject {
                         AppState.shared.setSelectedProjectDirectory(projectDir)
                     }
 
-                case "session-created", "session-updated", "session-deleted",
-                     "session-history-synced", "session:auto-files-applied":
+                case "session-created", "session-updated", "session-deleted", "session-snapshot", "session-task-updated":
                     self.sessionService.applyRelayEvent(event)
 
                 case "session-files-updated":
                     self.sessionService.applyRelayEvent(event)
                     self.filesService.performSearch(query: self.filesService.currentSearchTerm)
 
-                case "active-session-changed":
-                    if let sessionId = dict["sessionId"] as? String,
-                       let projectDir = dict["projectDirectory"] as? String {
-                        if self.sessionService.currentSession?.id == sessionId { return }
-                        Task {
-                            await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
+                case "event-replay-gap":
+                    self.logger.warning("Relay replay gap detected; forcing reconciliation")
+                    Task { @MainActor in
+                        await self.sessionService.processOfflineQueue()
+                        self.jobsService.onConnectionRestored()
+                        self.sessionService.onConnectionRestored()
+                    }
 
-                            // Start session-scoped sync (sets active session, fetches jobs, starts validation timer)
-                            self.jobsService.startSessionScopedSync(sessionId: sessionId, projectDirectory: projectDir)
+                case "active-session-changed":
+                    if let sessionId = dict["sessionId"] as? String {
+                        if self.sessionService.currentSession?.id == sessionId { return }
+                        if let projectDir = dict["projectDirectory"] as? String {
+                            Task { [weak self] in
+                                guard let self else { return }
+                                await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
+
+                                // Start session-scoped sync (sets active session, fetches jobs, starts validation timer)
+                                self.jobsService.startSessionScopedSync(sessionId: sessionId, projectDirectory: projectDir)
+                            }
+                        } else {
+                            Task { [weak self] in
+                                guard let self else { return }
+                                guard let session = try? await self.sessionService.getSession(id: sessionId) else {
+                                    return
+                                }
+                                let projectDir = session.projectDirectory
+                                await self.loadSessionFromDesktop(sessionId: sessionId, projectDirectory: projectDir)
+                                self.jobsService.startSessionScopedSync(sessionId: sessionId, projectDirectory: projectDir)
+                            }
                         }
                     }
 
@@ -658,10 +677,9 @@ public class DataServicesManager: ObservableObject {
                     self.jobsService.applyRelayEvent(event)
 
                 case "jobs:list-invalidated":
-                    let payloadDict = dict["payload"] as? [String: Any]
-                    let sessionId = payloadDict?["sessionId"] as? String ?? dict["sessionId"] as? String
-                    let projectDirectory = payloadDict?["projectDirectory"] as? String ?? dict["projectDirectory"] as? String
-                    let projectHash = payloadDict?["projectHash"] as? String ?? dict["projectHash"] as? String
+                    let sessionId = dict["sessionId"] as? String
+                    let projectDirectory = dict["projectDirectory"] as? String
+                    let projectHash = dict["projectHash"] as? String
                     if self.jobsService.activeSessionId == nil,
                        let currentSession = self.sessionService.currentSession,
                        !currentSession.id.isEmpty {
@@ -673,7 +691,6 @@ public class DataServicesManager: ObservableObject {
                     if eventType.hasPrefix("job:") {
                         // Extract event sessionId to seed JobsDataService if needed
                         let eventSessionId = dict["sessionId"] as? String
-                            ?? (dict["job"] as? [String: Any])?["sessionId"] as? String
 
                         // Seed JobsDataService active session if unset and event matches current session
                         if self.jobsService.activeSessionId == nil,
@@ -699,62 +716,83 @@ public class DataServicesManager: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
 
-                if let last = lastReconnectionSyncAt,
-                   Date().timeIntervalSince(last) < 3.0 {
-                    return
-                }
-                lastReconnectionSyncAt = Date()
+                self.reconnectionSyncTask?.cancel()
+                self.reconnectionSyncTask = Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    try? await Task.sleep(nanoseconds: UInt64(self.reconnectionStableDelaySeconds * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
 
-                // Early guards: prevent connection handler from running during initial bootstrap
-                if AppState.shared.bootstrapState == .running {
-                    logger.info("Bootstrap is running - skipping connection state change handler")
-                    return
-                }
-
-                // If initial load not completed, trigger orchestrator instead of handling here
-                guard self.hasCompletedInitialLoad else {
-                    self.triggerOrchestratorIfNeeded(context: "connection")
-                    return
-                }
-
-                logger.info("Connection established - starting reconnection sync")
-
-                await self.sessionService.processOfflineQueue()
-                // Terminal bootstrap handled by TerminalDataService itself
-
-                if let project = self.currentProject {
-                    if self.sessionService.hasRecentSessionsFetch(for: project.directory, within: 10.0) {
-                        logger.info("Skipping session preload - recently fetched")
-                    } else {
-                        logger.info("Preloading sessions for project: \(project.name)")
-                        try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                    guard let activeId = MultiConnectionManager.shared.activeDeviceId,
+                          MultiConnectionManager.shared.connectionStates[activeId]?.isConnected == true else {
+                        return
                     }
-                }
 
-                // Guard session before preloading jobs
-                guard let session = self.sessionService.currentSession else {
-                    logger.info("Skipping jobs preload - no valid session available")
-                    return
-                }
+                    if MultiConnectionManager.shared.connectionHealth == .unstable ||
+                       MultiConnectionManager.shared.isActivelyReconnecting {
+                        self.logger.info("Connection still unstable - deferring reconnection sync")
+                        return
+                    }
 
-                // Start session-scoped sync to reconcile any missed events post-reconnect
-                self.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
-                self.filesService.performSearch(query: self.filesService.currentSearchTerm)
-                if let projectDirectory = self.currentProject?.directory {
-                    self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
-                        sessionIds: nil,
-                        deviceId: self.deviceId,
-                        projectDirectory: projectDirectory,
-                        includeInactive: false
-                    ))
-                    .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
-                    .store(in: &self.cancellables)
-                }
+                    if let last = self.lastReconnectionSyncAt,
+                       Date().timeIntervalSince(last) < 3.0 {
+                        return
+                    }
+                    self.lastReconnectionSyncAt = Date()
 
-                // Explicitly refresh data to catch any missed events while in background
-                self.jobsService.onConnectionRestored()
-                self.sessionService.onConnectionRestored()
+                    // Early guards: prevent connection handler from running during initial bootstrap
+                    if AppState.shared.bootstrapState == .running {
+                        self.logger.info("Bootstrap is running - skipping connection state change handler")
+                        return
+                    }
+
+                    // If initial load not completed, trigger orchestrator instead of handling here
+                    guard self.hasCompletedInitialLoad else {
+                        self.triggerOrchestratorIfNeeded(context: "connection")
+                        return
+                    }
+
+                    self.logger.info("Connection established - starting reconnection sync")
+
+                    await self.sessionService.processOfflineQueue()
+                    // Terminal bootstrap handled by TerminalDataService itself
+
+                    if let project = self.currentProject {
+                        if self.sessionService.hasRecentSessionsFetch(for: project.directory, within: 10.0) {
+                            self.logger.info("Skipping session preload - recently fetched")
+                        } else {
+                            self.logger.info("Preloading sessions for project: \(project.name)")
+                            try? await self.sessionService.fetchSessions(projectDirectory: project.directory)
+                        }
+                    }
+
+                    // Guard session before preloading jobs
+                    guard let session = self.sessionService.currentSession else {
+                        self.logger.info("Skipping jobs preload - no valid session available")
+                        return
+                    }
+
+                    // Start session-scoped sync to reconcile any missed events post-reconnect
+                    self.jobsService.startSessionScopedSync(sessionId: session.id, projectDirectory: session.projectDirectory)
+                    self.filesService.performSearch(query: self.filesService.currentSearchTerm)
+                    if let projectDirectory = self.currentProject?.directory {
+                        self.taskSyncService.getActiveTasks(request: GetActiveTasksRequest(
+                            sessionIds: nil,
+                            deviceId: self.deviceId,
+                            projectDirectory: projectDirectory,
+                            includeInactive: false
+                        ))
+                        .sink(receiveCompletion: { _ in }, receiveValue: { _ in })
+                        .store(in: &self.cancellables)
+                    }
+
+                    // Explicitly refresh data to catch any missed events while in background
+                    self.jobsService.onConnectionRestored()
+                    self.sessionService.onConnectionRestored()
+                }
             }
+        } else {
+            reconnectionSyncTask?.cancel()
+            reconnectionSyncTask = nil
         }
     }
 

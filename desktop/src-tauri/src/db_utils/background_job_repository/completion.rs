@@ -41,8 +41,8 @@ impl BackgroundJobRepository {
         if let Some(metadata_str) = metadata {
             if let Ok(metadata_json) = serde_json::from_str::<Value>(metadata_str) {
                 let metadata_cost = metadata_json
-                    .get("task_data")
-                    .and_then(|task_data| task_data.get("actual_cost"))
+                    .get("taskData")
+                    .and_then(|task_data| task_data.get("actualCost"))
                     .and_then(|v| v.as_f64());
 
                 if let (Some(param_cost), Some(meta_cost)) = (actual_cost, metadata_cost) {

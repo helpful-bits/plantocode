@@ -18,7 +18,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::stream_event::StreamEvent;
 use crate::models::{
     OpenRouterContent, OpenRouterRequest, OpenRouterRequestMessage, OpenRouterResponse,
-    OpenRouterStreamChunk, ServerOpenRouterResponse,
+    OpenRouterStreamChunk,
 };
 
 #[derive(Debug, serde::Deserialize)]
@@ -557,14 +557,12 @@ impl ServerProxyClient {
                         .await);
                 }
 
-                let server_response: ServerOpenRouterResponse =
-                    retry_response.json().await.map_err(|e| {
-                        AppError::ServerProxyError(format!(
-                            "Failed to parse server proxy response: {}",
-                            e
-                        ))
-                    })?;
-                let server_response: OpenRouterResponse = server_response.into();
+                let server_response: OpenRouterResponse = retry_response.json().await.map_err(|e| {
+                    AppError::ServerProxyError(format!(
+                        "Failed to parse server proxy response: {}",
+                        e
+                    ))
+                })?;
 
                 trace!(
                     "Server proxy chat completion response (after retry): {:?}",
@@ -577,10 +575,9 @@ impl ServerProxyClient {
             return Err(self.handle_auth_error(status.as_u16(), &error_text).await);
         }
 
-        let server_response: ServerOpenRouterResponse = response.json().await.map_err(|e| {
+        let server_response: OpenRouterResponse = response.json().await.map_err(|e| {
             AppError::ServerProxyError(format!("Failed to parse server proxy response: {}", e))
         })?;
-        let server_response: OpenRouterResponse = server_response.into();
 
         trace!(
             "Server proxy chat completion response: {:?}",
@@ -770,7 +767,7 @@ impl ServerProxyClient {
                                     match serde_json::from_str::<serde_json::Value>(&message.data) {
                                         Ok(data) => {
                                             if let Some(request_id) =
-                                                data.get("request_id").and_then(|v| v.as_str())
+                                                data.get("requestId").and_then(|v| v.as_str())
                                             {
                                                 debug!(
                                                     "Successfully parsed stream_started with request_id: {}",
@@ -780,9 +777,9 @@ impl ServerProxyClient {
                                                     request_id: request_id.to_string(),
                                                 })
                                             } else {
-                                                error!("stream_started missing request_id");
+                                                error!("stream_started missing requestId");
                                                 Err(AppError::InvalidResponse(
-                                                    "stream_started event missing request_id"
+                                                    "stream_started event missing requestId"
                                                         .to_string(),
                                                 ))
                                             }
@@ -803,7 +800,7 @@ impl ServerProxyClient {
                                     match serde_json::from_str::<serde_json::Value>(&message.data) {
                                         Ok(data) => {
                                             let request_id = data
-                                                .get("request_id")
+                                                .get("requestId")
                                                 .and_then(|v| v.as_str())
                                                 .unwrap_or("unknown")
                                                 .to_string();
@@ -830,7 +827,7 @@ impl ServerProxyClient {
                                     match serde_json::from_str::<serde_json::Value>(&message.data) {
                                         Ok(data) => {
                                             let request_id = data
-                                                .get("request_id")
+                                                .get("requestId")
                                                 .and_then(|v| v.as_str())
                                                 .unwrap_or("unknown")
                                                 .to_string();
@@ -882,28 +879,28 @@ impl ServerProxyClient {
                                         Ok(data) => {
                                             // Extract the fields from the JSON data
                                             let request_id = data
-                                                .get("request_id")
+                                                .get("requestId")
                                                 .and_then(|v| v.as_str())
                                                 .unwrap_or("")
                                                 .to_string();
                                             let final_cost = data
-                                                .get("final_cost")
+                                                .get("finalCost")
                                                 .and_then(|v| v.as_f64())
                                                 .unwrap_or(0.0);
                                             let tokens_input = data
-                                                .get("tokens_input")
+                                                .get("tokensInput")
                                                 .and_then(|v| v.as_i64())
                                                 .unwrap_or(0);
                                             let tokens_output = data
-                                                .get("tokens_output")
+                                                .get("tokensOutput")
                                                 .and_then(|v| v.as_i64())
                                                 .unwrap_or(0);
                                             let cache_read_tokens = data
-                                                .get("cache_read_tokens")
+                                                .get("cacheReadTokens")
                                                 .and_then(|v| v.as_i64())
                                                 .unwrap_or(0);
                                             let cache_write_tokens = data
-                                                .get("cache_write_tokens")
+                                                .get("cacheWriteTokens")
                                                 .and_then(|v| v.as_i64())
                                                 .unwrap_or(0);
 
@@ -1231,7 +1228,7 @@ impl ServerProxyClient {
         let url = format!("{}/api/llm/cancel", self.server_url);
 
         let cancel_payload = json!({
-            "request_id": request_id
+            "requestId": request_id
         });
 
         let req = self.with_auth_headers(
@@ -1315,17 +1312,17 @@ impl ServerProxyClient {
             .text("prompt", prompt.to_string())
             .text("model", model.to_string())
             .text("temperature", temperature.to_string())
-            .text("duration_ms", duration_ms.to_string())
+            .text("durationMs", duration_ms.to_string())
             .text("framerate", framerate.to_string());
 
         // Add system prompt if provided
         if let Some(system_prompt) = system_prompt {
-            form = form.text("system_prompt", system_prompt);
+            form = form.text("systemPrompt", system_prompt);
         }
 
         // Add request_id if provided
         if let Some(request_id) = request_id {
-            form = form.text("request_id", request_id);
+            form = form.text("requestId", request_id);
         }
 
         // Add video file
@@ -1395,7 +1392,7 @@ impl TranscriptionClient for ServerProxyClient {
 
         let mut form = multipart::Form::new()
             .text("model", model.to_string())
-            .text("duration_ms", duration_ms.to_string())
+            .text("durationMs", duration_ms.to_string())
             .part(
                 "file",
                 multipart::Part::bytes(audio_data.to_vec())

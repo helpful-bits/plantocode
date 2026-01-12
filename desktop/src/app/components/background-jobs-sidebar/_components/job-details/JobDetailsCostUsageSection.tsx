@@ -5,10 +5,14 @@ import { JOB_STATUSES } from "@/types/session-types";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { formatUsdCurrencyPrecise } from "@/utils/currency-utils";
 import { useMemo } from "react";
+import { getParsedMetadata } from "../../utils";
 
 export function JobDetailsCostUsageSection() {
   const { job } = useJobDetailsContext();
   const isLocalTask = (job.taskType && TaskTypeDetails[job.taskType as TaskType]?.requiresLlm === false);
+  const parsedMetadata = useMemo(() => getParsedMetadata(job.metadata), [job.metadata]);
+  const executionRoute = parsedMetadata?.taskData?.executionRoute;
+  const isCodexCli = executionRoute === "codex_cli";
   
   const costLabel = useMemo(() => {
     if (job.isFinalized === true) {
@@ -19,6 +23,8 @@ export function JobDetailsCostUsageSection() {
     }
     return 'Cost';
   }, [job.status, job.isFinalized]);
+
+  const displayCostLabel = isCodexCli ? "Cost (Codex CLI)" : costLabel;
   
   if (isLocalTask) {
     return (
@@ -120,7 +126,7 @@ export function JobDetailsCostUsageSection() {
               <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-orange-500"></div>
                 <div className="text-xs text-muted-foreground">
-                  {costLabel}
+                  {displayCostLabel}
                   {job.isFinalized === false && (
                     <span className="ml-1 text-yellow-500">●</span>
                   )}
@@ -134,9 +140,14 @@ export function JobDetailsCostUsageSection() {
                     format={(v) => formatUsdCurrencyPrecise(v)}
                   />
                 ) : (
-                  'Calculating...'
+                  isCodexCli ? formatUsdCurrencyPrecise(0) : 'Calculating...'
                 )}
               </div>
+              {isCodexCli && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Covered by your Codex CLI subscription.
+                </p>
+              )}
             </div>
           </div>
         </div>

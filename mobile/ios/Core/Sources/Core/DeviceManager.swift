@@ -17,10 +17,14 @@ public final class DeviceManager {
     public func getOrCreateDeviceID() -> String {
         if let existingDeviceID = try? KeychainManager.shared.retrieveString(for: .deviceIdentifier),
            let _ = UUID(uuidString: existingDeviceID) {
-            return existingDeviceID
+            let normalized = existingDeviceID.lowercased()
+            if normalized != existingDeviceID {
+                try? KeychainManager.shared.store(string: normalized, for: .deviceIdentifier)
+            }
+            return normalized
         }
 
-        let deviceID = UUID().uuidString
+        let deviceID = UUID().uuidString.lowercased()
 
         do {
             try KeychainManager.shared.store(string: deviceID, for: .deviceIdentifier)

@@ -1382,10 +1382,10 @@ impl WorkflowOrchestrator {
         };
 
         let payload = serde_json::json!({
-            "job_id": workflow_id,
+            "jobId": workflow_id,
             "title": title,
             "body": body,
-            "custom_data": {
+            "customData": {
                 "type": notification_type,
                 "jobId": workflow_id,
                 "sessionId": workflow_state.session_id,
@@ -1436,10 +1436,10 @@ impl WorkflowOrchestrator {
             };
 
         let payload = serde_json::json!({
-            "job_id": workflow_id,
+            "jobId": workflow_id,
             "title": "Task Failed",
             "body": format!("Your task failed: {}", error_message),
-            "custom_data": {
+            "customData": {
                 "type": "job_failed",
                 "jobId": workflow_id,
                 "sessionId": workflow_state.session_id,

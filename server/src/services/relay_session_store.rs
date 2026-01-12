@@ -40,6 +40,7 @@ impl RelaySessionStore {
         user_id: &Uuid,
         device_id: &str,
     ) -> (String, String, DateTime<Utc>) {
+        let normalized_device_id = device_id.to_lowercase();
         let session_id = generate_session_id();
         let resume_token = generate_resume_token();
         let now = Utc::now();
@@ -47,7 +48,7 @@ impl RelaySessionStore {
 
         let session = RelaySession {
             user_id: *user_id,
-            device_id: device_id.to_string(),
+            device_id: normalized_device_id.clone(),
             resume_token: resume_token.clone(),
             created_at: now,
             last_seen: now,
@@ -58,7 +59,7 @@ impl RelaySessionStore {
 
         info!(
             user_id = %user_id,
-            device_id = %device_id,
+            device_id = %normalized_device_id,
             session_id = %session_id,
             expires_at = %expires_at,
             "relay_session_created"
@@ -84,6 +85,7 @@ impl RelaySessionStore {
         session_id: &str,
         resume_token: &str,
     ) -> Option<DateTime<Utc>> {
+        let normalized_device_id = device_id.to_lowercase();
         if let Some(session) = self.sessions.get(session_id) {
             let now = Utc::now();
 
@@ -100,12 +102,12 @@ impl RelaySessionStore {
 
             // Validate user_id, device_id, and resume_token
             if session.user_id == *user_id
-                && session.device_id == device_id
+                && session.device_id == normalized_device_id
                 && session.resume_token == resume_token
             {
                 info!(
                     user_id = %user_id,
-                    device_id = %device_id,
+                    device_id = %normalized_device_id,
                     session_id = %session_id,
                     "relay_resume_validated"
                 );
@@ -114,14 +116,14 @@ impl RelaySessionStore {
 
             warn!(
                 user_id = %user_id,
-                device_id = %device_id,
+                device_id = %normalized_device_id,
                 session_id = %session_id,
                 "relay_resume_failed_mismatch"
             );
         } else {
             warn!(
                 user_id = %user_id,
-                device_id = %device_id,
+                device_id = %normalized_device_id,
                 session_id = %session_id,
                 "relay_resume_failed_not_found"
             );

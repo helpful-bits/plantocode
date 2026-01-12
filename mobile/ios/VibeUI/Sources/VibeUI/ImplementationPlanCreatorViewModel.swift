@@ -279,7 +279,7 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
                 params: params
             )
 
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            for try await response in relayClient.invoke(request: request) {
                 if let result = response.result?.value as? [String: Any],
                    let totalTokens = result["totalTokens"] as? Int {
                     estimatedTokens = totalTokens
@@ -332,7 +332,7 @@ final class ImplementationPlanCreatorViewModel: ObservableObject {
                     params: params
                 )
 
-                for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+                for try await response in relayClient.invoke(request: request) {
                     if let error = response.error {
                         await MainActor.run {
                             localErrorMessage = "Create plan error: \(error.message)"

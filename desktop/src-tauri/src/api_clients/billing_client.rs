@@ -725,15 +725,15 @@ impl BillingClient {
         );
 
         let mut request_body = serde_json::json!({
-            "request_id": request_id,
-            "final_cost": final_cost,
-            "token_counts": token_counts,
-            "cancelled_at": chrono::Utc::now().to_rfc3339()
+            "requestId": request_id,
+            "finalCost": final_cost,
+            "tokenCounts": token_counts,
+            "cancelledAt": chrono::Utc::now().to_rfc3339()
         });
 
         // Add service_name if provided
         if let Some(service) = service_name {
-            request_body["service_name"] = serde_json::Value::String(service.to_string());
+            request_body["serviceName"] = serde_json::Value::String(service.to_string());
         }
 
         let _response: serde_json::Value = self

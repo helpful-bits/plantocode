@@ -60,7 +60,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   const parsedMeta = getParsedMetadata(plan.metadata);
   const markdownStatus = parsedMeta?.markdownConversionStatus;
 
-  const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan");
+  const planTitle = String(parsedMeta?.planTitle || parsedMeta?.generatedTitle || "Implementation Plan");
 
   // Helper function to truncate long titles
   const truncateTitle = (title: string, maxLength: number = 80) => {
@@ -69,7 +69,7 @@ const ImplementationPlanCard = React.memo<ImplementationPlanCardProps>(({
   };
 
   // Check for user sign-off
-  const userSignoff = parsedMeta?.user_signoff as { state?: string } | undefined;
+  const userSignoff = parsedMeta?.userSignoff as { state?: string } | undefined;
   const isSignedOff = userSignoff?.state === "accepted";
   // Check if actively streaming using metadata-driven detection
   const streamingStatus = getStreamingStatus(parsedMeta);

@@ -791,7 +791,7 @@ pub async fn get_file_finder_roots_for_session(
             // Parse the response JSON to extract root directories
             match serde_json::from_str::<serde_json::Value>(&response_json) {
                 Ok(json) => {
-                    if let Some(root_dirs) = json.get("root_directories") {
+                    if let Some(root_dirs) = json.get("rootDirectories") {
                         if let Some(dirs_array) = root_dirs.as_array() {
                             let roots: Vec<String> = dirs_array
                                 .iter()

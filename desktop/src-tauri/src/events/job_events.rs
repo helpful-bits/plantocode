@@ -23,6 +23,7 @@ pub const JOB_METADATA_UPDATED: &str = "job:metadata-updated";
 #[serde(rename_all = "camelCase")]
 pub struct JobCreatedEvent {
     pub job: crate::models::BackgroundJob,
+    pub job_id: String,
     pub session_id: String,
 }
 

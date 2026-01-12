@@ -8,25 +8,32 @@ pub enum StreamEvent {
     ContentChunk(OpenRouterStreamChunk),
     UsageUpdate(UsageUpdate),
     StreamStarted {
+        #[serde(rename = "requestId")]
         request_id: String,
     },
     StreamCancelled {
+        #[serde(rename = "requestId")]
         request_id: String,
         reason: String,
     },
-    // Note: error_details variant uses snake_case, but the ErrorDetails struct itself uses camelCase
-    // This matches the server's serialization format
     ErrorDetails {
+        #[serde(rename = "requestId")]
         request_id: String,
         error: ErrorDetails,
     },
     // Indicates the stream has completed successfully with final cost data
     StreamCompleted {
+        #[serde(rename = "requestId")]
         request_id: String,
+        #[serde(rename = "finalCost")]
         final_cost: f64,
+        #[serde(rename = "tokensInput")]
         tokens_input: i64,
+        #[serde(rename = "tokensOutput")]
         tokens_output: i64,
+        #[serde(rename = "cacheReadTokens")]
         cache_read_tokens: i64,
+        #[serde(rename = "cacheWriteTokens")]
         cache_write_tokens: i64,
     },
 }

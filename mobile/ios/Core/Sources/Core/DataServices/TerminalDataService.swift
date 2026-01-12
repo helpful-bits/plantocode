@@ -18,12 +18,12 @@ import UIKit
 
 private let MOBILE_TERMINAL_RING_MAX_BYTES = 8 * 1_048_576
 
-/// Maximum snapshot size to emit on subscription: 64KB
+/// Maximum snapshot size to emit on subscription: 32KB
 /// Larger snapshots are trimmed to prevent overwhelming SwiftTerm
-private let MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES = 64 * 1024
+private let MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES = 32 * 1024
 
-/// Chunk size for emitting snapshots: 8KB chunks with delays
-private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 8 * 1024
+/// Chunk size for emitting snapshots: 4KB chunks with delays
+private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 4 * 1024
 
 private enum TerminalSessionLifecycle: Equatable {
     case initializing
@@ -113,6 +113,7 @@ public class TerminalDataService: ObservableObject {
     private var lastBootstrapAt: Date?
     private var lastKnownSizeBySession: [String: (cols: Int, rows: Int)] = [:]
     private var hardResetObserver: NSObjectProtocol?
+    private var bindAckObserver: NSObjectProtocol?
 
     // MARK: - Initialization
     public init() {
@@ -186,18 +187,30 @@ public class TerminalDataService: ObservableObject {
 
                         do {
                             self.logger.info("terminal.rebind sid=\(sessionId) after reconnect")
-                            try await relayClient.sendBinaryBind(producerDeviceId: activeId.uuidString, sessionId: sessionId, includeSnapshot: false)
-                            self.readinessBySession[sessionId] = true
+                            try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: true)
                         } catch {
                             self.logger.error("Failed to rebind session \(sessionId): \(error)")
                         }
                     }
                 }
             }
+
+        bindAckObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name("terminal-binary-bound"),
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let self else { return }
+            guard let sessionId = note.userInfo?["sessionId"] as? String else { return }
+            self.handleBindAck(sessionId: sessionId)
+        }
     }
 
     deinit {
         if let observer = hardResetObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = bindAckObserver {
             NotificationCenter.default.removeObserver(observer)
         }
         connectionStateCancellable?.cancel()
@@ -212,7 +225,10 @@ public class TerminalDataService: ObservableObject {
     /// Start a new terminal session for the given job
     public func startSession(jobId: String, shell: String? = nil, context: TerminalContextBinding) async throws -> TerminalSession {
         guard let deviceId = self.connectionManager.activeDeviceId,
-              let relayClient = self.connectionManager.relayConnection(for: deviceId) else {
+              let relayClient = self.connectionManager.relayConnection(for: deviceId),
+              self.connectionManager.connectionStates[deviceId]?.isConnected == true,
+              relayClient.isConnected,
+              relayClient.hasSessionCredentials else {
             throw DataServiceError.connectionError("No active device connection")
         }
 
@@ -232,7 +248,7 @@ public class TerminalDataService: ObservableObject {
         do {
             var sessionData: [String: Any]?
 
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            for try await response in relayClient.invoke(request: request) {
                 if let error = response.error {
                     throw DataServiceError.serverError("RPC Error \(error.code): \(error.message)")
                 }
@@ -588,12 +604,14 @@ public class TerminalDataService: ObservableObject {
     ///
     /// - Parameters:
     ///   - jobId: The terminal job ID
-    ///   - includeSnapshot: Ignored. Always passes false to sendBinaryBind.
+    ///   - includeSnapshot: Request a snapshot if desktop has no pending output.
     public func attachLiveBinary(for jobId: String, includeSnapshot: Bool = true) {
         guard let sessionId = resolveSessionId(for: jobId) else {
             self.logger.warning("Cannot attach: no session for job \(jobId)")
             return
         }
+
+        boundSessions.insert(sessionId)
 
         if readinessBySession[sessionId] == true {
             self.logger.info("Already bound to session \(sessionId)")
@@ -605,15 +623,20 @@ public class TerminalDataService: ObservableObject {
             outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
 
-        bindBinary(to: sessionId)
+        bindBinary(to: sessionId, includeSnapshot: includeSnapshot)
 
         self.logger.info("Attached binary stream for session \(sessionId)")
     }
 
-    private func bindBinary(to sessionId: String) {
+    private func bindBinary(to sessionId: String, includeSnapshot: Bool) {
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {
             self.logger.warning("Cannot bind: no active relay connection")
+            return
+        }
+
+        guard relayClient.isConnected, relayClient.hasSessionCredentials else {
+            self.logger.debug("Deferring binary bind until relay connection is ready")
             return
         }
 
@@ -621,10 +644,7 @@ public class TerminalDataService: ObservableObject {
 
         Task {
             do {
-                try await relayClient.sendBinaryBind(producerDeviceId: deviceId.uuidString, sessionId: sessionId, includeSnapshot: false)
-                await MainActor.run {
-                    self.handleBindAck(sessionId: sessionId)
-                }
+                try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: includeSnapshot)
             } catch {
                 self.logger.error("Failed to send binary bind: \(error)")
             }
@@ -784,9 +804,7 @@ public class TerminalDataService: ObservableObject {
         }
 
         // Ready now - bind immediately
-        // Don't request massive historical snapshot on initial load - prevents endless scrolling
-        // The terminal will show live output going forward
-        attachLiveBinary(for: jobId, includeSnapshot: false)
+        attachLiveBinary(for: jobId, includeSnapshot: true)
     }
 
     /// Get terminal output stream for a specific job
@@ -835,8 +853,8 @@ public class TerminalDataService: ObservableObject {
     /// always shows the most recent output immediately.
     ///
     /// **Key optimizations to prevent infinite scrolling:**
-    /// - Snapshot is trimmed to the last 64KB (vs. full 8MB ring buffer)
-    /// - Large snapshots are emitted in 16KB chunks with small delays
+    /// - Snapshot is trimmed to the last 32KB (vs. full 8MB ring buffer)
+    /// - Large snapshots are emitted in 4KB chunks with small delays
     /// - This prevents overwhelming SwiftTerm and causing scroll physics conflicts
     ///
     /// - Parameter jobId: The terminal job ID
@@ -847,7 +865,7 @@ public class TerminalDataService: ObservableObject {
         }
         let live = ensureBytesPublisher(for: session.id)
 
-        // Get chunked snapshot (trimmed to 64KB and split into 16KB pieces)
+        // Get chunked snapshot (trimmed to 32KB and split into 4KB pieces)
         let chunks = outputRings[session.id]?.chunkedSnapshot(
             maxTotalSize: MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES,
             chunkSize: MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE

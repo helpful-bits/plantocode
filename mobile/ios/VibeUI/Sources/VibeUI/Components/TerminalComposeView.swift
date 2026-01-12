@@ -7,6 +7,7 @@ public struct TerminalComposeView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var container: AppContainer
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
 
     @State private var composedText = ""
     @State private var selectedRange: NSRange = NSRange(location: 0, length: 0)
@@ -113,7 +114,13 @@ public struct TerminalComposeView: View {
                 }
             }
             .onAppear {
+                let deviceId = multiConnectionManager.activeDeviceId?.uuidString.lowercased()
+                undoRedoManager.setDeviceId(deviceId)
                 loadComposedText()
+            }
+            .onChange(of: multiConnectionManager.activeDeviceId) { _ in
+                let deviceId = multiConnectionManager.activeDeviceId?.uuidString.lowercased()
+                undoRedoManager.setDeviceId(deviceId)
             }
         }
     }

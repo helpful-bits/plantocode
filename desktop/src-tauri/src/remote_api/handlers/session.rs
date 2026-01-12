@@ -8,6 +8,16 @@ use crate::db_utils::session_repository::{SessionRepository, TaskHistoryState, F
 use crate::services::history_state_sequencer::HistoryStateSequencer;
 use std::sync::Arc;
 
+const ALLOWED_SESSION_UPDATE_FIELDS: [&str; 7] = [
+    "name",
+    "projectDirectory",
+    "mergeInstructions",
+    "searchTerm",
+    "searchSelectedFilesOnly",
+    "modelUsed",
+    "videoAnalysisPrompt",
+];
+
 pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
     let correlation_id = req.correlation_id.clone();
     let result = match req.method.as_str() {
@@ -18,9 +28,6 @@ pub async fn dispatch(app_handle: AppHandle, req: RpcRequest) -> RpcResponse {
         "session.delete" => handle_session_delete(app_handle, req).await,
         "session.duplicate" => handle_session_duplicate(app_handle, req).await,
         "session.rename" => handle_session_rename(app_handle, req).await,
-        "session.getTaskDescriptionHistory" => handle_session_get_task_description_history(app_handle, req).await,
-        "session.syncTaskDescriptionHistory" => handle_session_sync_task_description_history(app_handle, req).await,
-        "session.updateFiles" => handle_session_update_files(app_handle, req).await,
         "session.getFileRelationships" => handle_session_get_file_relationships(app_handle, req).await,
         "session.getOverview" => handle_session_get_overview(app_handle, req).await,
         "session.getContents" => handle_session_get_contents(app_handle, req).await,
@@ -120,6 +127,23 @@ pub async fn handle_session_update(app_handle: AppHandle, request: RpcRequest) -
         .ok_or_else(|| RpcError::invalid_params("Missing param: updateData"))?
         .clone();
 
+    let update_obj = update_data
+        .as_object()
+        .ok_or_else(|| RpcError::invalid_params("updateData must be an object"))?;
+
+    let invalid_fields: Vec<String> = update_obj
+        .keys()
+        .filter(|key| !ALLOWED_SESSION_UPDATE_FIELDS.contains(&key.as_str()))
+        .cloned()
+        .collect();
+
+    if !invalid_fields.is_empty() {
+        return Err(RpcError::invalid_params(format!(
+            "Unsupported updateData keys: {}",
+            invalid_fields.join(", ")
+        )));
+    }
+
     let session = session_commands::update_session_fields_command(
         app_handle,
         session_id,
@@ -171,10 +195,8 @@ pub async fn handle_session_rename(app_handle: AppHandle, request: RpcRequest) -
         .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
         .to_string();
 
-    // Normalize both "newName" and legacy "name" for compatibility
     let new_name = request.params.get("newName")
         .and_then(|v| v.as_str())
-        .or_else(|| request.params.get("name").and_then(|v| v.as_str()))
         .ok_or_else(|| RpcError::invalid_params("Missing param: newName"))?
         .to_string();
 
@@ -183,122 +205,6 @@ pub async fn handle_session_rename(app_handle: AppHandle, request: RpcRequest) -
         .map_err(RpcError::from)?;
 
     Ok(json!({ "success": true }))
-}
-
-pub async fn handle_session_get_task_description_history(
-    app_handle: AppHandle,
-    request: RpcRequest,
-) -> RpcResult<Value> {
-    let session_id = request.params.get("sessionId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
-        .to_string();
-
-    let history = session_commands::get_task_description_history_command(app_handle, session_id)
-        .await
-        .map_err(RpcError::from)?;
-
-    Ok(json!({ "history": history }))
-}
-
-pub async fn handle_session_sync_task_description_history(
-    app_handle: AppHandle,
-    request: RpcRequest,
-) -> RpcResult<Value> {
-    let session_id = request.params.get("sessionId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
-        .to_string();
-
-    let history: Vec<String> = request.params.get("history")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: history"))?
-        .iter()
-        .filter_map(|v| v.as_str().map(String::from))
-        .collect();
-
-    session_commands::sync_task_description_history_command(
-        app_handle.clone(),
-        session_id.clone(),
-        history.clone(),
-    )
-    .await
-    .map_err(RpcError::from)?;
-
-    let last_entry = history.last().cloned().unwrap_or_default();
-    let payload = json!({
-        "sessionId": session_id,
-        "taskDescription": last_entry
-    });
-
-    if let Err(e) = app_handle.emit("session-history-synced", payload.clone()) {
-        eprintln!("Failed to emit session-history-synced event: {}", e);
-    }
-
-    if let Err(e) = app_handle.emit("device-link-event", json!({
-        "type": "session-history-synced",
-        "payload": payload
-    })) {
-        eprintln!("Failed to emit device-link event: {}", e);
-    }
-
-    Ok(json!({ "success": true }))
-}
-
-pub async fn handle_session_update_files(app_handle: AppHandle, request: RpcRequest) -> RpcResult<Value> {
-    let session_id = request.params.get("sessionId")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| RpcError::invalid_params("Missing param: sessionId"))?
-        .to_string();
-
-    let files_to_add = request.params.get("filesToAdd")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_else(Vec::new);
-
-    let files_to_remove = request.params.get("filesToRemove")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_else(Vec::new);
-
-    let excluded_to_add = request.params.get("excludedToAdd")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_else(Vec::new);
-
-    let excluded_to_remove = request.params.get("excludedToRemove")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_else(Vec::new);
-
-    let session = session_commands::update_session_files_command(
-        app_handle,
-        session_id,
-        files_to_add,
-        files_to_remove,
-        excluded_to_add,
-        excluded_to_remove,
-    )
-    .await
-    .map_err(RpcError::from)?;
-
-    Ok(json!({ "session": session }))
 }
 
 pub async fn handle_session_get_file_relationships(

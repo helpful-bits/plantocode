@@ -10,9 +10,9 @@ import {
   getDeviceIdAction,
 } from "@/actions/session/history.actions";
 import { areArraysEqual } from "@/utils/array-utils";
+import { isLikelyAbsolutePath } from "@/utils/path-utils";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
-import { updateSessionFilesAction } from "@/actions/session/update-files.actions";
 
 // Debounce utility
 function debounce<T extends (...args: any[]) => any>(
@@ -31,6 +31,40 @@ function debounce<T extends (...args: any[]) => any>(
     }, wait);
   };
 }
+
+const safeParseJsonArray = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return value.filter((entry): entry is string => typeof entry === "string");
+  }
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is string => typeof entry === "string");
+  } catch {
+    return [];
+  }
+};
+
+const FILE_HISTORY_MAX_ENTRIES = 50;
+
+const nextSequenceNumber = (entries: FileHistoryEntry[], deviceId?: string): number => {
+  const targetId = deviceId?.toLowerCase();
+  let max = -1;
+  for (const entry of entries) {
+    if (targetId && entry.deviceId?.toLowerCase() !== targetId) {
+      continue;
+    }
+    if (typeof entry.sequenceNumber === "number" && entry.sequenceNumber > max) {
+      max = entry.sequenceNumber;
+    }
+  }
+  return max + 1;
+};
+
+const normalizeFileList = (values: string[]) => {
+  return Array.from(new Set(values)).sort();
+};
 
 // File info from filesystem (without selection state)
 interface FileInfo {
@@ -99,11 +133,6 @@ export function useFileSelection(projectDirectory?: string) {
   const isUndoRedoInProgress = useRef(false);
   const remoteHistoryApplyingRef = useRef(false);
   const pendingRemoteFilesStateRef = useRef<FileHistoryState | null>(null);
-
-  // Legacy history state for backward compatibility
-  const historyStateRef = useRef(historyState);
-  const historyInitialized = useRef(false);
-  const historySessionIdRef = useRef<string | null>(null);
   
   // Create stable references for current session data
   const sessionIncluded = useMemo(() => currentSession?.includedFiles || [], [currentSession?.includedFiles]);
@@ -247,10 +276,7 @@ export function useFileSelection(projectDirectory?: string) {
     }
 
     // Find paths that look like external files (absolute paths not in project)
-    const externalPaths = sessionIncluded.filter(path => {
-      // Check if it's an absolute path
-      return path.startsWith('/') || (path.match(/^[A-Z]:\\/)); // Unix or Windows absolute path
-    });
+    const externalPaths = sessionIncluded.filter((path) => isLikelyAbsolutePath(path));
 
     if (externalPaths.length === 0) {
       setExternalFilesMetadata(new Map());
@@ -320,8 +346,6 @@ export function useFileSelection(projectDirectory?: string) {
   // Load history when session ID changes (only once per session)
   useEffect(() => {
     const sessionId = currentSession?.id ?? null;
-    historySessionIdRef.current = sessionId;
-    historyInitialized.current = false;
     isUndoRedoInProgress.current = false;
 
     setHistoryState({
@@ -342,21 +366,15 @@ export function useFileSelection(projectDirectory?: string) {
         // NEW API returns HistoryState directly (transformation handled in getHistoryStateAction)
         const state = await getHistoryStateAction(sessionId, 'files') as any as FileHistoryState;
 
-        if (cancelled || historySessionIdRef.current !== sessionId) {
+        if (cancelled) {
           return;
         }
 
         if (state && state.entries && state.entries.length > 0) {
-          historyInitialized.current = true;
           setHistoryState(state);
-        } else {
-          historyInitialized.current = true;
         }
       } catch (err) {
         console.warn('Failed to load file selection history for session', sessionId, err);
-        if (!cancelled && historySessionIdRef.current === sessionId) {
-          historyInitialized.current = true;
-        }
       }
     })();
 
@@ -364,11 +382,6 @@ export function useFileSelection(projectDirectory?: string) {
       cancelled = true;
     };
   }, [currentSession?.id]);
-
-
-  useEffect(() => {
-    historyStateRef.current = historyState;
-  }, [historyState]);
 
   // NOTE: Legacy sync effects removed - periodic sync timer handles all persistence
 
@@ -417,37 +430,47 @@ export function useFileSelection(projectDirectory?: string) {
   const commitFileSelection = useCallback(
     debounce(async (includedFiles: string[], forceExcludedFiles: string[]) => {
       const sessionId = currentSession?.id;
-      if (!sessionId || !deviceId) return;
+      if (!sessionId) return;
       if (isNavigatingHistoryRef.current || remoteHistoryApplyingRef.current) return;
 
       const lastEntry = historyState.entries[historyState.currentIndex];
-      const isSameSelection =
-        lastEntry &&
-        JSON.stringify(lastEntry.includedFiles.sort()) === JSON.stringify([...includedFiles].sort()) &&
-        JSON.stringify(lastEntry.forceExcludedFiles.sort()) === JSON.stringify([...forceExcludedFiles].sort());
+      const isSameSelection = (() => {
+        if (!lastEntry) return false;
+        const lastIncluded = [...lastEntry.includedFiles].sort();
+        const lastExcluded = [...lastEntry.forceExcludedFiles].sort();
+        const currentIncluded = [...includedFiles].sort();
+        const currentExcluded = [...forceExcludedFiles].sort();
+        return JSON.stringify(lastIncluded) === JSON.stringify(currentIncluded)
+          && JSON.stringify(lastExcluded) === JSON.stringify(currentExcluded);
+      })();
 
       if (isSameSelection) return;
 
+      const normalizedIncluded = normalizeFileList(includedFiles);
+      const normalizedExcluded = normalizeFileList(forceExcludedFiles);
+
       const newEntry: FileHistoryEntry = {
-        includedFiles,
-        forceExcludedFiles,
+        includedFiles: normalizedIncluded,
+        forceExcludedFiles: normalizedExcluded,
         timestampMs: Date.now(),
-        deviceId,
+        deviceId: deviceId || 'unknown',
         opType: 'user-edit',
-        sequenceNumber: historyState.entries.length,
+        sequenceNumber: nextSequenceNumber(historyState.entries, deviceId || undefined),
       };
 
       const trimmedEntries = historyState.entries.slice(0, historyState.currentIndex + 1);
-      const newEntries = [...trimmedEntries, newEntry].slice(-50);
+      const newEntries = [...trimmedEntries, newEntry].slice(-FILE_HISTORY_MAX_ENTRIES);
 
       const newState: FileHistoryState = {
         entries: newEntries,
         currentIndex: newEntries.length - 1,
         version: historyState.version,
-        checksum: '',
+        checksum: historyState.checksum,
       };
 
       try {
+        setHistoryState(newState);
+
         // Convert FileHistoryState to API format - arrays become JSON strings
         const apiState = {
           entries: newState.entries.map(e => ({
@@ -457,7 +480,7 @@ export function useFileSelection(projectDirectory?: string) {
             deviceId: e.deviceId,
             opType: e.opType,
             sequenceNumber: e.sequenceNumber,
-            version: 1,  // Each entry needs version field for backend struct
+            version: newState.version,
           })),
           currentIndex: newState.currentIndex,
           version: newState.version,
@@ -474,8 +497,8 @@ export function useFileSelection(projectDirectory?: string) {
         // Convert back to FileHistoryState - JSON strings become arrays
         const updatedState: FileHistoryState = {
           entries: updatedApiState.entries.map((e: any) => ({
-            includedFiles: JSON.parse(e.includedFiles),
-            forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+            includedFiles: safeParseJsonArray(e.includedFiles),
+            forceExcludedFiles: safeParseJsonArray(e.forceExcludedFiles),
             timestampMs: e.timestampMs,
             deviceId: e.deviceId,
             opType: e.opType,
@@ -500,47 +523,6 @@ export function useFileSelection(projectDirectory?: string) {
       commitFileSelection(sessionIncluded, sessionExcluded);
     }
   }, [sessionIncluded, sessionExcluded, commitFileSelection]);
-
-  // Declarative history management (legacy - keeping for backward compatibility)
-  useEffect(() => {
-    // Don't create history entries until history is initialized from DB
-    if (!historyInitialized.current) {
-      return;
-    }
-
-    setHistoryState(prevState => {
-      if (isUndoRedoInProgress.current) {
-        isUndoRedoInProgress.current = false;
-        return prevState;
-      }
-
-      const currentEntry = prevState.entries[prevState.currentIndex];
-      if (currentEntry &&
-          areArraysEqual([...sessionIncluded].sort(), [...currentEntry.includedFiles].sort()) &&
-          areArraysEqual([...sessionExcluded].sort(), [...currentEntry.forceExcludedFiles].sort())) {
-        return prevState;
-      }
-
-      const newEntries = prevState.entries.slice(0, prevState.currentIndex + 1);
-      const newEntry: FileHistoryEntry = {
-        includedFiles: sessionIncluded,
-        forceExcludedFiles: sessionExcluded,
-        timestampMs: Date.now(),
-        deviceId: deviceId || 'unknown',
-        opType: 'user-edit',
-        sequenceNumber: newEntries.length,
-      };
-      newEntries.push(newEntry);
-      const limitedEntries = newEntries.slice(-50);
-
-      return {
-        entries: limitedEntries,
-        currentIndex: limitedEntries.length - 1,
-        version: prevState.version,
-        checksum: prevState.checksum,
-      };
-    });
-  }, [sessionIncluded, sessionExcluded, deviceId]);
 
   // Toggle file inclusion
   const toggleFileSelection = useCallback((path: string) => {
@@ -569,17 +551,6 @@ export function useFileSelection(projectDirectory?: string) {
       forceExcludedFiles: nextExcluded
     });
 
-    // Then persist
-    if (newIncluded) {
-      updateSessionFilesAction(currentSession.id, {
-        addIncluded: [path],
-        removeExcluded: [path],
-      });
-    } else {
-      updateSessionFilesAction(currentSession.id, {
-        removeIncluded: [path],
-      });
-    }
   }, [currentSession, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Toggle file exclusion
@@ -609,17 +580,6 @@ export function useFileSelection(projectDirectory?: string) {
       forceExcludedFiles: nextExcluded
     });
 
-    // Then persist
-    if (newExcluded) {
-      updateSessionFilesAction(currentSession.id, {
-        addExcluded: [path],
-        removeIncluded: [path],
-      });
-    } else {
-      updateSessionFilesAction(currentSession.id, {
-        removeExcluded: [path],
-      });
-    }
   }, [currentSession, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Undo/Redo for file selections
@@ -638,16 +598,16 @@ export function useFileSelection(projectDirectory?: string) {
       };
 
       // Convert to API format - arrays become JSON strings
-      const apiState = {
-        entries: newState.entries.map(e => ({
-          includedFiles: JSON.stringify(e.includedFiles),
-          forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
-          timestampMs: e.timestampMs,
-          deviceId: e.deviceId,
-          opType: e.opType,
-          sequenceNumber: e.sequenceNumber,
-          version: 1,  // Each entry needs version field for backend struct
-        })),
+        const apiState = {
+          entries: newState.entries.map(e => ({
+            includedFiles: JSON.stringify(e.includedFiles),
+            forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
+            timestampMs: e.timestampMs,
+            deviceId: e.deviceId,
+            opType: e.opType,
+            sequenceNumber: e.sequenceNumber,
+            version: newState.version,
+          })),
         currentIndex: newState.currentIndex,
         version: newState.version,
         checksum: newState.checksum,
@@ -663,8 +623,8 @@ export function useFileSelection(projectDirectory?: string) {
       // Convert back to FileHistoryState - JSON strings become arrays
       const updatedState: FileHistoryState = {
         entries: updatedApiState.entries.map((e: any) => ({
-          includedFiles: JSON.parse(e.includedFiles),
-          forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+          includedFiles: safeParseJsonArray(e.includedFiles),
+          forceExcludedFiles: safeParseJsonArray(e.forceExcludedFiles),
           timestampMs: e.timestampMs,
           deviceId: e.deviceId,
           opType: e.opType,
@@ -707,16 +667,16 @@ export function useFileSelection(projectDirectory?: string) {
       };
 
       // Convert to API format - arrays become JSON strings
-      const apiState = {
-        entries: newState.entries.map(e => ({
-          includedFiles: JSON.stringify(e.includedFiles),
-          forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
-          timestampMs: e.timestampMs,
-          deviceId: e.deviceId,
-          opType: e.opType,
-          sequenceNumber: e.sequenceNumber,
-          version: 1,  // Each entry needs version field for backend struct
-        })),
+        const apiState = {
+          entries: newState.entries.map(e => ({
+            includedFiles: JSON.stringify(e.includedFiles),
+            forceExcludedFiles: JSON.stringify(e.forceExcludedFiles),
+            timestampMs: e.timestampMs,
+            deviceId: e.deviceId,
+            opType: e.opType,
+            sequenceNumber: e.sequenceNumber,
+            version: newState.version,
+          })),
         currentIndex: newState.currentIndex,
         version: newState.version,
         checksum: newState.checksum,
@@ -732,8 +692,8 @@ export function useFileSelection(projectDirectory?: string) {
       // Convert back to FileHistoryState - JSON strings become arrays
       const updatedState: FileHistoryState = {
         entries: updatedApiState.entries.map((e: any) => ({
-          includedFiles: JSON.parse(e.includedFiles),
-          forceExcludedFiles: JSON.parse(e.forceExcludedFiles),
+          includedFiles: safeParseJsonArray(e.includedFiles),
+          forceExcludedFiles: safeParseJsonArray(e.forceExcludedFiles),
           timestampMs: e.timestampMs,
           deviceId: e.deviceId,
           opType: e.opType,
@@ -940,11 +900,6 @@ export function useFileSelection(projectDirectory?: string) {
       forceExcludedFiles: nextExcluded
     });
 
-    // Then persist
-    updateSessionFilesAction(currentSession.id, {
-      addIncluded: pathsToInclude,
-      removeExcluded: filteredPaths,
-    });
   }, [currentSession, filteredAndSortedFiles, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Deselect filtered files only
@@ -964,10 +919,6 @@ export function useFileSelection(projectDirectory?: string) {
       includedFiles: nextIncluded
     });
 
-    // Then persist
-    updateSessionFilesAction(currentSession.id, {
-      removeIncluded: pathsToRemove,
-    });
   }, [currentSession, filteredAndSortedFiles, includedSet, sessionIncluded, updateCurrentSessionFields]);
 
   // Exclude filtered files only
@@ -992,11 +943,6 @@ export function useFileSelection(projectDirectory?: string) {
       forceExcludedFiles: nextExcluded
     });
 
-    // Then persist
-    updateSessionFilesAction(currentSession.id, {
-      addExcluded: filteredPaths,
-      removeIncluded: filteredPaths,
-    });
   }, [currentSession, filteredAndSortedFiles, includedSet, excludedSet, sessionIncluded, sessionExcluded, updateCurrentSessionFields]);
 
   // Unexclude filtered files only
@@ -1016,10 +962,6 @@ export function useFileSelection(projectDirectory?: string) {
       forceExcludedFiles: nextExcluded
     });
 
-    // Then persist
-    updateSessionFilesAction(currentSession.id, {
-      removeExcluded: pathsToUnexclude,
-    });
   }, [currentSession, filteredAndSortedFiles, excludedSet, sessionExcluded, updateCurrentSessionFields]);
 
   // Listen for remote updates
@@ -1045,6 +987,41 @@ export function useFileSelection(projectDirectory?: string) {
 
     return () => {
       window.removeEventListener('history-state-changed', handleHistoryStateChanged as EventListener);
+    };
+  }, [currentSession?.id, applyRemoteState]);
+
+  // Refresh history state on relay replay gaps
+  useEffect(() => {
+    const sessionId = currentSession?.id;
+    if (!sessionId) return;
+
+    let cancelled = false;
+
+    const handleReplayGap = () => {
+      if (remoteHistoryApplyingRef.current) return;
+
+      (async () => {
+        try {
+          const state = await getHistoryStateAction(sessionId, 'files') as any as FileHistoryState;
+          if (cancelled) return;
+
+          if (isActivelyModifyingRef.current) {
+            pendingRemoteFilesStateRef.current = state;
+            return;
+          }
+
+          applyRemoteState(state);
+        } catch (err) {
+          console.warn('Failed to refresh file history after replay gap', err);
+        }
+      })();
+    };
+
+    window.addEventListener('relay-replay-gap', handleReplayGap as EventListener);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('relay-replay-gap', handleReplayGap as EventListener);
     };
   }, [currentSession?.id, applyRemoteState]);
 
@@ -1125,21 +1102,8 @@ export function useFileSelection(projectDirectory?: string) {
           if (p.sessionId !== sessionId) return;
 
           // Defensively parse arrays in case they arrive as stringified JSON
-          const parseArray = (val: string[] | string): string[] => {
-            if (Array.isArray(val)) return val;
-            if (typeof val === "string") {
-              try {
-                const parsed = JSON.parse(val);
-                return Array.isArray(parsed) ? parsed : [];
-              } catch {
-                return [];
-              }
-            }
-            return [];
-          };
-
-          const included = parseArray(p.includedFiles);
-          const excluded = parseArray(p.forceExcludedFiles);
+          const included = safeParseJsonArray(p.includedFiles);
+          const excluded = safeParseJsonArray(p.forceExcludedFiles);
 
           updateCurrentSessionFields({
             includedFiles: included,

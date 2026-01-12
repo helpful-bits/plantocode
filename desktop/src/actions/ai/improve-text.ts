@@ -31,7 +31,7 @@ export async function createImproveTextJobAction(
 
     // Call the Tauri command to create a text improvement job
     // Ensure projectDirectory is undefined if not available (matches Rust Option<String>)
-    const result = await invoke<{ jobId: string; duration_ms?: number }>(
+    const result = await invoke<{ jobId: string; durationMs?: number }>(
       "improve_text_command",
       {
         sessionId: sessionId,
@@ -49,7 +49,7 @@ export async function createImproveTextJobAction(
         jobId: result.jobId,
         isBackgroundJob: true,
         originalTranscriptionJobId: originalJobId,
-        duration_ms: result.duration_ms,
+        durationMs: result.durationMs,
       },
     };
   } catch (error) {

@@ -1076,18 +1076,18 @@ impl SessionRepository {
                 version: entry_version,
             });
         }
+        for entry in current_entries.iter_mut() {
+            if let Some(device_id) = entry.device_id.as_ref() {
+                entry.device_id = Some(device_id.to_lowercase());
+            }
+        }
+        current_entries.sort_by(compare_task_entries);
 
-        let trimmed_entries: Vec<TaskHistoryEntry> = state
-            .entries
-            .iter()
-            .rev()
-            .take(200)
-            .rev()
-            .cloned()
-            .collect();
+        let (validated_entries, validated_index) =
+            validate_task_history_entries(state.entries.clone(), state.current_index);
 
         // Idempotency check: skip writes if data is unchanged
-        if equal_task_entries(&trimmed_entries, &current_entries) && state.current_index == current_index {
+        if equal_task_entries(&validated_entries, &current_entries) && validated_index == current_index {
             sqlx::query("COMMIT")
                 .execute(&mut *conn)
                 .await
@@ -1112,7 +1112,7 @@ impl SessionRepository {
                 AppError::DatabaseError(format!("Failed to delete existing task history: {}", e))
             })?;
 
-        for entry in &trimmed_entries {
+        for entry in &validated_entries {
             sqlx::query(
                 "INSERT INTO task_description_history
                  (session_id, description, created_at, device_id, sequence_number, version)
@@ -1132,12 +1132,11 @@ impl SessionRepository {
         }
 
         let new_version = current_version + 1;
-        let new_checksum = compute_task_history_checksum(&trimmed_entries, state.current_index, new_version);
+        let new_checksum = compute_task_history_checksum(&validated_entries, validated_index, new_version);
 
         // Extract task_description from current entry
-        let new_task_description: Option<String> = state
-            .entries
-            .get(state.current_index as usize)
+        let new_task_description: Option<String> = validated_entries
+            .get(validated_index as usize)
             .map(|e| e.description.clone());
 
         // Update version, current_index, and task_description in sessions table
@@ -1146,7 +1145,7 @@ impl SessionRepository {
         )
         .bind(new_version)
         .bind(&new_task_description)
-        .bind(state.current_index)
+        .bind(validated_index)
         .bind(crate::utils::date_utils::get_timestamp())
         .bind(session_id)
         .execute(&mut *conn)
@@ -1163,8 +1162,8 @@ impl SessionRepository {
             })?;
 
         Ok(TaskHistoryState {
-            entries: trimmed_entries,
-            current_index: state.current_index,
+            entries: validated_entries,
+            current_index: validated_index,
             version: new_version,
             checksum: new_checksum,
         })
@@ -1192,7 +1191,7 @@ impl SessionRepository {
         };
 
         let rows = sqlx::query(
-            "SELECT included_files, force_excluded_files, created_at
+            "SELECT included_files, force_excluded_files, created_at, device_id, sequence_number, version
              FROM file_selection_history
              WHERE session_id = $1 ORDER BY created_at ASC"
         )
@@ -1203,19 +1202,21 @@ impl SessionRepository {
 
         let mut entries: Vec<FileSelectionHistoryEntry> = Vec::new();
         for (seq, row) in rows.iter().enumerate() {
-            let included_files: String = row.try_get("included_files")?;
-            let force_excluded_files: String = row.try_get("force_excluded_files")?;
+            let included_files_raw: String = row.try_get("included_files")?;
+            let force_excluded_files_raw: String = row.try_get("force_excluded_files")?;
             let created_at: i64 = row.try_get("created_at")?;
-            let op_type: Option<String> = row.try_get("op_type").ok().flatten();
+            let device_id: Option<String> = row.try_get("device_id").ok().flatten();
+            let sequence_number: i64 = row.try_get("sequence_number").unwrap_or(seq as i64);
+            let entry_version: i64 = row.try_get("version").unwrap_or(1);
 
             entries.push(FileSelectionHistoryEntry {
-                included_files,
-                force_excluded_files,
+                included_files: normalize_file_list_text(&included_files_raw),
+                force_excluded_files: normalize_file_list_text(&force_excluded_files_raw),
                 created_at,
-                device_id: None,
-                op_type,
-                sequence_number: seq as i64,
-                version: 1,
+                device_id,
+                op_type: None,
+                sequence_number,
+                version: entry_version,
             });
         }
 
@@ -1294,16 +1295,16 @@ impl SessionRepository {
 
         let mut current_entries: Vec<FileSelectionHistoryEntry> = Vec::new();
         for row in current_rows.iter() {
-            let included_files: String = row.try_get("included_files")?;
-            let force_excluded_files: String = row.try_get("force_excluded_files")?;
+            let included_files_raw: String = row.try_get("included_files")?;
+            let force_excluded_files_raw: String = row.try_get("force_excluded_files")?;
             let created_at: i64 = row.try_get("created_at")?;
             let device_id: Option<String> = row.try_get("device_id").ok().flatten();
             let sequence_number: i64 = row.try_get("sequence_number").unwrap_or(0);
             let entry_version: i64 = row.try_get("version").unwrap_or(1);
 
             current_entries.push(FileSelectionHistoryEntry {
-                included_files,
-                force_excluded_files,
+                included_files: normalize_file_list_text(&included_files_raw),
+                force_excluded_files: normalize_file_list_text(&force_excluded_files_raw),
                 created_at,
                 device_id,
                 op_type: None,
@@ -1311,18 +1312,20 @@ impl SessionRepository {
                 version: entry_version,
             });
         }
+        for entry in current_entries.iter_mut() {
+            if let Some(device_id) = entry.device_id.as_ref() {
+                entry.device_id = Some(device_id.to_lowercase());
+            }
+        }
+        let mut current_entries = normalize_file_history_entries(current_entries);
+        current_entries.sort_by(compare_file_entries);
 
-        let trimmed_entries: Vec<FileSelectionHistoryEntry> = state
-            .entries
-            .iter()
-            .rev()
-            .take(50)
-            .rev()
-            .cloned()
-            .collect();
+        let normalized_state_entries = normalize_file_history_entries(state.entries.clone());
+        let (validated_entries, validated_index) =
+            validate_file_history_entries(normalized_state_entries, state.current_index);
 
         // Idempotency check: skip writes if data is unchanged
-        if equal_file_entries(&trimmed_entries, &current_entries) && state.current_index == current_index {
+        if equal_file_entries(&validated_entries, &current_entries) && validated_index == current_index {
             sqlx::query("COMMIT")
                 .execute(&mut *conn)
                 .await
@@ -1347,15 +1350,18 @@ impl SessionRepository {
                 AppError::DatabaseError(format!("Failed to delete existing file history: {}", e))
             })?;
 
-        for entry in &trimmed_entries {
+        for entry in &validated_entries {
             sqlx::query(
-                "INSERT INTO file_selection_history (session_id, included_files, force_excluded_files, created_at)
-                 VALUES ($1, $2, $3, $4)"
+                "INSERT INTO file_selection_history (session_id, included_files, force_excluded_files, created_at, device_id, sequence_number, version)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)"
             )
             .bind(session_id)
             .bind(&entry.included_files)
             .bind(&entry.force_excluded_files)
             .bind(entry.created_at)
+            .bind(&entry.device_id)
+            .bind(entry.sequence_number)
+            .bind(entry.version)
             .execute(&mut *conn)
             .await
             .map_err(|e| {
@@ -1364,10 +1370,10 @@ impl SessionRepository {
         }
 
         let new_version = current_version + 1;
-        let new_checksum = compute_file_history_checksum(&trimmed_entries, state.current_index, new_version);
+        let new_checksum = compute_file_history_checksum(&validated_entries, validated_index, new_version);
 
         // Extract included_files and force_excluded_files from current entry
-        let current_entry_opt = state.entries.get(state.current_index as usize);
+        let current_entry_opt = validated_entries.get(validated_index as usize);
         let new_included_files = current_entry_opt.map(|e| e.included_files.clone());
         let new_force_excluded_files = current_entry_opt.map(|e| e.force_excluded_files.clone());
 
@@ -1376,7 +1382,7 @@ impl SessionRepository {
             "UPDATE sessions SET file_history_version = $1, file_history_current_index = $2, included_files = $3, force_excluded_files = $4, updated_at = $5 WHERE id = $6"
         )
         .bind(new_version)
-        .bind(state.current_index)
+        .bind(validated_index)
         .bind(&new_included_files)
         .bind(&new_force_excluded_files)
         .bind(crate::utils::date_utils::get_timestamp())
@@ -1395,8 +1401,8 @@ impl SessionRepository {
             })?;
 
         Ok(FileHistoryState {
-            entries: trimmed_entries,
-            current_index: state.current_index,
+            entries: validated_entries,
+            current_index: validated_index,
             version: new_version,
             checksum: new_checksum,
         })
@@ -1411,14 +1417,7 @@ impl SessionRepository {
         combined.extend(local.entries.clone());
         combined.extend(remote.entries.clone());
 
-        combined.sort_by(|a, b| {
-            let time_diff = (a.created_at - b.created_at).abs();
-            if time_diff <= 100 {
-                a.device_id.cmp(&b.device_id)
-            } else {
-                a.created_at.cmp(&b.created_at)
-            }
-        });
+        combined.sort_by(compare_task_entries);
 
         let mut deduped: Vec<TaskHistoryEntry> = Vec::new();
         for entry in combined {
@@ -1432,11 +1431,10 @@ impl SessionRepository {
 
         let trimmed: Vec<TaskHistoryEntry> = deduped.into_iter().rev().take(200).rev().collect();
 
-        let max_index = std::cmp::max(local.current_index, remote.current_index);
         let clamped_index = if trimmed.is_empty() {
             0
         } else {
-            std::cmp::min(max_index, (trimmed.len() as i64) - 1)
+            (trimmed.len() as i64) - 1
         };
 
         let new_version = std::cmp::max(local.version, remote.version) + 1;
@@ -1459,14 +1457,7 @@ impl SessionRepository {
         combined.extend(local.entries.clone());
         combined.extend(remote.entries.clone());
 
-        combined.sort_by(|a, b| {
-            let time_diff = (a.created_at - b.created_at).abs();
-            if time_diff <= 100 {
-                a.device_id.cmp(&b.device_id)
-            } else {
-                a.created_at.cmp(&b.created_at)
-            }
-        });
+        combined.sort_by(compare_file_entries);
 
         let mut deduped: Vec<FileSelectionHistoryEntry> = Vec::new();
         let mut seen: HashSet<String> = HashSet::new();
@@ -1481,11 +1472,10 @@ impl SessionRepository {
 
         let trimmed: Vec<FileSelectionHistoryEntry> = deduped.into_iter().rev().take(50).rev().collect();
 
-        let max_index = std::cmp::max(local.current_index, remote.current_index);
         let clamped_index = if trimmed.is_empty() {
             0
         } else {
-            std::cmp::min(max_index, (trimmed.len() as i64) - 1)
+            (trimmed.len() as i64) - 1
         };
 
         let new_version = std::cmp::max(local.version, remote.version) + 1;
@@ -1511,7 +1501,24 @@ fn validate_task_history_entries(
     let mut repairs = Vec::new();
     let original_len = entries.len();
 
-    entries.sort_by_key(|e| e.created_at);
+    for entry in entries.iter_mut() {
+        if let Some(device_id) = entry.device_id.as_ref() {
+            entry.device_id = Some(device_id.to_lowercase());
+        }
+    }
+
+    let mut current_key: Option<(String, i64, Option<String>, i64)> = None;
+    let pre_sort_index = current_index.clamp(0, (entries.len() as i64) - 1) as usize;
+    if let Some(entry) = entries.get(pre_sort_index) {
+        current_key = Some((
+            entry.description.clone(),
+            entry.created_at,
+            entry.device_id.clone(),
+            entry.sequence_number,
+        ));
+    }
+
+    entries.sort_by(compare_task_entries);
 
     let mut deduped: Vec<TaskHistoryEntry> = Vec::new();
     for entry in entries {
@@ -1535,11 +1542,22 @@ fn validate_task_history_entries(
         repairs.push(format!("Trimmed {} -> {} entries", deduplicated_len, trimmed_len));
     }
 
-    let clamped_index = if trimmed.is_empty() {
+    let mut clamped_index = if trimmed.is_empty() {
         0
     } else {
         std::cmp::max(0, std::cmp::min(current_index, (trimmed.len() as i64) - 1))
     };
+
+    if let Some((desc, created_at, device_id, sequence_number)) = current_key.as_ref() {
+        if let Some(idx) = trimmed.iter().position(|entry| {
+            entry.description == *desc
+                && entry.created_at == *created_at
+                && entry.device_id == *device_id
+                && entry.sequence_number == *sequence_number
+        }) {
+            clamped_index = idx as i64;
+        }
+    }
 
     if clamped_index != current_index {
         repairs.push(format!("Clamped index {} -> {}", current_index, clamped_index));
@@ -1563,7 +1581,25 @@ fn validate_file_history_entries(
     let mut repairs = Vec::new();
     let original_len = entries.len();
 
-    entries.sort_by_key(|e| e.created_at);
+    for entry in entries.iter_mut() {
+        if let Some(device_id) = entry.device_id.as_ref() {
+            entry.device_id = Some(device_id.to_lowercase());
+        }
+    }
+
+    let mut current_key: Option<(String, String, i64, Option<String>, i64)> = None;
+    let pre_sort_index = current_index.clamp(0, (entries.len() as i64) - 1) as usize;
+    if let Some(entry) = entries.get(pre_sort_index) {
+        current_key = Some((
+            entry.included_files.clone(),
+            entry.force_excluded_files.clone(),
+            entry.created_at,
+            entry.device_id.clone(),
+            entry.sequence_number,
+        ));
+    }
+
+    entries.sort_by(compare_file_entries);
 
     let mut deduped: Vec<FileSelectionHistoryEntry> = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -1588,11 +1624,25 @@ fn validate_file_history_entries(
         repairs.push(format!("Trimmed {} -> {} entries", deduplicated_len, trimmed_len));
     }
 
-    let clamped_index = if trimmed.is_empty() {
+    let mut clamped_index = if trimmed.is_empty() {
         0
     } else {
         std::cmp::max(0, std::cmp::min(current_index, (trimmed.len() as i64) - 1))
     };
+
+    if let Some((included_files, force_excluded_files, created_at, device_id, sequence_number)) =
+        current_key.as_ref()
+    {
+        if let Some(idx) = trimmed.iter().position(|entry| {
+            entry.included_files == *included_files
+                && entry.force_excluded_files == *force_excluded_files
+                && entry.created_at == *created_at
+                && entry.device_id == *device_id
+                && entry.sequence_number == *sequence_number
+        }) {
+            clamped_index = idx as i64;
+        }
+    }
 
     if clamped_index != current_index {
         repairs.push(format!("Clamped index {} -> {}", current_index, clamped_index));
@@ -1607,15 +1657,38 @@ fn validate_file_history_entries(
 
 fn compute_task_history_checksum(entries: &[TaskHistoryEntry], current_index: i64, version: i64) -> String {
     #[derive(Serialize)]
-    struct ChecksumData<'a> {
-        current_index: i64,
-        entries: &'a [TaskHistoryEntry],
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumEntry {
+        value: String,
+        timestamp_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        sequence_number: i64,
         version: i64,
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumData {
+        current_index: i64,
+        entries: Vec<ChecksumEntry>,
+        version: i64,
+    }
+
+    let checksum_entries = entries
+        .iter()
+        .map(|entry| ChecksumEntry {
+            value: entry.description.clone(),
+            timestamp_ms: entry.created_at,
+            device_id: entry.device_id.clone(),
+            sequence_number: entry.sequence_number,
+            version: entry.version,
+        })
+        .collect();
+
     let data = ChecksumData {
         current_index,
-        entries,
+        entries: checksum_entries,
         version,
     };
 
@@ -1625,15 +1698,40 @@ fn compute_task_history_checksum(entries: &[TaskHistoryEntry], current_index: i6
 
 fn compute_file_history_checksum(entries: &[FileSelectionHistoryEntry], current_index: i64, version: i64) -> String {
     #[derive(Serialize)]
-    struct ChecksumData<'a> {
-        current_index: i64,
-        entries: &'a [FileSelectionHistoryEntry],
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumEntry {
+        included_files: String,
+        force_excluded_files: String,
+        timestamp_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        sequence_number: i64,
         version: i64,
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumData {
+        current_index: i64,
+        entries: Vec<ChecksumEntry>,
+        version: i64,
+    }
+
+    let checksum_entries = entries
+        .iter()
+        .map(|entry| ChecksumEntry {
+            included_files: entry.included_files.clone(),
+            force_excluded_files: entry.force_excluded_files.clone(),
+            timestamp_ms: entry.created_at,
+            device_id: entry.device_id.clone(),
+            sequence_number: entry.sequence_number,
+            version: entry.version,
+        })
+        .collect();
+
     let data = ChecksumData {
         current_index,
-        entries,
+        entries: checksum_entries,
         version,
     };
 
@@ -1651,6 +1749,44 @@ fn equal_task_entries(a: &[TaskHistoryEntry], b: &[TaskHistoryEntry]) -> bool {
     })
 }
 
+fn compare_task_entries(a: &TaskHistoryEntry, b: &TaskHistoryEntry) -> std::cmp::Ordering {
+    let device_a = a.device_id.as_deref().unwrap_or("");
+    let device_b = b.device_id.as_deref().unwrap_or("");
+
+    if device_a == device_b {
+        let seq_cmp = a.sequence_number.cmp(&b.sequence_number);
+        if seq_cmp != std::cmp::Ordering::Equal {
+            return seq_cmp;
+        }
+    }
+
+    let time_diff = (a.created_at - b.created_at).abs();
+    if time_diff <= 100 {
+        device_a.cmp(device_b)
+    } else {
+        a.created_at.cmp(&b.created_at)
+    }
+}
+
+fn compare_file_entries(a: &FileSelectionHistoryEntry, b: &FileSelectionHistoryEntry) -> std::cmp::Ordering {
+    let device_a = a.device_id.as_deref().unwrap_or("");
+    let device_b = b.device_id.as_deref().unwrap_or("");
+
+    if device_a == device_b {
+        let seq_cmp = a.sequence_number.cmp(&b.sequence_number);
+        if seq_cmp != std::cmp::Ordering::Equal {
+            return seq_cmp;
+        }
+    }
+
+    let time_diff = (a.created_at - b.created_at).abs();
+    if time_diff <= 100 {
+        device_a.cmp(device_b)
+    } else {
+        a.created_at.cmp(&b.created_at)
+    }
+}
+
 fn equal_file_entries(a: &[FileSelectionHistoryEntry], b: &[FileSelectionHistoryEntry]) -> bool {
     a.len() == b.len() &&
     a.iter().zip(b.iter()).all(|(entry_a, entry_b)| {
@@ -1659,4 +1795,43 @@ fn equal_file_entries(a: &[FileSelectionHistoryEntry], b: &[FileSelectionHistory
         entry_a.created_at == entry_b.created_at &&
         entry_a.sequence_number == entry_b.sequence_number
     })
+}
+
+fn normalize_file_history_entries(entries: Vec<FileSelectionHistoryEntry>) -> Vec<FileSelectionHistoryEntry> {
+    entries
+        .into_iter()
+        .map(|mut entry| {
+            entry.included_files = normalize_file_list_text(&entry.included_files);
+            entry.force_excluded_files = normalize_file_list_text(&entry.force_excluded_files);
+            entry
+        })
+        .collect()
+}
+
+fn normalize_file_list_text(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "[]".to_string();
+    }
+
+    let parsed = if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        serde_json::from_str::<Vec<String>>(trimmed).ok()
+    } else {
+        None
+    };
+
+    let mut items: Vec<String> = if let Some(list) = parsed {
+        list
+    } else {
+        trimmed
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect()
+    };
+
+    items.sort();
+    items.dedup();
+
+    serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string())
 }

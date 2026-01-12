@@ -171,23 +171,23 @@ impl JobProcessor for ImplementationPlanProcessor {
                             Some(ref metadata_str) => {
                                 match serde_json::from_str::<serde_json::Value>(&metadata_str) {
                                     Ok(mut json) => {
-                                        json["token_warning"] = serde_json::json!({
-                                            "estimated_tokens": tokens,
+                                        json["tokenWarning"] = serde_json::json!({
+                                            "estimatedTokens": tokens,
                                             "warning": "Content exceeds typical model limits but proceeding with full content"
                                         });
                                         json
                                     }
                                     Err(_) => serde_json::json!({
-                                        "token_warning": {
-                                            "estimated_tokens": tokens,
+                                        "tokenWarning": {
+                                            "estimatedTokens": tokens,
                                             "warning": "Content exceeds typical model limits but proceeding with full content"
                                         }
                                     }),
                                 }
                             }
                             None => serde_json::json!({
-                                "token_warning": {
-                                    "estimated_tokens": tokens,
+                                "tokenWarning": {
+                                    "estimatedTokens": tokens,
                                     "warning": "Content exceeds typical model limits but proceeding with full content"
                                 }
                             }),
@@ -298,7 +298,7 @@ impl JobProcessor for ImplementationPlanProcessor {
             Some(ref json) => {
                 if let Some(title) = json.get("planTitle").and_then(|v| v.as_str()) {
                     title.to_string()
-                } else if let Some(title) = json.get("generated_title").and_then(|v| v.as_str()) {
+                } else if let Some(title) = json.get("generatedTitle").and_then(|v| v.as_str()) {
                     crate::utils::path_utils::sanitize_filename(title)
                 } else {
                     "Implementation Plan".to_string()

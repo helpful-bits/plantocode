@@ -92,7 +92,7 @@ pub(super) fn row_to_job(row: &SqliteRow) -> AppResult<BackgroundJob> {
     let error_details: Option<ErrorDetails> = metadata
         .as_ref()
         .and_then(|meta_str| serde_json::from_str::<Value>(meta_str).ok())
-        .and_then(|meta_value| meta_value.get("error_details").cloned())
+        .and_then(|meta_value| meta_value.get("errorDetails").cloned())
         .and_then(|error_value| serde_json::from_value::<ErrorDetails>(error_value).ok());
 
     Ok(BackgroundJob {

@@ -10,6 +10,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex, oneshot};
 use tauri::{AppHandle, Manager};
 
+const HISTORY_OP_TIMEOUT_SECS: u64 = 60;
+
 #[derive(Debug)]
 enum HistoryOp {
     SyncTask {
@@ -69,7 +71,7 @@ impl HistoryStateSequencer {
         ).await;
 
         tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(HISTORY_OP_TIMEOUT_SECS),
             rx
         ).await
             .map_err(|_| "History sync timeout".to_string())?
@@ -94,7 +96,7 @@ impl HistoryStateSequencer {
         ).await;
 
         tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(HISTORY_OP_TIMEOUT_SECS),
             rx
         ).await
             .map_err(|_| "History sync timeout".to_string())?
@@ -117,7 +119,7 @@ impl HistoryStateSequencer {
         ).await;
 
         tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(HISTORY_OP_TIMEOUT_SECS),
             rx
         ).await
             .map_err(|_| "History merge timeout".to_string())?
@@ -140,7 +142,7 @@ impl HistoryStateSequencer {
         ).await;
 
         tokio::time::timeout(
-            std::time::Duration::from_secs(5),
+            std::time::Duration::from_secs(HISTORY_OP_TIMEOUT_SECS),
             rx
         ).await
             .map_err(|_| "History merge timeout".to_string())?
@@ -228,7 +230,7 @@ impl HistoryStateSequencer {
                     }
                     HistoryOp::SyncFiles { session_id, state, expected_version, respond_to } => {
                         let recomputed_checksum = compute_file_history_checksum(&state.entries, state.current_index, state.version);
-                        if recomputed_checksum != state.checksum {
+                        if !state.checksum.is_empty() && recomputed_checksum != state.checksum {
                             eprintln!(
                                 "[CHECKSUM] Mismatch detected for session {} (files): expected {}, got {}",
                                 session_id,
@@ -404,18 +406,39 @@ impl HistoryStateSequencer {
 }
 
 fn compute_task_history_checksum(entries: &[crate::db_utils::session_repository::TaskHistoryEntry], current_index: i64, version: i64) -> String {
-    use crate::db_utils::session_repository::TaskHistoryEntry;
-
     #[derive(Serialize)]
-    struct ChecksumData<'a> {
-        current_index: i64,
-        entries: &'a [TaskHistoryEntry],
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumEntry {
+        value: String,
+        timestamp_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        sequence_number: i64,
         version: i64,
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumData {
+        current_index: i64,
+        entries: Vec<ChecksumEntry>,
+        version: i64,
+    }
+
+    let checksum_entries = entries
+        .iter()
+        .map(|entry| ChecksumEntry {
+            value: entry.description.clone(),
+            timestamp_ms: entry.created_at,
+            device_id: entry.device_id.clone(),
+            sequence_number: entry.sequence_number,
+            version: entry.version,
+        })
+        .collect();
+
     let data = ChecksumData {
         current_index,
-        entries,
+        entries: checksum_entries,
         version,
     };
 
@@ -424,18 +447,41 @@ fn compute_task_history_checksum(entries: &[crate::db_utils::session_repository:
 }
 
 fn compute_file_history_checksum(entries: &[crate::db_utils::session_repository::FileSelectionHistoryEntry], current_index: i64, version: i64) -> String {
-    use crate::db_utils::session_repository::FileSelectionHistoryEntry;
-
     #[derive(Serialize)]
-    struct ChecksumData<'a> {
-        current_index: i64,
-        entries: &'a [FileSelectionHistoryEntry],
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumEntry {
+        included_files: String,
+        force_excluded_files: String,
+        timestamp_ms: i64,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        device_id: Option<String>,
+        sequence_number: i64,
         version: i64,
     }
 
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct ChecksumData {
+        current_index: i64,
+        entries: Vec<ChecksumEntry>,
+        version: i64,
+    }
+
+    let checksum_entries = entries
+        .iter()
+        .map(|entry| ChecksumEntry {
+            included_files: entry.included_files.clone(),
+            force_excluded_files: entry.force_excluded_files.clone(),
+            timestamp_ms: entry.created_at,
+            device_id: entry.device_id.clone(),
+            sequence_number: entry.sequence_number,
+            version: entry.version,
+        })
+        .collect();
+
     let data = ChecksumData {
         current_index,
-        entries,
+        entries: checksum_entries,
         version,
     };
 

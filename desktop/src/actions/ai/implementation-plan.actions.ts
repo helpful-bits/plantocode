@@ -51,7 +51,7 @@ export async function createImplementationPlanAction(params: {
   try {
     // Call the Tauri command to create the implementation plan
     // The backend now handles dynamic title generation and all prompt construction
-    const result = await invoke<{ jobId: string; duration_ms?: number }>(
+    const result = await invoke<{ jobId: string; durationMs?: number }>(
       "create_implementation_plan_command",
       {
         sessionId,
@@ -72,7 +72,7 @@ export async function createImplementationPlanAction(params: {
       metadata: {
         jobId: result.jobId,
         isBackgroundJob: true,
-        duration_ms: result.duration_ms,
+        durationMs: result.durationMs,
       },
     };
   } catch (error) {
@@ -156,7 +156,7 @@ export async function createMergedImplementationPlanAction(
   mergeInstructions?: string
 ): Promise<ActionState<{ jobId: string }>> {
   try {
-    const result = await invoke<{ job_id: string }>(
+    const result = await invoke<{ jobId: string }>(
       "create_merged_implementation_plan_command",
       {
         sessionId,
@@ -168,7 +168,7 @@ export async function createMergedImplementationPlanAction(
     return {
       isSuccess: true,
       message: "Merge implementation plan started",
-      data: { jobId: result.job_id },
+      data: { jobId: result.jobId },
     };
   } catch (error) {
     console.error("Failed to create merged implementation plan:", error);

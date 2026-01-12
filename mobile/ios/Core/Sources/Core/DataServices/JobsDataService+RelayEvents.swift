@@ -202,14 +202,9 @@ extension JobsDataService {
 
     /// Extract jobId from payload, handling AnyCodable wrapping
     func extractJobIdFromPayload(_ payload: [String: Any]) -> String? {
-        // Direct string
+        // Canonical jobId only
         if let id = payload["jobId"] as? String { return id }
-        if let id = payload["id"] as? String { return id }
-        // AnyCodable wrapped
         if let anyCodable = payload["jobId"] as? AnyCodable, let id = anyCodable.value as? String { return id }
-        if let anyCodable = payload["id"] as? AnyCodable, let id = anyCodable.value as? String { return id }
-        // Nested in job object
-        if let jobDict = payload["job"] as? [String: Any], let id = jobDict["id"] as? String { return id }
         return nil
     }
 
@@ -218,7 +213,6 @@ extension JobsDataService {
         if let dict = payload["job"] as? [String: Any] { return dict }
         if let dict = (payload["job"] as? NSDictionary) as? [String: Any] { return dict }
         if let anyCodable = payload["job"] as? AnyCodable, let dict = anyCodable.value as? [String: Any] { return dict }
-        if let payloadDict = payload["payload"] as? [String: Any], let dict = payloadDict["job"] as? [String: Any] { return dict }
         return nil
     }
 
@@ -292,15 +286,7 @@ extension JobsDataService {
             guard var job = jobsById[jobId] else { return }
             guard shouldIgnore(job: job) == false else { return }
 
-            // Desktop sends metadataPatch nested under payload.payload
-            // Check both locations for compatibility
-            let metadataPatch: [String: Any]? = {
-                if let nestedPayload = payload["payload"] as? [String: Any],
-                   let patch = nestedPayload["metadataPatch"] as? [String: Any] {
-                    return patch
-                }
-                return payload["metadataPatch"] as? [String: Any]
-            }()
+            let metadataPatch = payload["metadataPatch"] as? [String: Any]
 
             if let metadataPatch = metadataPatch {
                 if let existingMetadata = job.metadata,

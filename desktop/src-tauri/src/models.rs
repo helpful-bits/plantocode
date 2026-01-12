@@ -529,106 +529,6 @@ pub struct OpenRouterPromptTokensDetails {
     pub cached_tokens: Option<i32>,
 }
 
-// Server-specific OpenRouter structs with snake_case field names
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerOpenRouterResponse {
-    pub id: String,
-    pub choices: Vec<ServerOpenRouterChoice>,
-    pub created: Option<i64>,
-    pub model: String,
-    pub object: Option<String>,
-    pub usage: Option<ServerOpenRouterUsage>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerOpenRouterChoice {
-    pub message: ServerOpenRouterResponseMessage,
-    pub index: i32,
-    pub finish_reason: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerOpenRouterResponseMessage {
-    pub role: String,
-    pub content: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerOpenRouterUsage {
-    pub prompt_tokens: i32,
-    pub completion_tokens: i32,
-    pub total_tokens: i32,
-    pub cost: Option<f64>,
-    #[serde(default)]
-    pub cached_input_tokens: i32,
-    #[serde(default)]
-    pub cache_write_tokens: i32,
-    #[serde(default)]
-    pub cache_read_tokens: i32,
-    pub prompt_tokens_details: Option<ServerOpenRouterPromptTokensDetails>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ServerOpenRouterPromptTokensDetails {
-    pub cached_tokens: Option<i32>,
-}
-
-// Conversion implementations from Server structs to OpenRouter structs
-impl From<ServerOpenRouterResponse> for OpenRouterResponse {
-    fn from(server_response: ServerOpenRouterResponse) -> Self {
-        OpenRouterResponse {
-            id: server_response.id,
-            choices: server_response
-                .choices
-                .into_iter()
-                .map(|choice| choice.into())
-                .collect(),
-            created: server_response.created,
-            model: server_response.model,
-            object: server_response.object,
-            usage: server_response.usage.map(|usage| usage.into()),
-        }
-    }
-}
-
-impl From<ServerOpenRouterChoice> for OpenRouterChoice {
-    fn from(server_choice: ServerOpenRouterChoice) -> Self {
-        OpenRouterChoice {
-            message: server_choice.message.into(),
-            index: server_choice.index,
-            finish_reason: server_choice.finish_reason,
-        }
-    }
-}
-
-impl From<ServerOpenRouterResponseMessage> for OpenRouterResponseMessage {
-    fn from(server_message: ServerOpenRouterResponseMessage) -> Self {
-        OpenRouterResponseMessage {
-            role: server_message.role,
-            content: server_message.content,
-        }
-    }
-}
-
-impl From<ServerOpenRouterUsage> for OpenRouterUsage {
-    fn from(server_usage: ServerOpenRouterUsage) -> Self {
-        OpenRouterUsage {
-            prompt_tokens: server_usage.prompt_tokens,
-            completion_tokens: server_usage.completion_tokens,
-            total_tokens: server_usage.total_tokens,
-            cost: server_usage.cost,
-            cached_input_tokens: server_usage.cached_input_tokens,
-            cache_write_tokens: server_usage.cache_write_tokens,
-            cache_read_tokens: server_usage.cache_read_tokens,
-            prompt_tokens_details: server_usage.prompt_tokens_details.map(|details| {
-                OpenRouterPromptTokensDetails {
-                    cached_tokens: details.cached_tokens,
-                }
-            }),
-        }
-    }
-}
-
 // OpenRouter streaming response chunks for server parsing (snake_case)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OpenRouterStreamChunk {
@@ -771,12 +671,24 @@ pub struct ProviderWithModels {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CodexCliSettings {
+    pub preferred_model: Option<String>,
+    pub mini_model: Option<String>,
+    pub fallback_model: Option<String>,
+    pub model_overrides: Option<HashMap<String, String>>,
+    pub reasoning_effort: Option<String>,
+    pub mini_reasoning_effort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RuntimeAIConfig {
     pub tasks: HashMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
 
     // Job concurrency configuration
     pub max_concurrent_jobs: Option<u32>,
+    pub codex_cli: Option<CodexCliSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -922,6 +834,7 @@ pub struct FileSelectionHistoryEntryWithTimestamp {
 
 /// Device settings for controlling remote access
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceSettings {
     pub allow_remote_access: bool,
 }

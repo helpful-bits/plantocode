@@ -173,7 +173,7 @@ public class ConnectivityDiagnostics {
             case "authRequired":
                 return "Please sign in to continue."
 
-            case "device_ownership_failed":
+            case "deviceOwnershipFailed":
                 return "This desktop belongs to a different account. Please sign in with the correct account or connect to a different desktop."
 
             case "invalidResume":
@@ -242,7 +242,7 @@ public class ConnectivityDiagnostics {
         case "authRequired":
             return "Authentication required. Please sign in."
 
-        case "device_ownership_failed":
+        case "deviceOwnershipFailed":
             return "This desktop belongs to a different account."
 
         case "timeout":

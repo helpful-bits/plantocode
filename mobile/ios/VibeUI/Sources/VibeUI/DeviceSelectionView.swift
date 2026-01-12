@@ -862,6 +862,8 @@ private struct DeviceRow: View {
                 return ("Authentication Required", "Please sign in again. Your session may have expired.")
             case .invalidConfiguration:
                 return ("Configuration Error", "App not initialized properly. Try restarting the app.")
+            case .desktopOffline:
+                return ("Desktop Offline", "The desktop app is currently offline. Keep it open to reconnect.")
             case .deviceNotFound:
                 return ("Device Not Found", "The desktop device is no longer registered. Make sure it's connected.")
             case .connectionFailed(let reason):

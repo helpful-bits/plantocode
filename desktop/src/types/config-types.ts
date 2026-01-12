@@ -23,6 +23,19 @@ export interface ProviderWithModels {
 }
 
 /**
+ * Codex CLI routing configuration interface
+ * Must match the Rust backend CodexCliSettings struct
+ */
+export interface CodexCliSettings {
+  preferredModel?: string;
+  miniModel?: string;
+  fallbackModel?: string;
+  modelOverrides?: Record<string, string>;
+  reasoningEffort?: string;
+  miniReasoningEffort?: string;
+}
+
+/**
  * Runtime AI configuration interface
  * Must match the Rust backend RuntimeAIConfig struct
  */
@@ -33,6 +46,7 @@ export interface RuntimeAIConfig {
   limits?: TokenLimits; // Optional since backend may not include this
   maxConcurrentJobs?: number;
   transcriptionConfig?: TranscriptionConfig;
+  codexCli?: CodexCliSettings;
 }
 
 /**

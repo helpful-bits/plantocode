@@ -3,7 +3,7 @@ import Foundation
 public enum HistoryStateSanitizer {
     private static let numericKeys: Set<String> = [
         "version","expectedVersion","currentIndex",
-        "createdAt","updatedAt","timestamp","ts","startTime","endTime"
+        "timestampMs","sequenceNumber","updatedAt","timestamp","ts","startTime","endTime"
     ]
 
     public static func sanitizeForRPC(_ value: Any) -> Any {

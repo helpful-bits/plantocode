@@ -12,6 +12,16 @@ use std::sync::Arc;
 use tauri::Manager;
 use tokio::sync::RwLock;
 
+const ALLOWED_SESSION_UPDATE_FIELDS: [&str; 7] = [
+    "name",
+    "projectDirectory",
+    "mergeInstructions",
+    "searchTerm",
+    "searchSelectedFilesOnly",
+    "modelUsed",
+    "videoAnalysisPrompt",
+];
+
 #[derive(Debug, Clone)]
 struct CachedSession {
     session: Session,
@@ -227,6 +237,23 @@ impl SessionCache {
         session_id: &str,
         patch: &serde_json::Value,
     ) -> AppResult<()> {
+        let obj = patch
+            .as_object()
+            .ok_or_else(|| AppError::InvalidArgument("update patch must be an object".to_string()))?;
+
+        let invalid_fields: Vec<String> = obj
+            .keys()
+            .filter(|key| !ALLOWED_SESSION_UPDATE_FIELDS.contains(&key.as_str()))
+            .cloned()
+            .collect();
+
+        if !invalid_fields.is_empty() {
+            return Err(AppError::InvalidArgument(format!(
+                "Unsupported session update fields: {}",
+                invalid_fields.join(", ")
+            )));
+        }
+
         let now = date_utils::get_timestamp();
         let mut map = self.map.write().await;
 
@@ -235,53 +262,44 @@ impl SessionCache {
             .ok_or_else(|| AppError::NotFoundError(format!("Session not in cache: {}", session_id)))?;
 
         // Apply patch fields
-        if let Some(obj) = patch.as_object() {
-            if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
-                cached.session.name = name.to_string();
-            }
-            if let Some(project_directory) = obj.get("projectDirectory").and_then(|v| v.as_str()) {
-                cached.session.project_directory = project_directory.to_string();
-                // Recompute project_hash
-                cached.session.project_hash = hash_string(project_directory);
-            }
-            if let Some(task_description) = obj.get("taskDescription") {
-                cached.session.task_description = if task_description.is_null() {
-                    None
-                } else {
-                    task_description.as_str().map(|s| s.to_string())
-                };
-            }
-            if let Some(merge_instructions) = obj.get("mergeInstructions") {
-                cached.session.merge_instructions = if merge_instructions.is_null() {
-                    None
-                } else {
-                    merge_instructions.as_str().map(|s| s.to_string())
-                };
-            }
-            if let Some(search_term) = obj.get("searchTerm") {
-                cached.session.search_term = if search_term.is_null() {
-                    None
-                } else {
-                    search_term.as_str().map(|s| s.to_string())
-                };
-            }
-            if let Some(search_selected_files_only) = obj.get("searchSelectedFilesOnly").and_then(|v| v.as_bool()) {
-                cached.session.search_selected_files_only = search_selected_files_only;
-            }
-            if let Some(model_used) = obj.get("modelUsed") {
-                cached.session.model_used = if model_used.is_null() {
-                    None
-                } else {
-                    model_used.as_str().map(|s| s.to_string())
-                };
-            }
-            if let Some(video_analysis_prompt) = obj.get("videoAnalysisPrompt") {
-                cached.session.video_analysis_prompt = if video_analysis_prompt.is_null() {
-                    None
-                } else {
-                    video_analysis_prompt.as_str().map(|s| s.to_string())
-                };
-            }
+        if let Some(name) = obj.get("name").and_then(|v| v.as_str()) {
+            cached.session.name = name.to_string();
+        }
+        if let Some(project_directory) = obj.get("projectDirectory").and_then(|v| v.as_str()) {
+            cached.session.project_directory = project_directory.to_string();
+            // Recompute project_hash
+            cached.session.project_hash = hash_string(project_directory);
+        }
+        if let Some(merge_instructions) = obj.get("mergeInstructions") {
+            cached.session.merge_instructions = if merge_instructions.is_null() {
+                None
+            } else {
+                merge_instructions.as_str().map(|s| s.to_string())
+            };
+        }
+        if let Some(search_term) = obj.get("searchTerm") {
+            cached.session.search_term = if search_term.is_null() {
+                None
+            } else {
+                search_term.as_str().map(|s| s.to_string())
+            };
+        }
+        if let Some(search_selected_files_only) = obj.get("searchSelectedFilesOnly").and_then(|v| v.as_bool()) {
+            cached.session.search_selected_files_only = search_selected_files_only;
+        }
+        if let Some(model_used) = obj.get("modelUsed") {
+            cached.session.model_used = if model_used.is_null() {
+                None
+            } else {
+                model_used.as_str().map(|s| s.to_string())
+            };
+        }
+        if let Some(video_analysis_prompt) = obj.get("videoAnalysisPrompt") {
+            cached.session.video_analysis_prompt = if video_analysis_prompt.is_null() {
+                None
+            } else {
+                video_analysis_prompt.as_str().map(|s| s.to_string())
+            };
         }
 
         cached.session.updated_at = now;

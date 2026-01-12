@@ -1,7 +1,7 @@
 use crate::AppState;
 use crate::api_clients::{
-    ApiClient, TranscriptionClient, billing_client::BillingClient, consent_client::ConsentClient,
-    server_proxy_client::ServerProxyClient,
+    ApiClient, RoutedApiClient, TranscriptionClient, billing_client::BillingClient,
+    consent_client::ConsentClient, server_proxy_client::ServerProxyClient,
 };
 use crate::auth::TokenManager;
 use crate::constants::SERVER_API_URL;
@@ -166,8 +166,9 @@ pub async fn reinitialize_api_clients(app_handle: &AppHandle, server_url: String
     // Create a single Arc instance of the client
     let server_proxy_client_arc = Arc::new(server_proxy_client);
 
-    // Cast the same Arc to use with different interfaces
-    let api_client_arc: Arc<dyn ApiClient> = server_proxy_client_arc.clone();
+    // Route OpenAI requests to Codex CLI when enabled, otherwise use server proxy
+    let routed_client = RoutedApiClient::new(app_handle.clone(), server_proxy_client_arc.clone());
+    let api_client_arc: Arc<dyn ApiClient> = Arc::new(routed_client);
     let transcription_client_arc: Arc<dyn TranscriptionClient> = server_proxy_client_arc.clone();
 
     // Initialize BillingClient

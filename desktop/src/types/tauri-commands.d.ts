@@ -589,7 +589,7 @@ export interface StartVideoAnalysisJobCommandArgs {
 // Common result types
 export interface JobResult {
   jobId: string;
-  duration_ms?: number;
+  durationMs?: number;
 }
 
 export interface DatabaseInfo {
@@ -613,7 +613,7 @@ export interface BatchTranscriptionResponse {
   chunkIndex: number;
   text: string;
   processingTimeMs?: number;
-  duration_ms?: number;
+  durationMs?: number;
 }
 
 // Consent-related interfaces
@@ -717,7 +717,7 @@ export type TauriInvoke = {
   "generate_directory_tree_command": (args: GenerateDirectoryTreeCommandArgs) => Promise<string>;
   "generate_regex_command": (args: GenerateRegexCommandArgs) => Promise<JobResult>;
   "improve_text_command": (args: ImproveTextCommandArgs) => Promise<JobResult>;
-  "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; duration_ms?: number }>;
+  "generate_simple_text_command": (args: GenerateSimpleTextCommandArgs) => Promise<{ text: string; durationMs?: number }>;
   "transcribe_audio_command": (args: TranscribeAudioCommandArgs) => Promise<TranscriptionResponse>;
   "get_key_value_command": (args: GetKeyValueCommandArgs) => Promise<string | null>;
   "set_key_value_command": (args: SetKeyValueCommandArgs) => Promise<void>;

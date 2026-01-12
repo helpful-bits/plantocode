@@ -332,12 +332,12 @@ impl DeviceRepository {
         device_id: &Uuid,
         push_token: &str,
     ) -> Result<(), AppError> {
-        // Store push token in capabilities as device_push_token
+        // Store push token in capabilities as devicePushToken
         let result = query!(
             r#"
             UPDATE devices
             SET
-                capabilities = jsonb_set(capabilities, '{device_push_token}', $2, true),
+                capabilities = jsonb_set(capabilities, '{devicePushToken}', $2, true),
                 updated_at = NOW()
             WHERE device_id = $1
             "#,
@@ -499,7 +499,7 @@ impl DeviceRepository {
             FROM devices
             WHERE user_id = $1
             AND status = 'online'
-            AND capabilities ? 'device_push_token'
+            AND capabilities ? 'devicePushToken'
             "#,
             user_id
         )
@@ -509,7 +509,7 @@ impl DeviceRepository {
 
         let mut tokens = Vec::new();
         for device in devices {
-            if let Some(token) = device.capabilities.get("device_push_token") {
+            if let Some(token) = device.capabilities.get("devicePushToken") {
                 if let Some(token_str) = token.as_str() {
                     tokens.push(token_str.to_string());
                 }
@@ -529,7 +529,7 @@ impl DeviceRepository {
             r#"
             UPDATE devices
             SET
-                capabilities = jsonb_set(capabilities, '{device_push_token}', $3, true),
+                capabilities = jsonb_set(capabilities, '{devicePushToken}', $3, true),
                 updated_at = NOW()
             WHERE device_id = $1 AND user_id = $2
             "#,
@@ -558,7 +558,7 @@ impl DeviceRepository {
         token: &str,
     ) -> Result<(), AppError> {
         let capabilities = serde_json::json!({
-            "device_push_token": token
+            "devicePushToken": token
         });
 
         let result = sqlx::query(
@@ -573,7 +573,7 @@ impl DeviceRepository {
             ON CONFLICT (device_id) DO UPDATE SET
                 capabilities = jsonb_set(
                     COALESCE(devices.capabilities, '{}'::jsonb),
-                    '{device_push_token}',
+                    '{devicePushToken}',
                     $5,
                     true
                 ),

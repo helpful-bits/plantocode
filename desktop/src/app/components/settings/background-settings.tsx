@@ -18,24 +18,24 @@ import { getDeviceSettings, updateDeviceSettings } from '@/actions/settings/sett
 import type { DeviceSettings } from '@/types/settings-types';
 
 type BackgroundPrefs = {
-  background_run_enabled: boolean;
-  start_with_system: boolean;
-  show_notifications: boolean;
-  minimize_to_tray_on_close: boolean;
-  launch_minimized: boolean;
+  backgroundRunEnabled: boolean;
+  startWithSystem: boolean;
+  showNotifications: boolean;
+  minimizeToTrayOnClose: boolean;
+  launchMinimized: boolean;
 };
 
 export default function BackgroundSettings() {
   const { showNotification } = useNotification();
   const [prefs, setPrefs] = useState<BackgroundPrefs>({
-    background_run_enabled: false,
-    start_with_system: false,
-    show_notifications: false,
-    minimize_to_tray_on_close: false,
-    launch_minimized: false,
+    backgroundRunEnabled: false,
+    startWithSystem: false,
+    showNotifications: false,
+    minimizeToTrayOnClose: false,
+    launchMinimized: false,
   });
   const [deviceSettings, setDeviceSettings] = useState<DeviceSettings>({
-    allow_remote_access: false,
+    allowRemoteAccess: false,
   });
   const [loading, setLoading] = useState(true);
   const isInitialMount = useRef(true);
@@ -165,8 +165,8 @@ export default function BackgroundSettings() {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="remote-access"
-                checked={deviceSettings.allow_remote_access}
-                onCheckedChange={(checked) => setDeviceSettings(prev => ({ ...prev, allow_remote_access: Boolean(checked) }))}
+                checked={deviceSettings.allowRemoteAccess}
+                onCheckedChange={(checked) => setDeviceSettings(prev => ({ ...prev, allowRemoteAccess: Boolean(checked) }))}
               />
               <div className="space-y-0.5">
                 <Label htmlFor="remote-access" className="cursor-pointer">Allow Remote Access</Label>
@@ -177,7 +177,7 @@ export default function BackgroundSettings() {
             </div>
           </div>
 
-          {deviceSettings.allow_remote_access && (
+          {deviceSettings.allowRemoteAccess && (
             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
               <div className="text-sm text-blue-700 dark:text-blue-300">
                 <strong>Remote access is enabled.</strong> This computer is now discoverable by the PlanToCode mobile app on your phone. You can connect and control this desktop application remotely from your mobile device.
@@ -185,7 +185,7 @@ export default function BackgroundSettings() {
             </div>
           )}
 
-          {!deviceSettings.allow_remote_access && (
+          {!deviceSettings.allowRemoteAccess && (
             <div className="p-3 bg-gray-50 dark:bg-gray-900/20 border border-gray-200 dark:border-gray-700 rounded-md">
               <div className="text-sm text-gray-700 dark:text-gray-300">
                 <strong>Remote access is disabled.</strong> This computer is hidden from the PlanToCode mobile app. Enable remote access to control this desktop from your phone.
@@ -207,8 +207,8 @@ export default function BackgroundSettings() {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="background-run"
-                checked={prefs.background_run_enabled}
-                onCheckedChange={(v) => updatePref('background_run_enabled', v as boolean)}
+                checked={prefs.backgroundRunEnabled}
+                onCheckedChange={(v) => updatePref('backgroundRunEnabled', v as boolean)}
               />
               <div className="space-y-0.5">
                 <Label htmlFor="background-run" className="text-sm font-medium cursor-pointer">Run in background</Label>
@@ -219,8 +219,8 @@ export default function BackgroundSettings() {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="minimize-to-tray"
-                checked={prefs.minimize_to_tray_on_close}
-                onCheckedChange={(v) => updatePref('minimize_to_tray_on_close', v as boolean)}
+                checked={prefs.minimizeToTrayOnClose}
+                onCheckedChange={(v) => updatePref('minimizeToTrayOnClose', v as boolean)}
               />
               <div className="space-y-0.5">
                 <Label htmlFor="minimize-to-tray" className="text-sm font-medium cursor-pointer">Minimize to tray on close</Label>
@@ -231,8 +231,8 @@ export default function BackgroundSettings() {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="start-with-system"
-                checked={prefs.start_with_system}
-                onCheckedChange={(v) => updatePref('start_with_system', v as boolean)}
+                checked={prefs.startWithSystem}
+                onCheckedChange={(v) => updatePref('startWithSystem', v as boolean)}
               />
               <div className="space-y-0.5">
                 <Label htmlFor="start-with-system" className="text-sm font-medium cursor-pointer">Start with system</Label>
@@ -243,8 +243,8 @@ export default function BackgroundSettings() {
             <div className="flex items-center space-x-3">
               <Checkbox
                 id="show-notifications"
-                checked={prefs.show_notifications}
-                onCheckedChange={(v) => updatePref('show_notifications', v as boolean)}
+                checked={prefs.showNotifications}
+                onCheckedChange={(v) => updatePref('showNotifications', v as boolean)}
               />
               <div className="space-y-0.5">
                 <Label htmlFor="show-notifications" className="text-sm font-medium cursor-pointer">Show notifications</Label>
@@ -273,7 +273,7 @@ export default function BackgroundSettings() {
             </ul>
           </div>
 
-          {prefs.background_run_enabled && (
+          {prefs.backgroundRunEnabled && (
             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md">
               <div className="text-sm text-blue-700 dark:text-blue-300">
                 <strong>Background mode is enabled.</strong> The app will minimize to the system tray when you close the window.

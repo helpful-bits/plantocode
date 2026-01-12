@@ -106,7 +106,7 @@ where
                             StreamEvent::StreamStarted { request_id } => sse::Event::Data(
                                 sse::Data::new(
                                     serde_json::to_string(&serde_json::json!({
-                                        "request_id": request_id
+                                        "requestId": request_id
                                     }))
                                     .unwrap(),
                                 )
@@ -123,7 +123,7 @@ where
                                 sse::Event::Data(
                                     sse::Data::new(
                                         serde_json::to_string(&serde_json::json!({
-                                            "request_id": request_id,
+                                            "requestId": request_id,
                                             "reason": reason
                                         }))
                                         .unwrap(),
@@ -134,7 +134,7 @@ where
                             StreamEvent::ErrorDetails { request_id, error } => sse::Event::Data(
                                 sse::Data::new(
                                     serde_json::to_string(&serde_json::json!({
-                                        "request_id": request_id,
+                                        "requestId": request_id,
                                         "error": error
                                     }))
                                     .unwrap(),
@@ -151,12 +151,12 @@ where
                             } => sse::Event::Data(
                                 sse::Data::new(
                                     serde_json::to_string(&serde_json::json!({
-                                        "request_id": request_id,
-                                        "final_cost": final_cost,
-                                        "tokens_input": tokens_input,
-                                        "tokens_output": tokens_output,
-                                        "cache_read_tokens": cache_read_tokens,
-                                        "cache_write_tokens": cache_write_tokens
+                                        "requestId": request_id,
+                                        "finalCost": final_cost,
+                                        "tokensInput": tokens_input,
+                                        "tokensOutput": tokens_output,
+                                        "cacheReadTokens": cache_read_tokens,
+                                        "cacheWriteTokens": cache_write_tokens
                                     }))
                                     .unwrap(),
                                 )

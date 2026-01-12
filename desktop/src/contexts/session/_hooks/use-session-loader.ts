@@ -6,7 +6,7 @@ import { getSessionAction } from "@/actions";
 import { useProject } from "@/contexts/project-context";
 import { useUILayout } from "@/contexts/ui-layout-context";
 import { type Session } from "@/types";
-import { createComparablePathKey } from "@/utils/path-utils";
+import { createComparablePathKey, isLikelyAbsolutePath } from "@/utils/path-utils";
 import {
   DatabaseError,
   DatabaseErrorCategory,
@@ -46,6 +46,7 @@ export function useSessionLoader({
   // Use refs to prevent dependency instability and avoid stale closures
   const onNeedsSaveRef = useRef(onNeedsSave);
   const currentSessionRef = useRef(currentSession);
+  const projectDirectoryRef = useRef(projectDirectory);
   
   useEffect(() => {
     onNeedsSaveRef.current = onNeedsSave;
@@ -55,19 +56,50 @@ export function useSessionLoader({
     currentSessionRef.current = currentSession;
   }, [currentSession]);
 
+  useEffect(() => {
+    projectDirectoryRef.current = projectDirectory;
+  }, [projectDirectory]);
+
+  const normalizePathForCompare = (value: string) => {
+    const normalized = value.trim().replace(/\\/g, "/");
+    return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+  };
+
+  const normalizeSessionPath = (rawPath: string) => {
+    if (!rawPath || typeof rawPath !== "string") return "";
+    const trimmed = rawPath.trim();
+    if (!trimmed) return "";
+    if (isLikelyAbsolutePath(trimmed) && projectDirectoryRef.current) {
+      const normalizedProject = normalizePathForCompare(projectDirectoryRef.current);
+      const normalizedAbsolute = normalizePathForCompare(trimmed);
+
+      if (normalizedAbsolute.startsWith(`${normalizedProject}/`)) {
+        const relative = normalizedAbsolute.slice(normalizedProject.length + 1);
+        return createComparablePathKey(relative);
+      }
+    }
+    if (isLikelyAbsolutePath(trimmed)) return trimmed;
+    return createComparablePathKey(trimmed);
+  };
+
   // Load a session by ID
   const loadSessionById = useCallback(
     async (sessionId: string) => {
       // Helper function to complete initialization
-      const completeInitialization = () => {
-        if (!hasCompletedInitRef.current) {
+      const completeInitialization = (expectedProjectDirectory?: string) => {
+        if (
+          !hasCompletedInitRef.current &&
+          (!expectedProjectDirectory || projectDirectoryRef.current === expectedProjectDirectory)
+        ) {
           hasCompletedInitRef.current = true;
           setAppInitializing(false);
         }
       };
 
-      if (!sessionId || !projectDirectory || currentSessionRef.current?.id === sessionId) {
-        completeInitialization();
+      const expectedProjectDirectory = projectDirectoryRef.current;
+
+      if (!sessionId || !expectedProjectDirectory || currentSessionRef.current?.id === sessionId) {
+        completeInitialization(expectedProjectDirectory);
         return;
       }
 
@@ -137,6 +169,10 @@ export function useSessionLoader({
 
         const result = await getSessionAction(sessionId);
 
+        if (projectDirectoryRef.current !== expectedProjectDirectory) {
+          return;
+        }
+
         if (!result || !result.isSuccess || !result.data) {
           throw new DatabaseError(`Session not found: ${sessionId}`, {
             severity: DatabaseErrorSeverity.WARNING,
@@ -155,8 +191,12 @@ export function useSessionLoader({
 
         // **Critical Fix:** Ensure paths from DB are consistently normalized
         // Always initialize arrays to prevent undefined causing race conditions in token estimation
-        session.includedFiles = (session.includedFiles || []).map(p => createComparablePathKey(p)).filter(Boolean);
-        session.forceExcludedFiles = (session.forceExcludedFiles || []).map(p => createComparablePathKey(p)).filter(Boolean);
+        session.includedFiles = (session.includedFiles || [])
+          .map(normalizeSessionPath)
+          .filter(Boolean);
+        session.forceExcludedFiles = (session.forceExcludedFiles || [])
+          .map(normalizeSessionPath)
+          .filter(Boolean);
 
         setCurrentSession(session);
         setSessionModified(false);
@@ -178,7 +218,7 @@ export function useSessionLoader({
           );
         }
 
-        completeInitialization();
+        completeInitialization(expectedProjectDirectory);
       } catch (error) {
         const dbError =
           error instanceof DatabaseError
@@ -208,7 +248,7 @@ export function useSessionLoader({
           );
         }
 
-        completeInitialization();
+        completeInitialization(expectedProjectDirectory);
 
         throw dbError;
       } finally {

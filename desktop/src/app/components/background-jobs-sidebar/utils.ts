@@ -327,10 +327,9 @@ export function getJobDisplayName(job: { taskType: string; metadata?: JobMetadat
   
   switch (job.taskType) {
     case "video_analysis": {
-      // Extract video path from metadata
-      const videoPath = parsedMetadata?.taskData?.videoPath || 
-                       parsedMetadata?.jobPayloadForWorker?.VideoAnalysis?.video_path ||
-                       parsedMetadata?.jobPayloadForWorker?.videoAnalysis?.video_path;
+      const jobPayloadForWorker = parsedMetadata?.jobPayloadForWorker as any;
+      const payloadData = jobPayloadForWorker?.type === "VideoAnalysis" ? jobPayloadForWorker.data : undefined;
+      const videoPath = parsedMetadata?.taskData?.videoPath || payloadData?.videoPath;
       
       if (videoPath && typeof videoPath === 'string') {
         // Extract filename from path
@@ -360,26 +359,16 @@ export function getTextImprovementOriginalText(metadataInput: JobMetadata | stri
   if (!parsedMetadata) return null;
   
   try {
-    // Navigate to jobPayloadForWorker
-    const jobPayloadForWorker = parsedMetadata.jobPayloadForWorker;
+    const jobPayloadForWorker = parsedMetadata.jobPayloadForWorker as any;
     if (!jobPayloadForWorker || typeof jobPayloadForWorker !== 'object') {
       return null;
     }
 
-    // Check for TextImprovement (exact case)
-    let textImprovement = jobPayloadForWorker.TextImprovement;
-    
-    // If not found, check for textImprovement (camelCase variant)
-    if (!textImprovement) {
-      textImprovement = jobPayloadForWorker.textImprovement;
-    }
-
-    if (!textImprovement || typeof textImprovement !== 'object') {
+    if (jobPayloadForWorker.type !== "TextImprovement") {
       return null;
     }
 
-    // Extract text_to_improve
-    const textToImprove = textImprovement.text_to_improve;
+    const textToImprove = jobPayloadForWorker.data?.textToImprove;
     
     // Validate that the text is a string and not empty
     if (typeof textToImprove !== 'string') {

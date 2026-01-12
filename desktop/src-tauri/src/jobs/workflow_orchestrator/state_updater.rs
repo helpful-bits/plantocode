@@ -17,7 +17,7 @@ pub(super) fn update_intermediate_data_internal(
         WorkflowStage::RootFolderSelection => {
             // Extract root directories from the RootFolderSelection stage
             if let Some(root_dirs) = stage_data
-                .get("root_directories")
+                .get("rootDirectories")
                 .and_then(|v| v.as_array())
             {
                 let roots: Vec<String> = root_dirs
@@ -31,7 +31,7 @@ pub(super) fn update_intermediate_data_internal(
                 // Store these in workflow state for use by RegexFileFilter
                 workflow_state.intermediate_data.selected_root_directories = roots;
             } else {
-                warn!("RootFolderSelection stage_data missing 'root_directories' array");
+                warn!("RootFolderSelection stage_data missing 'rootDirectories' array");
             }
         }
         WorkflowStage::RegexFileFilter => {

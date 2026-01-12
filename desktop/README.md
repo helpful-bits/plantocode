@@ -160,7 +160,7 @@ All background processes that may update `taskDescription` are routed through th
 
 | Source | Event/Method | Gating Mechanism |
 |--------|-------------|------------------|
-| Session sync (mobile/remote) | `session-history-synced` | → `updateCurrentSessionFields` → TaskSection gate |
+| Session sync (mobile/remote) | `history-state-changed` (kind: `task`) | → `updateCurrentSessionFields` → TaskSection gate |
 | Web search findings | `apply-web-search-to-task-description` | → Component `handleValueChange` → TaskSection gate |
 | Video analysis results | `apply-text-to-task-description` | → Component `handleValueChange` → TaskSection gate |
 | Text improvement AI | TextImprovementProvider | → `updateCurrentSessionFields` → TaskSection gate |

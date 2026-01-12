@@ -130,6 +130,11 @@ export function toProjectRelativePath(filePath: string, projectDirectory: string
   return normalizedPath;
 }
 
+export function isLikelyAbsolutePath(path: string): boolean {
+  if (!path) return false;
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\");
+}
+
 /**
  * Creates a comparable path key for consistent file identification in UI state.
  * 

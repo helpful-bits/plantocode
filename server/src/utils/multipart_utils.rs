@@ -59,18 +59,23 @@ pub async fn process_transcription_multipart(
                     AppError::InvalidArgument("Invalid model name encoding".to_string())
                 })?;
             }
-            "duration_ms" => {
+            "durationMs" => {
                 let mut duration_data = Vec::new();
                 while let Some(chunk) = field.next().await {
                     duration_data.extend_from_slice(&chunk?);
                 }
                 let duration_str = String::from_utf8(duration_data).map_err(|_| {
-                    AppError::InvalidArgument("Invalid duration_ms encoding".to_string())
+                    AppError::InvalidArgument("Invalid durationMs encoding".to_string())
                 })?;
-                duration_ms = duration_str.trim().parse::<i64>().map_err(|e| {
+                let trimmed = duration_str.trim();
+                duration_ms = trimmed.parse::<i64>().or_else(|_| {
+                    trimmed
+                        .parse::<f64>()
+                        .map(|value| value.round() as i64)
+                }).map_err(|e| {
                     AppError::InvalidArgument(format!(
-                        "Invalid duration_ms value '{}': {}",
-                        duration_str.trim(),
+                        "Invalid durationMs value '{}': {}",
+                        trimmed,
                         e
                     ))
                 })?;
@@ -125,7 +130,7 @@ pub async fn process_transcription_multipart(
 
     if duration_ms <= 0 {
         return Err(AppError::InvalidArgument(
-            "Missing or invalid 'duration_ms' field".to_string(),
+            "Missing or invalid 'durationMs' field".to_string(),
         ));
     }
 
@@ -229,31 +234,34 @@ pub async fn process_video_analysis_multipart(
                     AppError::InvalidArgument("Invalid temperature value".to_string())
                 })?;
             }
-            "system_prompt" => {
+            "systemPrompt" => {
                 let mut system_prompt_data = Vec::new();
                 while let Some(chunk) = field.next().await {
                     system_prompt_data.extend_from_slice(&chunk?);
                 }
                 let system_prompt_str = String::from_utf8(system_prompt_data).map_err(|_| {
-                    AppError::InvalidArgument("Invalid system_prompt encoding".to_string())
+                    AppError::InvalidArgument("Invalid systemPrompt encoding".to_string())
                 })?;
                 if !system_prompt_str.trim().is_empty() {
                     system_prompt = Some(system_prompt_str.trim().to_string());
                 }
             }
-            "duration_ms" => {
+            "durationMs" => {
                 let mut duration_data = Vec::new();
                 while let Some(chunk) = field.next().await {
                     duration_data.extend_from_slice(&chunk?);
                 }
-                duration_ms = String::from_utf8(duration_data)
-                    .map_err(|_| {
-                        AppError::InvalidArgument("Invalid duration_ms encoding".to_string())
-                    })?
-                    .parse::<i64>()
-                    .map_err(|_| {
-                        AppError::InvalidArgument("Invalid duration_ms value".to_string())
-                    })?;
+                let duration_str = String::from_utf8(duration_data).map_err(|_| {
+                    AppError::InvalidArgument("Invalid durationMs encoding".to_string())
+                })?;
+                let trimmed = duration_str.trim();
+                duration_ms = trimmed.parse::<i64>().or_else(|_| {
+                    trimmed
+                        .parse::<f64>()
+                        .map(|value| value.round() as i64)
+                }).map_err(|_| {
+                    AppError::InvalidArgument("Invalid durationMs value".to_string())
+                })?;
             }
             "framerate" => {
                 let mut framerate_data = Vec::new();
@@ -270,13 +278,13 @@ pub async fn process_video_analysis_multipart(
                         AppError::InvalidArgument("Invalid framerate value".to_string())
                     })?;
             }
-            "request_id" => {
+            "requestId" => {
                 let mut request_id_data = Vec::new();
                 while let Some(chunk) = field.next().await {
                     request_id_data.extend_from_slice(&chunk?);
                 }
                 let request_id_str = String::from_utf8(request_id_data).map_err(|_| {
-                    AppError::InvalidArgument("Invalid request_id encoding".to_string())
+                    AppError::InvalidArgument("Invalid requestId encoding".to_string())
                 })?;
                 if !request_id_str.trim().is_empty() {
                     request_id = Some(request_id_str.trim().to_string());
@@ -300,7 +308,7 @@ pub async fn process_video_analysis_multipart(
 
     if duration_ms <= 0 {
         return Err(AppError::InvalidArgument(
-            "Missing or invalid 'duration_ms' field".to_string(),
+            "Missing or invalid 'durationMs' field".to_string(),
         ));
     }
 

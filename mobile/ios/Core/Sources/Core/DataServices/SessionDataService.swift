@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CommonCrypto
 
 @MainActor
 public final class SessionDataService: ObservableObject {
@@ -29,16 +30,27 @@ public final class SessionDataService: ObservableObject {
     private var lastSessionsFetchSuccess: [String: Bool] = [:] // Track if last fetch succeeded
     private var lastHistoryVersionBySession: [String: Int64] = [:]
     private var lastHistoryChecksumBySession: [String: String] = [:] // projectDirectory -> timestamp
+    private let taskHistoryMaxEntries = 200
     private var pendingRetryTasks: [String: Task<Void, Never>] = [:] // Pending retry tasks by project
     private var lastKnownDeviceId: String? // Stable device ID for cache key
     private var sessionFetchInFlight: [String: Task<Session?, Error>] = [:]
     private var historyStateObserver: NSObjectProtocol?
     private var fileFinderJobCompletionObserver: NSObjectProtocol?
+    private var pendingActiveSessionBroadcast: (sessionId: String, projectDirectory: String)?
+    private let allowedSessionUpdateFields: Set<String> = [
+        "name",
+        "projectDirectory",
+        "mergeInstructions",
+        "searchTerm",
+        "searchSelectedFilesOnly",
+        "modelUsed",
+        "videoAnalysisPrompt"
+    ]
 
     /// Stable device key that persists across connection transitions
     /// Uses the last known device ID to prevent cache key changes during reconnection
     private var stableDeviceKey: String {
-        if let activeId = MultiConnectionManager.shared.activeDeviceId?.uuidString {
+        if let activeId = MultiConnectionManager.shared.activeDeviceId?.uuidString.lowercased() {
             lastKnownDeviceId = activeId
             return activeId
         }
@@ -54,6 +66,20 @@ public final class SessionDataService: ObservableObject {
             return nil
         }
         return index
+    }
+
+    private func isRelayConnected() -> Bool {
+        guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
+              let relay = MultiConnectionManager.shared.relayConnection(for: deviceId) else {
+            return false
+        }
+        guard relay.isConnected, relay.hasSessionCredentials else {
+            return false
+        }
+        if let state = MultiConnectionManager.shared.connectionStates[deviceId] {
+            return state.isConnected
+        }
+        return false
     }
 
     private func makeSessionFetchKey(id: String, projectDirectory: String?) -> String {
@@ -131,8 +157,7 @@ public final class SessionDataService: ObservableObject {
                 let key = "\(sessionId)::\(kind)"
 
                 if kind == "files" {
-                    // For files, parse directly from stateDict since desktop uses
-                    // included_files/force_excluded_files as separate TEXT fields
+                    // For files, parse directly from stateDict using camelCase keys
                     guard let entriesAny = stateDict["entries"] as? [Any], !entriesAny.isEmpty else {
                         return
                     }
@@ -162,12 +187,10 @@ public final class SessionDataService: ObservableObject {
                     guard let entryDict = entriesAny[clampedIndex] as? [String: Any] else {
                         return
                     }
-
-                    // Parse included_files and force_excluded_files from entry
-                    // These may arrive as JSON-serialized arrays (e.g. "[\"file1.txt\", \"file2.txt\"]")
-                    // or as actual arrays or strings - use JSONSanitizer to handle all cases
-                    let includedRaw = entryDict["included_files"] ?? "[]"
-                    let excludedRaw = entryDict["force_excluded_files"] ?? "[]"
+                    guard let includedRaw = entryDict["includedFiles"], !(includedRaw is NSNull),
+                          let excludedRaw = entryDict["forceExcludedFiles"], !(excludedRaw is NSNull) else {
+                        return
+                    }
 
                     // Use JSONSanitizer to handle stringified arrays, nested arrays, and edge cases
                     let includedFiles = JSONSanitizer.ensureUniqueStringArray(includedRaw)
@@ -214,7 +237,7 @@ public final class SessionDataService: ObservableObject {
                                 return
                             }
 
-                            let newValue = self.lastNonEmptyHistoryValue(historyState) ?? ""
+                            let newValue = self.currentHistoryValue(historyState) ?? ""
 
                             if kind == "task" {
                                 var currentText = ""
@@ -232,6 +255,11 @@ public final class SessionDataService: ObservableObject {
                                     self.lastHistoryChecksumBySession[key] = historyState.checksum
                                     return
                                 }
+
+                                self.updateSessionTaskDescriptionInMemory(
+                                    sessionId: sessionId,
+                                    taskDescription: newValue
+                                )
                             }
 
                             self.lastHistoryVersionBySession[key] = historyState.version
@@ -298,6 +326,7 @@ public final class SessionDataService: ObservableObject {
         hasLoadedOnce = false
         error = nil
         isLoading = false
+        pendingActiveSessionBroadcast = nil
 
         // Create a new ephemeral session ID
         _ = newSession()
@@ -319,6 +348,7 @@ public final class SessionDataService: ObservableObject {
             self.hasLoadedOnce = false
             self.error = nil
             self.isLoading = false
+            self.pendingActiveSessionBroadcast = nil
         }
     }
 
@@ -344,13 +374,125 @@ public final class SessionDataService: ObservableObject {
     }
 
     /// Called when connection is restored (e.g., app returns from background)
-    /// Refreshes current session to get latest includedFiles in case relay events were missed
+    /// Refreshes session state and history to recover from missed relay events
     public func onConnectionRestored() {
-        guard let sessionId = currentSession?.id else { return }
+        Task { @MainActor in
+            if let pending = pendingActiveSessionBroadcast {
+                do {
+                    try await broadcastActiveSessionChanged(
+                        sessionId: pending.sessionId,
+                        projectDirectory: pending.projectDirectory
+                    )
+                } catch {
+                    pendingActiveSessionBroadcast = pending
+                }
+            } else {
+                _ = try? await fetchActiveSession()
+            }
 
-        Task {
+            guard let sessionId = currentSession?.id else { return }
+
             // Refresh current session to get latest file selections
             _ = try? await getSession(id: sessionId)
+            await refreshHistoryState(sessionId: sessionId)
+        }
+    }
+
+    private func refreshHistoryState(sessionId: String) async {
+        await refreshTaskHistoryState(sessionId: sessionId)
+        await refreshFileHistoryState(sessionId: sessionId)
+    }
+
+    private func refreshTaskHistoryState(sessionId: String) async {
+        do {
+            let historyState = try await getHistoryState(sessionId: sessionId, kind: "task", summaryOnly: false)
+            let key = "\(sessionId)::task"
+
+            if let lastVer = lastHistoryVersionBySession[key], historyState.version < lastVer {
+                return
+            }
+            if let lastChecksum = lastHistoryChecksumBySession[key], historyState.checksum == lastChecksum {
+                return
+            }
+
+            let newValue = currentHistoryValue(historyState) ?? ""
+            var currentText = ""
+            if let current = currentSession, current.id == sessionId {
+                currentText = current.taskDescription ?? ""
+            } else if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+                currentText = sessions[index].taskDescription ?? ""
+            }
+
+            let trimmedCurrent = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedNew = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if !trimmedNew.isEmpty && trimmedNew == trimmedCurrent {
+                lastHistoryVersionBySession[key] = historyState.version
+                lastHistoryChecksumBySession[key] = historyState.checksum
+                return
+            }
+
+            lastHistoryVersionBySession[key] = historyState.version
+            lastHistoryChecksumBySession[key] = historyState.checksum
+
+            updateSessionTaskDescriptionInMemory(
+                sessionId: sessionId,
+                taskDescription: newValue
+            )
+
+            NotificationCenter.default.post(
+                name: NSNotification.Name("apply-history-state"),
+                object: nil,
+                userInfo: [
+                    "sessionId": sessionId,
+                    "kind": "task",
+                    "state": historyState
+                ]
+            )
+        } catch {
+            // Ignore history refresh errors; relay events will backfill when possible
+        }
+    }
+
+    private func refreshFileHistoryState(sessionId: String) async {
+        do {
+            let stateDict = try await CommandRouter.sessionGetHistoryStateRaw(
+                sessionId: sessionId,
+                kind: "files",
+                summaryOnly: false
+            )
+            let state = try FileHistoryStateCodec.decodeState(from: stateDict)
+            guard !state.entries.isEmpty else { return }
+
+            let rawIndex = Int(state.currentIndex)
+            let clampedIndex = max(0, min(rawIndex, state.entries.count - 1))
+            let entry = state.entries[clampedIndex]
+
+            let includedFiles = FileHistoryStateCodec.parseFileList(from: entry.includedFiles)
+            let forceExcludedFiles = FileHistoryStateCodec.parseFileList(from: entry.forceExcludedFiles)
+
+            let key = "\(sessionId)::files"
+            if let lastVer = lastHistoryVersionBySession[key], state.version < lastVer {
+                return
+            }
+            if let lastChecksum = lastHistoryChecksumBySession[key],
+               !state.checksum.isEmpty,
+               state.checksum == lastChecksum {
+                return
+            }
+
+            updateSessionFilesInMemory(
+                sessionId: sessionId,
+                includedFiles: includedFiles,
+                forceExcludedFiles: forceExcludedFiles
+            )
+
+            lastHistoryVersionBySession[key] = state.version
+            if !state.checksum.isEmpty {
+                lastHistoryChecksumBySession[key] = state.checksum
+            }
+        } catch {
+            // Ignore history refresh errors; relay events will backfill when possible
         }
     }
 
@@ -412,7 +554,7 @@ public final class SessionDataService: ObservableObject {
 
             do {
                 // Request bounded page to prevent huge transfers over relay
-                let stream = CommandRouter.sessionList(projectDirectory: projectDirectory, limit: 100, offset: 0)
+                let stream = CommandRouter.sessionList(projectDirectory: projectDirectory, limit: 50, offset: 0)
 
                 for try await response in stream {
                     if let error = response.error {
@@ -777,12 +919,34 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
-    public func updateSession(id: String, updates: [String: Any]) async throws {
+    public func updateSession(
+        id: String,
+        updates: [String: Any],
+        idempotencyKey: String? = nil,
+        enqueueIfOffline: Bool = true
+    ) async throws {
+        let invalidFields = updates.keys.filter { !allowedSessionUpdateFields.contains($0) }
+        if !invalidFields.isEmpty {
+            throw DataServiceError.invalidRequest(
+                "Unsupported session update fields: \(invalidFields.sorted().joined(separator: ", "))"
+            )
+        }
+
+        guard isRelayConnected() else {
+            if enqueueIfOffline {
+                let encodedUpdates = updates.mapValues { AnyCodable(any: $0) }
+                let action = QueuedAction(type: .updateSessionFields(sessionId: id, updates: encodedUpdates))
+                offlineQueue.enqueue(action)
+            }
+            applyLocalSessionUpdates(sessionId: id, updates: updates)
+            throw DataServiceError.offline
+        }
+
         isLoading = true
         error = nil
 
         do {
-            let stream = CommandRouter.sessionUpdate(id: id, updates: updates)
+            let stream = CommandRouter.sessionUpdate(id: id, updates: updates, idempotencyKey: idempotencyKey)
 
             for try await response in stream {
                 if let error = response.error {
@@ -836,20 +1000,71 @@ public final class SessionDataService: ObservableObject {
                 self.isLoading = false
             }
         } catch {
+            let connectivityError = isRelayConnectivityError(error)
             await MainActor.run {
-                self.error = DataServiceError.networkError(error)
+                self.error = connectivityError ? DataServiceError.offline : DataServiceError.networkError(error)
                 self.isLoading = false
+            }
+            if connectivityError {
+                if enqueueIfOffline {
+                    let encodedUpdates = updates.mapValues { AnyCodable(any: $0) }
+                    let action = QueuedAction(type: .updateSessionFields(sessionId: id, updates: encodedUpdates))
+                    offlineQueue.enqueue(action)
+                }
+                applyLocalSessionUpdates(sessionId: id, updates: updates)
+                throw DataServiceError.offline
             }
             throw error
         }
     }
 
-    public func deleteSession(id: String) async throws {
+    private func applyLocalSessionUpdates(sessionId: String, updates: [String: Any]) {
+        guard !updates.isEmpty else { return }
+
+        func updatedSession(_ session: Session) -> Session {
+            let name = (updates["name"] as? String) ?? session.name
+            let projectDirectory = (updates["projectDirectory"] as? String) ?? session.projectDirectory
+            let taskDescription = session.taskDescription
+            let mergeInstructions = (updates["mergeInstructions"] as? String) ?? session.mergeInstructions
+            let createdAt = session.createdAt
+            let updatedAt = Int64(Date().timeIntervalSince1970)
+            let includedFiles = session.includedFiles
+            let forceExcludedFiles = session.forceExcludedFiles
+
+            return Session(
+                id: session.id,
+                name: name,
+                projectDirectory: projectDirectory,
+                taskDescription: taskDescription,
+                mergeInstructions: mergeInstructions,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+                includedFiles: includedFiles,
+                forceExcludedFiles: forceExcludedFiles
+            )
+        }
+
+        if let current = currentSession, current.id == sessionId {
+            currentSession = updatedSession(current)
+        }
+
+        if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+            sessions[index] = updatedSession(sessions[index])
+        }
+    }
+
+    public func deleteSession(id: String, idempotencyKey: String? = nil) async throws {
+        guard isRelayConnected() else {
+            let action = QueuedAction(type: .deleteSession(sessionId: id))
+            offlineQueue.enqueue(action)
+            throw DataServiceError.offline
+        }
+
         isLoading = true
         error = nil
 
         do {
-            let stream = CommandRouter.sessionDelete(id: id)
+            let stream = CommandRouter.sessionDelete(id: id, idempotencyKey: idempotencyKey)
 
             for try await response in stream {
                 if let error = response.error {
@@ -889,8 +1104,8 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
-    public func duplicateSession(id: String, newName: String?) async throws -> Session {
-        guard MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId ?? UUID()) != nil else {
+    public func duplicateSession(id: String, newName: String?, idempotencyKey: String? = nil) async throws -> Session {
+        guard isRelayConnected() else {
             let action = QueuedAction(type: .duplicateSession(sourceSessionId: id, newName: newName))
             offlineQueue.enqueue(action)
             throw DataServiceError.offline
@@ -900,7 +1115,7 @@ public final class SessionDataService: ObservableObject {
         error = nil
 
         do {
-            let stream = CommandRouter.sessionDuplicate(sourceSessionId: id, newName: newName)
+            let stream = CommandRouter.sessionDuplicate(sourceSessionId: id, newName: newName, idempotencyKey: idempotencyKey)
 
             for try await response in stream {
                 if let error = response.error {
@@ -956,181 +1171,221 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
-    public func renameSession(id: String, newName: String) async throws {
-        await MainActor.run { self.isLoading = true; self.error = nil }
-        defer { Task { @MainActor in self.isLoading = false } }
-
-        let stream = CommandRouter.sessionRename(sessionId: id, newName: newName)
-
-        do {
-            for try await response in stream {
-                if let err = response.error {
-                    await MainActor.run { self.error = DataServiceError.serverError(err.message) }
-                    throw DataServiceError.serverError(err.message)
-                }
-                if response.isFinal {
-                    await MainActor.run {
-                        if let idx = self.sessions.firstIndex(where: { $0.id == id }) {
-                            self.sessions[idx].name = newName
-                        }
-                        if self.currentSession?.id == id {
-                            self.currentSession?.name = newName
-                        }
-                    }
-                    return
-                }
-            }
-        } catch {
-            await MainActor.run { self.error = DataServiceError.networkError(error) }
-            throw error
-        }
+    public func renameSession(id: String, newName: String, idempotencyKey: String? = nil) async throws {
+        try await updateSession(id: id, updates: ["name": newName], idempotencyKey: idempotencyKey)
     }
 
-    public func getTaskDescriptionHistory(sessionId: String) async throws -> [String] {
-        isLoading = true
-        error = nil
+    public func updateSessionFiles(
+        sessionId: String,
+        addIncluded: [String]?,
+        removeIncluded: [String]?,
+        addExcluded: [String]?,
+        removeExcluded: [String]?,
+        idempotencyKey: String? = nil,
+        enqueueIfOffline: Bool = true
+    ) async throws -> Session {
+        func applyUpdates(included: [String], excluded: [String]) -> (included: [String], excluded: [String]) {
+            var includedSet = Set(included)
+            var excludedSet = Set(excluded)
 
-        do {
-            let stream = CommandRouter.sessionGetTaskDescriptionHistory(sessionId: sessionId)
-
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
+            if let removeIncluded = removeIncluded {
+                for file in removeIncluded { includedSet.remove(file) }
+            }
+            if let removeExcluded = removeExcluded {
+                for file in removeExcluded { excludedSet.remove(file) }
+            }
+            if let addIncluded = addIncluded {
+                for file in addIncluded where !file.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    includedSet.insert(file)
+                    excludedSet.remove(file)
                 }
-
-                if let result = response.result?.value as? [String: Any],
-                   let history = result["history"] as? [String] {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    return history
+            }
+            if let addExcluded = addExcluded {
+                for file in addExcluded where !file.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    excludedSet.insert(file)
+                    includedSet.remove(file)
                 }
             }
 
-            await MainActor.run {
-                self.isLoading = false
-            }
-            return []
-        } catch {
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
-            }
-            throw error
+            var nextIncluded = Array(includedSet)
+            var nextExcluded = Array(excludedSet)
+            nextIncluded.sort()
+            nextExcluded.sort()
+            return (nextIncluded, nextExcluded)
         }
-    }
 
-    public func syncTaskDescriptionHistory(sessionId: String, history: [String]) async throws {
-        guard MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId ?? UUID()) != nil else {
-            let action = QueuedAction(type: .syncTaskHistory(sessionId: sessionId, history: history))
-            offlineQueue.enqueue(action)
+        guard isRelayConnected() else {
+            if enqueueIfOffline {
+                let action = QueuedAction(type: .updateFiles(
+                    sessionId: sessionId,
+                    addIncluded: addIncluded,
+                    removeIncluded: removeIncluded,
+                    addExcluded: addExcluded,
+                    removeExcluded: removeExcluded
+                ))
+                offlineQueue.enqueue(action)
+            }
+
+            let currentIncluded = currentSession?.id == sessionId
+                ? currentSession?.includedFiles ?? []
+                : sessions.first(where: { $0.id == sessionId })?.includedFiles ?? []
+            let currentExcluded = currentSession?.id == sessionId
+                ? currentSession?.forceExcludedFiles ?? []
+                : sessions.first(where: { $0.id == sessionId })?.forceExcludedFiles ?? []
+            let next = applyUpdates(included: currentIncluded, excluded: currentExcluded)
+            await MainActor.run {
+                self.updateSessionFilesInMemory(
+                    sessionId: sessionId,
+                    includedFiles: next.included,
+                    forceExcludedFiles: next.excluded
+                )
+            }
             throw DataServiceError.offline
         }
 
         isLoading = true
         error = nil
 
+        var pendingNext: (included: [String], excluded: [String])?
+
         do {
-            let stream = CommandRouter.sessionSyncTaskDescriptionHistory(sessionId: sessionId, history: history)
+            let rawState = try await CommandRouter.sessionGetHistoryStateRaw(
+                sessionId: sessionId,
+                kind: "files",
+                summaryOnly: false,
+                maxEntries: 50
+            )
+            let historyState = try FileHistoryStateCodec.decodeState(from: rawState)
 
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
-                }
+            let clampedIndex = historyState.entries.isEmpty
+                ? 0
+                : min(max(0, Int(historyState.currentIndex)), historyState.entries.count - 1)
+            let currentEntry = historyState.entries.isEmpty ? nil : historyState.entries[clampedIndex]
 
-                if response.result != nil || response.isFinal {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    return
-                }
+            let currentIncluded: [String]
+            let currentExcluded: [String]
+            if let entry = currentEntry {
+                currentIncluded = FileHistoryStateCodec.parseFileList(from: entry.includedFiles)
+                currentExcluded = FileHistoryStateCodec.parseFileList(from: entry.forceExcludedFiles)
+            } else if let session = currentSession, session.id == sessionId {
+                currentIncluded = session.includedFiles
+                currentExcluded = session.forceExcludedFiles
+            } else if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+                currentIncluded = sessions[index].includedFiles
+                currentExcluded = sessions[index].forceExcludedFiles
+            } else {
+                currentIncluded = []
+                currentExcluded = []
             }
+
+            let next = applyUpdates(included: currentIncluded, excluded: currentExcluded)
+            pendingNext = next
+
+            if Set(next.included) == Set(currentIncluded) && Set(next.excluded) == Set(currentExcluded) {
+                if let session = currentSession, session.id == sessionId {
+                    await MainActor.run { self.isLoading = false }
+                    return session
+                }
+                await MainActor.run { self.isLoading = false }
+                throw DataServiceError.invalidResponse("No file changes to sync")
+            }
+
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let maxSequence = historyState.entries.map { $0.sequenceNumber }.max() ?? -1
+            let nextSequence = maxSequence + 1
+            let newEntry = FileHistoryEntryPayload(
+                includedFiles: JSONSanitizer.stringifyStringArray(next.included),
+                forceExcludedFiles: JSONSanitizer.stringifyStringArray(next.excluded),
+                timestampMs: nowMs,
+                deviceId: MultiConnectionManager.shared.activeDeviceId?.uuidString.lowercased(),
+                opType: "user-edit",
+                sequenceNumber: nextSequence,
+                version: historyState.version
+            )
+
+            var newEntries = historyState.entries.prefix(clampedIndex + 1)
+            var updatedEntries = Array(newEntries)
+            updatedEntries.append(newEntry)
+            if updatedEntries.count > 50 {
+                updatedEntries = Array(updatedEntries.suffix(50))
+            }
+
+            let newIndex = Int64(max(0, updatedEntries.count - 1))
+            let checksum = FileHistoryStateCodec.computeChecksum(
+                entries: updatedEntries,
+                currentIndex: newIndex,
+                version: historyState.version
+            )
+
+            let updatedState = FileHistoryStatePayload(
+                entries: updatedEntries,
+                currentIndex: newIndex,
+                version: historyState.version,
+                checksum: checksum
+            )
+
+            let syncKey = idempotencyKey ?? "file-history:\(sessionId):\(updatedState.checksum)"
+            let stateDict = try FileHistoryStateCodec.encodeState(updatedState)
+            let syncResult = try await CommandRouter.sessionSyncHistoryStateRaw(
+                sessionId: sessionId,
+                kind: "files",
+                state: stateDict,
+                expectedVersion: historyState.version,
+                idempotencyKey: syncKey
+            )
+
+            let appliedState = (try? FileHistoryStateCodec.decodeState(from: syncResult)) ?? updatedState
+            let appliedIndex = appliedState.entries.isEmpty
+                ? 0
+                : min(max(0, Int(appliedState.currentIndex)), appliedState.entries.count - 1)
+            let appliedEntry = appliedState.entries.isEmpty ? nil : appliedState.entries[appliedIndex]
+
+            let appliedIncluded = appliedEntry.map { FileHistoryStateCodec.parseFileList(from: $0.includedFiles) } ?? next.included
+            let appliedExcluded = appliedEntry.map { FileHistoryStateCodec.parseFileList(from: $0.forceExcludedFiles) } ?? next.excluded
 
             await MainActor.run {
+                self.updateSessionFilesInMemory(
+                    sessionId: sessionId,
+                    includedFiles: appliedIncluded,
+                    forceExcludedFiles: appliedExcluded
+                )
                 self.isLoading = false
             }
+
+            if let session = currentSession, session.id == sessionId {
+                return session
+            }
+            if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+                return sessions[index]
+            }
+            throw DataServiceError.invalidResponse("Updated session not found")
         } catch {
+            let connectivityError = isRelayConnectivityError(error)
             await MainActor.run {
-                self.error = DataServiceError.networkError(error)
+                self.error = connectivityError ? DataServiceError.offline : DataServiceError.networkError(error)
                 self.isLoading = false
             }
-            throw error
-        }
-    }
-
-    public func updateSessionFiles(sessionId: String, addIncluded: [String]?, removeIncluded: [String]?, addExcluded: [String]?, removeExcluded: [String]?) async throws -> Session {
-        guard MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId ?? UUID()) != nil else {
-            let action = QueuedAction(type: .updateFiles(sessionId: sessionId, addIncluded: addIncluded, removeIncluded: removeIncluded, addExcluded: addExcluded, removeExcluded: removeExcluded))
-            offlineQueue.enqueue(action)
-            throw DataServiceError.offline
-        }
-
-        isLoading = true
-        error = nil
-
-        do {
-            let stream = CommandRouter.sessionUpdateFiles(id: sessionId, addIncluded: addIncluded, removeIncluded: removeIncluded, addExcluded: addExcluded, removeExcluded: removeExcluded)
-
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
+            if connectivityError {
+                if enqueueIfOffline {
+                    let action = QueuedAction(type: .updateFiles(
+                        sessionId: sessionId,
+                        addIncluded: addIncluded,
+                        removeIncluded: removeIncluded,
+                        addExcluded: addExcluded,
+                        removeExcluded: removeExcluded
+                    ))
+                    offlineQueue.enqueue(action)
                 }
-
-                if let value = response.result?.value as? [String: Any] {
-                    // Try to extract wrapped session or use raw response
-                    let sessionDict = (value["session"] as? [String: Any]) ?? value
-
-                    if let id = sessionDict["id"] as? String,
-                       let name = sessionDict["name"] as? String,
-                       let projectDirectory = sessionDict["projectDirectory"] as? String {
-
-                        let createdAt = ts(from: sessionDict, key: "createdAt")
-                        let updatedAt = ts(from: sessionDict, key: "updatedAt")
-                        let mergeInstructions = sessionDict["mergeInstructions"] as? String
-
-                        let session = Session(
-                            id: id,
-                            name: name,
-                            projectDirectory: projectDirectory,
-                            taskDescription: sessionDict["taskDescription"] as? String,
-                            mergeInstructions: mergeInstructions,
-                            createdAt: createdAt,
-                            updatedAt: updatedAt,
-                            includedFiles: sessionDict["includedFiles"] as? [String] ?? [],
-                            forceExcludedFiles: sessionDict["forceExcludedFiles"] as? [String] ?? []
+                if let pendingNext {
+                    await MainActor.run {
+                        self.updateSessionFilesInMemory(
+                            sessionId: sessionId,
+                            includedFiles: pendingNext.included,
+                            forceExcludedFiles: pendingNext.excluded
                         )
-
-                        await MainActor.run {
-                            if self.currentSession?.id == session.id {
-                                self.currentSession = session
-                            }
-                            if let index = self.sessions.firstIndex(where: { $0.id == session.id }) {
-                                self.sessions[index] = session
-                            }
-                            self.isLoading = false
-                        }
-                        return session
                     }
                 }
-            }
-
-            await MainActor.run {
-                self.isLoading = false
-            }
-            throw DataServiceError.invalidResponse("No session data received")
-        } catch {
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
+                throw DataServiceError.offline
             }
             throw error
         }
@@ -1252,95 +1507,6 @@ public final class SessionDataService: ObservableObject {
             throw error
         }
     }
-
-    public func updateTaskDescription(sessionId: String, content: String) async throws {
-        guard MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId ?? UUID()) != nil else {
-            let action = QueuedAction(type: .updateTaskDescription(sessionId: sessionId, content: content))
-            offlineQueue.enqueue(action)
-            throw DataServiceError.offline
-        }
-
-        isLoading = true
-        error = nil
-
-        do {
-            let stream = CommandRouter.sessionUpdateTaskDescription(sessionId: sessionId, taskDescription: content)
-
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
-                }
-
-                if response.result != nil || response.isFinal {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    return
-                }
-            }
-
-            await MainActor.run {
-                self.isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
-            }
-            throw error
-        }
-    }
-
-    public func enhanceAndUpdateTaskDescription(sessionId: String, content: String) async throws {
-        guard MultiConnectionManager.shared.relayConnection(for: MultiConnectionManager.shared.activeDeviceId ?? UUID()) != nil else {
-            await MainActor.run {
-                self.isLoading = false
-            }
-            throw DataServiceError.offline
-        }
-
-        isLoading = true
-        error = nil
-
-        do {
-            // Get project directory from current session
-            let projectDirectory = currentSession?.projectDirectory
-            let stream = CommandRouter.textEnhance(text: content, sessionId: sessionId, projectDirectory: projectDirectory)
-
-            for try await response in stream {
-                if let error = response.error {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    throw DataServiceError.serverError(error.message)
-                }
-
-                if let result = response.result?.value as? [String: Any],
-                   let enhancedText = result["enhancedText"] as? String {
-                    await MainActor.run {
-                        self.isLoading = false
-                    }
-                    try await updateTaskDescription(sessionId: sessionId, content: enhancedText)
-                    return
-                }
-            }
-
-            await MainActor.run {
-                self.isLoading = false
-            }
-            throw DataServiceError.invalidResponse("No enhanced text received")
-        } catch {
-            await MainActor.run {
-                self.error = DataServiceError.networkError(error)
-                self.isLoading = false
-            }
-            throw error
-        }
-    }
-
     public func processOfflineQueue() async {
         await offlineQueue.processPending(with: self)
     }
@@ -1355,63 +1521,353 @@ public final class SessionDataService: ObservableObject {
         includedFiles: [String],
         forceExcludedFiles: [String]
     ) {
-        guard let cs = self.currentSession, cs.id == sessionId else {
-            return
-        }
-
         // Sanitize and deduplicate file arrays using JSONSanitizer
         // This handles nested arrays, stringified JSON, and preserves stable order
         let sanitizedIncluded = JSONSanitizer.ensureUniqueStringArray(includedFiles)
         let sanitizedExcluded = JSONSanitizer.ensureUniqueStringArray(forceExcludedFiles)
 
-        // Create new Session instance with updated file lists
-        let updatedSession = Session(
-            id: cs.id,
-            name: cs.name,
-            projectDirectory: cs.projectDirectory,
-            taskDescription: cs.taskDescription,
-            mergeInstructions: cs.mergeInstructions,
-            createdAt: cs.createdAt,
-            updatedAt: cs.updatedAt,
-            includedFiles: sanitizedIncluded,
-            forceExcludedFiles: sanitizedExcluded
-        )
-        self.currentSession = updatedSession
+        func withUpdatedFiles(_ session: Session) -> Session {
+            Session(
+                id: session.id,
+                name: session.name,
+                projectDirectory: session.projectDirectory,
+                taskDescription: session.taskDescription,
+                mergeInstructions: session.mergeInstructions,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                includedFiles: sanitizedIncluded,
+                forceExcludedFiles: sanitizedExcluded
+            )
+        }
+
+        if let cs = self.currentSession, cs.id == sessionId {
+            self.currentSession = withUpdatedFiles(cs)
+        }
 
         if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
-            self.sessions[index] = updatedSession
+            self.sessions[index] = withUpdatedFiles(self.sessions[index])
+        }
+    }
+
+    public func updateSessionTaskDescriptionInMemory(
+        sessionId: String,
+        taskDescription: String
+    ) {
+        let trimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        let updatedValue: String? = trimmed.isEmpty ? nil : taskDescription
+
+        func withUpdatedTask(_ session: Session) -> Session {
+            Session(
+                id: session.id,
+                name: session.name,
+                projectDirectory: session.projectDirectory,
+                taskDescription: updatedValue,
+                mergeInstructions: session.mergeInstructions,
+                createdAt: session.createdAt,
+                updatedAt: session.updatedAt,
+                includedFiles: session.includedFiles,
+                forceExcludedFiles: session.forceExcludedFiles
+            )
+        }
+
+        if let cs = self.currentSession, cs.id == sessionId {
+            self.currentSession = withUpdatedTask(cs)
+        }
+
+        if let index = self.sessions.firstIndex(where: { $0.id == sessionId }) {
+            self.sessions[index] = withUpdatedTask(self.sessions[index])
         }
     }
 
     public func broadcastActiveSessionChanged(sessionId: String, projectDirectory: String) async throws {
         guard let deviceId = MultiConnectionManager.shared.activeDeviceId,
-              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId) else { return }
+              let relayClient = MultiConnectionManager.shared.relayConnection(for: deviceId),
+              relayClient.isConnected,
+              relayClient.hasSessionCredentials else {
+            pendingActiveSessionBroadcast = (sessionId: sessionId, projectDirectory: projectDirectory)
+            throw DataServiceError.offline
+        }
         try await relayClient.sendEvent(eventType: "active-session-changed", data: [
             "sessionId": sessionId,
             "projectDirectory": projectDirectory
         ])
+        pendingActiveSessionBroadcast = nil
     }
 
     // MARK: - HistoryState Methods
 
     /// Get history state from desktop
-    public func getHistoryState(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> HistoryState {
+    public func getHistoryState(sessionId: String, kind: String, summaryOnly: Bool = false, maxEntries: Int? = nil) async throws -> HistoryState {
         return try await CommandRouter.sessionGetHistoryState(sessionId: sessionId, kind: kind, summaryOnly: summaryOnly, maxEntries: maxEntries)
     }
 
     /// Sync history state to desktop
-    public func syncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
+    public func syncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64, idempotencyKey: String? = nil) async throws -> HistoryState {
+        let resolvedIdempotencyKey = idempotencyKey ?? historySyncIdempotencyKey(
+            sessionId: sessionId,
+            kind: kind,
+            state: state
+        )
+
+        guard isRelayConnected() else {
+            try enqueueOfflineHistorySync(
+                sessionId: sessionId,
+                kind: kind,
+                state: state,
+                expectedVersion: expectedVersion
+            )
+            throw DataServiceError.offline
+        }
+
         do {
-            return try await CommandRouter.sessionSyncHistoryState(sessionId: sessionId, kind: kind, state: state, expectedVersion: expectedVersion)
+            return try await CommandRouter.sessionSyncHistoryState(
+                sessionId: sessionId,
+                kind: kind,
+                state: state,
+                expectedVersion: expectedVersion,
+                idempotencyKey: resolvedIdempotencyKey
+            )
         } catch {
+            if isHistoryConflict(error) {
+                do {
+                    return try await CommandRouter.sessionMergeHistoryState(sessionId: sessionId, kind: kind, remoteState: state)
+                } catch {
+                    throw DataServiceError.serverError("Failed to merge history state: \(error.localizedDescription)")
+                }
+            }
+            if isRelayConnectivityError(error) {
+                try enqueueOfflineHistorySync(
+                    sessionId: sessionId,
+                    kind: kind,
+                    state: state,
+                    expectedVersion: expectedVersion
+                )
+                throw DataServiceError.offline
+            }
             throw DataServiceError.serverError("Failed to sync history state: \(error.localizedDescription)")
         }
     }
 
+    private func localTaskDescriptionValue(for sessionId: String) -> String {
+        if let session = currentSession, session.id == sessionId {
+            return session.taskDescription ?? ""
+        }
+        if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+            return sessions[index].taskDescription ?? ""
+        }
+        return ""
+    }
+
+    private func makeOfflineTaskHistoryState(newValue: String, opType: String) -> HistoryState {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let version: Int64 = 1
+        let entry = HistoryEntry(
+            value: newValue,
+            createdAt: nowMs,
+            deviceId: MultiConnectionManager.shared.activeDeviceId?.uuidString.lowercased(),
+            opType: opType,
+            sequenceNumber: 0,
+            version: version
+        )
+        let checksum = computeTaskHistoryChecksum(entries: [entry], currentIndex: 0, version: version)
+        return HistoryState(
+            entries: [entry],
+            currentIndex: 0,
+            version: version,
+            checksum: checksum
+        )
+    }
+
+    private func syncTaskHistoryState(
+        sessionId: String,
+        newValue: String,
+        state: HistoryState,
+        expectedVersion: Int64,
+        idempotencyKey: String?
+    ) async throws -> HistoryState {
+        do {
+            let synced = try await syncHistoryState(
+                sessionId: sessionId,
+                kind: "task",
+                state: state,
+                expectedVersion: expectedVersion,
+                idempotencyKey: idempotencyKey
+            )
+            let syncedValue = lastNonEmptyHistoryValue(synced) ?? newValue
+            await MainActor.run {
+                self.updateSessionTaskDescriptionInMemory(
+                    sessionId: sessionId,
+                    taskDescription: syncedValue
+                )
+            }
+            return synced
+        } catch {
+            if case DataServiceError.offline = error {
+                await MainActor.run {
+                    self.updateSessionTaskDescriptionInMemory(
+                        sessionId: sessionId,
+                        taskDescription: newValue
+                    )
+                }
+            }
+            throw error
+        }
+    }
+
+    private func updateTaskDescriptionInternal(
+        sessionId: String,
+        newValue: String,
+        opType: String,
+        idempotencyKey: String?,
+        historyState: HistoryState?,
+        allowHistoryFetch: Bool
+    ) async throws -> HistoryState {
+        var resolvedHistory = historyState
+        if resolvedHistory == nil && allowHistoryFetch {
+            do {
+                resolvedHistory = try await getHistoryState(sessionId: sessionId, kind: "task", summaryOnly: false)
+            } catch {
+                if !isRelayConnectivityError(error) {
+                    throw error
+                }
+            }
+        }
+
+        if let historyState = resolvedHistory {
+            let lastValue = lastNonEmptyHistoryValue(historyState) ?? ""
+            if newValue == lastValue {
+                return historyState
+            }
+
+            let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+            let nextSequence = nextTaskSequenceNumber(from: historyState.entries)
+            let newEntry = HistoryEntry(
+                value: newValue,
+                createdAt: nowMs,
+                deviceId: MultiConnectionManager.shared.activeDeviceId?.uuidString.lowercased(),
+                opType: opType,
+                sequenceNumber: nextSequence,
+                version: historyState.version
+            )
+
+            let clampedIndex = historyState.entries.isEmpty
+                ? -1
+                : min(max(0, Int(historyState.currentIndex)), historyState.entries.count - 1)
+
+            var updatedEntries: [HistoryEntry]
+            if clampedIndex >= 0 {
+                updatedEntries = Array(historyState.entries.prefix(clampedIndex + 1))
+            } else {
+                updatedEntries = []
+            }
+            updatedEntries.append(newEntry)
+
+            if updatedEntries.count > taskHistoryMaxEntries {
+                updatedEntries = Array(updatedEntries.suffix(taskHistoryMaxEntries))
+            }
+
+            let newIndex = Int64(max(0, updatedEntries.count - 1))
+            let checksum = computeTaskHistoryChecksum(
+                entries: updatedEntries,
+                currentIndex: newIndex,
+                version: historyState.version
+            )
+
+            let updatedState = HistoryState(
+                entries: updatedEntries,
+                currentIndex: newIndex,
+                version: historyState.version,
+                checksum: checksum
+            )
+
+            return try await syncTaskHistoryState(
+                sessionId: sessionId,
+                newValue: newValue,
+                state: updatedState,
+                expectedVersion: historyState.version,
+                idempotencyKey: idempotencyKey
+            )
+        }
+
+        let baseValue = localTaskDescriptionValue(for: sessionId)
+        if newValue == baseValue {
+            return makeOfflineTaskHistoryState(newValue: newValue, opType: opType)
+        }
+
+        let offlineState = makeOfflineTaskHistoryState(newValue: newValue, opType: opType)
+        return try await syncTaskHistoryState(
+            sessionId: sessionId,
+            newValue: newValue,
+            state: offlineState,
+            expectedVersion: offlineState.version,
+            idempotencyKey: idempotencyKey
+        )
+    }
+
+    public func updateTaskDescription(
+        sessionId: String,
+        newValue: String,
+        opType: String = "user-edit",
+        idempotencyKey: String? = nil
+    ) async throws -> HistoryState {
+        return try await updateTaskDescriptionInternal(
+            sessionId: sessionId,
+            newValue: newValue,
+            opType: opType,
+            idempotencyKey: idempotencyKey,
+            historyState: nil,
+            allowHistoryFetch: true
+        )
+    }
+
+    public func appendTaskDescription(
+        sessionId: String,
+        appendText: String,
+        opType: String = "improvement",
+        idempotencyKey: String? = nil
+    ) async throws -> HistoryState {
+        let trimmed = appendText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return try await getHistoryState(sessionId: sessionId, kind: "task", summaryOnly: false)
+        }
+
+        var historyState: HistoryState?
+        do {
+            historyState = try await getHistoryState(sessionId: sessionId, kind: "task", summaryOnly: false)
+        } catch {
+            if !isRelayConnectivityError(error) {
+                throw error
+            }
+        }
+
+        let base = historyState.flatMap { lastNonEmptyHistoryValue($0) } ?? localTaskDescriptionValue(for: sessionId)
+        let updated = base + appendText
+
+        return try await updateTaskDescriptionInternal(
+            sessionId: sessionId,
+            newValue: updated,
+            opType: opType,
+            idempotencyKey: idempotencyKey,
+            historyState: historyState,
+            allowHistoryFetch: false
+        )
+    }
+
+    private func currentHistoryValue(_ state: HistoryState) -> String? {
+        guard !state.entries.isEmpty else { return nil }
+        let clamped = min(max(0, Int(state.currentIndex)), state.entries.count - 1)
+        return state.entries[clamped].value
+    }
+
+    /// Returns the last non-empty value from history state entries
     public func lastNonEmptyHistoryValue(_ state: HistoryState) -> String? {
-        state.entries.reversed().map(\.value).map {
-            $0.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.first { !$0.isEmpty }
+        for entry in state.entries.reversed() {
+            let trimmed = entry.value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                return entry.value
+            }
+        }
+        return nil
     }
 
     /// Merge history state with desktop
@@ -1421,6 +1877,128 @@ public final class SessionDataService: ObservableObject {
         } catch {
             throw DataServiceError.serverError("Failed to merge history state: \(error.localizedDescription)")
         }
+    }
+
+    private func isHistoryConflict(_ error: Error) -> Bool {
+        guard let relayError = error as? ServerRelayError else { return false }
+        switch relayError {
+        case .serverError(let code, let message):
+            if code == "-32003" || code.lowercased() == "conflict" {
+                return true
+            }
+            let lower = message.lowercased()
+            return lower.contains("version mismatch") || lower.contains("conflict")
+        default:
+            return false
+        }
+    }
+
+    private func isRelayConnectivityError(_ error: Error) -> Bool {
+        guard let relayError = error as? ServerRelayError else { return false }
+        switch relayError {
+        case .notConnected, .disconnected, .networkError, .timeout:
+            return true
+        case .serverError(let code, let message):
+            let lower = message.lowercased()
+            return code == "-32010"
+                || lower.contains("desktop is offline")
+                || lower.contains("device not connected")
+        case .invalidState(let message):
+            let lower = message.lowercased()
+            return lower.contains("no sync result received")
+                || lower.contains("no history state received")
+                || lower.contains("no merge result received")
+        default:
+            return false
+        }
+    }
+
+    private func historySyncIdempotencyKey(sessionId: String, kind: String, state: HistoryState) -> String {
+        return "history:\(sessionId):\(kind):\(state.checksum)"
+    }
+
+    private func enqueueOfflineHistorySync(
+        sessionId: String,
+        kind: String,
+        state: HistoryState,
+        expectedVersion: Int64
+    ) throws {
+        do {
+            let stateData = try JSONEncoder().encode(state)
+            let action = QueuedAction(type: .syncHistoryState(
+                sessionId: sessionId,
+                kind: kind,
+                state: stateData,
+                expectedVersion: expectedVersion
+            ))
+            offlineQueue.enqueue(action)
+        } catch {
+            throw DataServiceError.invalidResponse("Failed to encode history state for offline sync")
+        }
+    }
+
+    private func nextTaskSequenceNumber(from entries: [HistoryEntry]) -> Int32 {
+        let maxValue = entries.compactMap { $0.sequenceNumber }.map { Int64($0) }.max() ?? -1
+        let next = maxValue + 1
+        if next > Int64(Int32.max) {
+            return Int32.max
+        }
+        if next < Int64(Int32.min) {
+            return Int32.min
+        }
+        return Int32(next)
+    }
+
+    private func computeTaskHistoryChecksum(entries: [HistoryEntry], currentIndex: Int64, version: Int64) -> String {
+        struct ChecksumEntry: Encodable {
+            let value: String
+            let timestampMs: Int64
+            let deviceId: String?
+            let sequenceNumber: Int64
+            let version: Int64
+
+            enum CodingKeys: String, CodingKey {
+                case value
+                case timestampMs
+                case deviceId
+                case sequenceNumber
+                case version
+            }
+        }
+
+        struct ChecksumPayload: Encodable {
+            let currentIndex: Int64
+            let entries: [ChecksumEntry]
+            let version: Int64
+
+            enum CodingKeys: String, CodingKey {
+                case currentIndex
+                case entries
+                case version
+            }
+        }
+
+        let checksumEntries = entries.map { entry in
+            ChecksumEntry(
+                value: entry.value,
+                timestampMs: entry.createdAt,
+                deviceId: entry.deviceId,
+                sequenceNumber: Int64(entry.sequenceNumber ?? 0),
+                version: entry.version
+            )
+        }
+
+        let payload = ChecksumPayload(currentIndex: currentIndex, entries: checksumEntries, version: version)
+        guard let data = try? JSONEncoder().encode(payload) else {
+            return ""
+        }
+
+        var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+        data.withUnsafeBytes {
+            _ = CC_SHA256($0.baseAddress, CC_LONG(data.count), &hash)
+        }
+
+        return hash.map { String(format: "%02x", $0) }.joined()
     }
 
     public func loadSessionById(sessionId: String, projectDirectory: String) async throws {
@@ -1447,7 +2025,7 @@ public final class SessionDataService: ObservableObject {
 
             let request = RpcRequest(method: "session.get", params: ["sessionId": sessionId])
             var resolvedSession: Session? = nil
-            for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+            for try await response in relayClient.invoke(request: request) {
             if let result = response.result?.value as? [String: Any],
                let sessionDict = result["session"] as? [String: Any] {
                 if let id = sessionDict["id"] as? String,
@@ -1504,11 +2082,11 @@ public final class SessionDataService: ObservableObject {
         case "session-files-updated":
             handleSessionFilesUpdated(dict: dict)
 
-        case "session-history-synced":
-            handleSessionHistorySynced(dict: dict)
+        case "session-task-updated":
+            handleSessionTaskUpdated(dict: dict)
 
-        case "session:auto-files-applied":
-            handleSessionAutoFilesApplied(dict: dict)
+        case "session-snapshot":
+            handleSessionSnapshot(dict: dict)
 
         default:
             break
@@ -1542,17 +2120,21 @@ public final class SessionDataService: ObservableObject {
 
         // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
         if currentSession?.id == sessionId {
-            currentSession = updatedSession
+            if shouldApplySessionUpdate(existing: currentSession, incoming: updatedSession) {
+                currentSession = updatedSession
+            }
         }
 
         // Also update in sessions array if present
         if let index = validSessionIndex(for: sessionId) {
-            sessions[index] = updatedSession
+            if shouldApplySessionUpdate(existing: sessions[index], incoming: updatedSession) {
+                sessions[index] = updatedSession
+            }
         }
     }
 
     private func handleSessionDeleted(dict: [String: Any]) {
-        guard let sessionId = dict["sessionId"] as? String ?? dict["id"] as? String,
+        guard let sessionId = dict["sessionId"] as? String,
               let index = validSessionIndex(for: sessionId) else {
             return
         }
@@ -1623,85 +2205,64 @@ public final class SessionDataService: ObservableObject {
         }
     }
 
-    private func handleSessionHistorySynced(dict: [String: Any]) {
-        guard let sessionId = dict["sessionId"] as? String,
-              let taskDescription = dict["taskDescription"] as? String else {
+    private func handleSessionTaskUpdated(dict: [String: Any]) {
+        guard let sessionId = dict["sessionId"] as? String else {
             return
         }
 
-        // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
-        if currentSession?.id == sessionId {
-            let cs = currentSession!
-            let updatedSession = Session(
-                id: cs.id,
-                name: cs.name,
-                projectDirectory: cs.projectDirectory,
-                taskDescription: taskDescription,
-                mergeInstructions: cs.mergeInstructions,
-                createdAt: cs.createdAt,
-                updatedAt: cs.updatedAt,
-                includedFiles: cs.includedFiles,
-                forceExcludedFiles: cs.forceExcludedFiles
-            )
-            currentSession = updatedSession
-        }
-
-        // Also update in sessions array if present
-        if let index = validSessionIndex(for: sessionId) {
-            let session = sessions[index]
-            let updatedSession = Session(
-                id: session.id,
-                name: session.name,
-                projectDirectory: session.projectDirectory,
-                taskDescription: taskDescription,
-                mergeInstructions: session.mergeInstructions,
-                createdAt: session.createdAt,
-                updatedAt: session.updatedAt,
-                includedFiles: session.includedFiles,
-                forceExcludedFiles: session.forceExcludedFiles
-            )
-            sessions[index] = updatedSession
-        }
+        let taskDescription = dict["taskDescription"] as? String ?? ""
+        updateSessionTaskDescriptionInMemory(
+            sessionId: sessionId,
+            taskDescription: taskDescription
+        )
     }
 
-    private func handleSessionAutoFilesApplied(dict: [String: Any]) {
-        guard let sessionId = dict["sessionId"] as? String ?? dict["session_id"] as? String,
-              let files = dict["files"] as? [String] else {
+    private func handleSessionSnapshot(dict: [String: Any]) {
+        guard let sessionData = dict["session"] as? [String: Any] else {
             return
         }
 
-        // Update currentSession even if not in sessionsIndex (same pattern as handleSessionFilesUpdated)
+        let sessionId = (dict["sessionId"] as? String) ?? (sessionData["id"] as? String)
+        guard let sessionId else { return }
+        guard let updatedSession = parseSession(from: sessionData) else { return }
+
         if currentSession?.id == sessionId {
-            let cs = currentSession!
-            let updatedSession = Session(
-                id: cs.id,
-                name: cs.name,
-                projectDirectory: cs.projectDirectory,
-                taskDescription: cs.taskDescription,
-                mergeInstructions: cs.mergeInstructions,
-                createdAt: cs.createdAt,
-                updatedAt: cs.updatedAt,
-                includedFiles: files,
-                forceExcludedFiles: cs.forceExcludedFiles
-            )
-            currentSession = updatedSession
+            if shouldApplySessionUpdate(existing: currentSession, incoming: updatedSession) {
+                currentSession = updatedSession
+            }
         }
 
-        // Also update in sessions array if present
         if let index = validSessionIndex(for: sessionId) {
-            let session = sessions[index]
-            let updatedSession = Session(
-                id: session.id,
-                name: session.name,
-                projectDirectory: session.projectDirectory,
-                taskDescription: session.taskDescription,
-                mergeInstructions: session.mergeInstructions,
-                createdAt: session.createdAt,
-                updatedAt: session.updatedAt,
-                includedFiles: files,
-                forceExcludedFiles: session.forceExcludedFiles
-            )
-            sessions[index] = updatedSession
+            if shouldApplySessionUpdate(existing: sessions[index], incoming: updatedSession) {
+                sessions[index] = updatedSession
+            }
+        } else {
+            _ = addSessionIfNotExists(updatedSession)
+        }
+
+        func updateHistoryMeta(kind: String, payload: [String: Any]) {
+            let versionValue = payload["version"] as? Int64 ?? (payload["version"] as? Int).map(Int64.init) ?? 0
+            let checksum = payload["checksum"] as? String
+            let key = "\(sessionId)::\(kind)"
+            if let checksum, checksum != lastHistoryChecksumBySession[key] {
+                lastHistoryVersionBySession[key] = versionValue
+                lastHistoryChecksumBySession[key] = checksum
+                Task { [weak self] in
+                    guard let self else { return }
+                    if kind == "task" {
+                        await self.refreshTaskHistoryState(sessionId: sessionId)
+                    } else if kind == "files" {
+                        await self.refreshFileHistoryState(sessionId: sessionId)
+                    }
+                }
+            }
+        }
+
+        if let taskHistory = dict["taskHistory"] as? [String: Any] {
+            updateHistoryMeta(kind: "task", payload: taskHistory)
+        }
+        if let fileHistory = dict["fileHistory"] as? [String: Any] {
+            updateHistoryMeta(kind: "files", payload: fileHistory)
         }
     }
 
@@ -1727,6 +2288,12 @@ public final class SessionDataService: ObservableObject {
             includedFiles: dict["includedFiles"] as? [String] ?? [],
             forceExcludedFiles: dict["forceExcludedFiles"] as? [String] ?? []
         )
+    }
+
+    private func shouldApplySessionUpdate(existing: Session?, incoming: Session) -> Bool {
+        guard let existing else { return true }
+        guard existing.updatedAt > 0, incoming.updatedAt > 0 else { return true }
+        return incoming.updatedAt >= existing.updatedAt
     }
 
     deinit {

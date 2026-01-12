@@ -8,6 +8,7 @@ public struct TaskInputView: View {
     @Binding var taskDescription: String
 
     @EnvironmentObject private var container: AppContainer
+    @ObservedObject private var multiConnectionManager = MultiConnectionManager.shared
 
     @StateObject private var undoRedoManager = UndoRedoManager()
 
@@ -16,12 +17,16 @@ public struct TaskInputView: View {
     @State private var showDeepResearch = false
     @State private var initializedForSessionId: String?
     @State private var debounceTask: Task<Void, Never>?
+    @State private var historySaveTask: Task<Void, Never>?
     @State private var isEditing: Bool = false
     @State private var pendingHistoryState: HistoryState?
     @State private var forceSelectionApply: Bool = false
     @State private var prevRemoteVersion: Int64?
     @State private var prevRemoteChecksum: String?
     @State private var isApplyingRemoteMerge: Bool = false
+    @State private var lastCommittedValue: String? = nil
+    @State private var syncInFlight: Bool = false
+    @State private var pendingSync: Bool = false
 
     let placeholder: String
     let onInteraction: () -> Void
@@ -89,8 +94,19 @@ public struct TaskInputView: View {
         }
         .onAppear(perform: handleInitialLoad)
         .onChange(of: sessionId, perform: handleSessionChange)
+        .onChange(of: multiConnectionManager.activeDeviceId) { _ in
+            updateUndoRedoDeviceId()
+        }
+        .onChange(of: isEditing) { editing in
+            guard !editing, let pending = pendingHistoryState else { return }
+            applyHistoryState(pending)
+            prevRemoteVersion = pending.version
+            prevRemoteChecksum = pending.checksum
+            pendingHistoryState = nil
+        }
         .onDisappear {
             debounceTask?.cancel()
+            historySaveTask?.cancel()
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("apply-history-state"))) { notification in
             guard let userInfo = notification.userInfo,
@@ -109,32 +125,64 @@ public struct TaskInputView: View {
                 return
             }
 
-            let base = undoRedoManager.exportState().entries.last?.value ?? ""
-            let local = taskDescription
-            guard let remoteValue = container.sessionService.lastNonEmptyHistoryValue(remoteState) else {
+            if isEditing {
+                pendingHistoryState = remoteState
+                prevRemoteVersion = remoteState.version
+                prevRemoteChecksum = remoteState.checksum
                 return
             }
-            let remote = remoteValue
 
-            let trimmedLocal = local.trimmingCharacters(in: .whitespacesAndNewlines)
-            let trimmedRemote = remote.trimmingCharacters(in: .whitespacesAndNewlines)
+            let exportState = undoRedoManager.exportState()
+            let base = lastCommittedValue ?? currentHistoryValue(exportState) ?? ""
+            let local = taskDescription
+            let remoteValue = currentHistoryValue(remoteState)
+            let hasLocalEdits = local != base
 
-            if trimmedRemote.isEmpty || trimmedRemote == trimmedLocal {
+            if remoteValue == nil {
                 prevRemoteVersion = remoteState.version
                 prevRemoteChecksum = remoteState.checksum
 
-                Task {
-                    do {
-                        let mergedState = try await container.sessionService.mergeHistoryState(
-                            sessionId: sessionId,
-                            kind: kind,
-                            remoteState: remoteState
-                        )
-                        await MainActor.run {
-                            undoRedoManager.applyRemoteHistoryState(mergedState, suppressRecording: true)
-                        }
-                    } catch {}
+                if !hasLocalEdits {
+                    taskDescription = ""
+                    selectedRange = NSRange(location: 0, length: 0)
+                    forceSelectionApply = true
+                    undoRedoManager.applyRemoteHistoryState(remoteState, suppressRecording: true)
+                    lastCommittedValue = ""
                 }
+                return
+            }
+
+            let remote = remoteValue ?? ""
+
+            if remote == local {
+                prevRemoteVersion = remoteState.version
+                prevRemoteChecksum = remoteState.checksum
+
+                undoRedoManager.applyRemoteHistoryState(remoteState, suppressRecording: true)
+                lastCommittedValue = remote
+                return
+            }
+
+            if !hasLocalEdits {
+                let cursorPos = selectedRange.location
+                let mergeResult = TextMerger.merge(
+                    base: base,
+                    local: local,
+                    remote: remote,
+                    cursorOffset: cursorPos
+                )
+
+                if mergeResult.mergedText != taskDescription {
+                    taskDescription = mergeResult.mergedText
+                    selectedRange = NSRange(location: mergeResult.newCursorOffset, length: 0)
+                    forceSelectionApply = true
+                }
+
+                prevRemoteVersion = remoteState.version
+                prevRemoteChecksum = remoteState.checksum
+
+                undoRedoManager.applyRemoteHistoryState(remoteState, suppressRecording: true)
+                lastCommittedValue = mergeResult.mergedText
                 return
             }
 
@@ -157,28 +205,13 @@ public struct TaskInputView: View {
 
             taskDescription = mergeResult.mergedText
             selectedRange = NSRange(location: mergeResult.newCursorOffset, length: 0)
-            if !isEditing {
-                forceSelectionApply = true
-            }
+            forceSelectionApply = true
+            undoRedoManager.saveState(mergeResult.mergedText)
 
             prevRemoteVersion = remoteState.version
             prevRemoteChecksum = remoteState.checksum
 
-            Task {
-                do {
-                    let mergedState = try await container.sessionService.mergeHistoryState(
-                        sessionId: sessionId,
-                        kind: kind,
-                        remoteState: remoteState
-                    )
-                    await MainActor.run {
-                        undoRedoManager.applyRemoteHistoryState(mergedState, suppressRecording: true)
-                    }
-                } catch {}
-                await MainActor.run {
-                    self.isApplyingRemoteMerge = false
-                }
-            }
+            isApplyingRemoteMerge = false
         }
     }
 
@@ -213,6 +246,7 @@ public struct TaskInputView: View {
 
     private func handleInitialLoad() {
         Task {
+            updateUndoRedoDeviceId()
             guard initializedForSessionId != sessionId else { return }
             await applyAuthoritativeTaskDescription(for: sessionId)
         }
@@ -221,6 +255,14 @@ public struct TaskInputView: View {
     private func handleSessionChange(_ newSessionId: String) {
         initializedForSessionId = nil
         debounceTask?.cancel()
+        prevRemoteVersion = nil
+        prevRemoteChecksum = nil
+        lastCommittedValue = nil
+        pendingHistoryState = nil
+        isApplyingRemoteMerge = false
+        syncInFlight = false
+        pendingSync = false
+        updateUndoRedoDeviceId()
         Task {
             await applyAuthoritativeTaskDescription(for: newSessionId)
         }
@@ -228,7 +270,11 @@ public struct TaskInputView: View {
 
     private func applyAuthoritativeTaskDescription(for sessionId: String) async {
         do {
-            let state = try await container.sessionService.getHistoryState(sessionId: sessionId, kind: "task")
+            let state = try await container.sessionService.getHistoryState(
+                sessionId: sessionId,
+                kind: "task",
+                summaryOnly: false
+            )
             await MainActor.run {
                 initializedForSessionId = sessionId
                 applyHistoryState(state)
@@ -243,11 +289,25 @@ public struct TaskInputView: View {
 
     private func applyHistoryState(_ state: HistoryState) {
         undoRedoManager.applyRemoteHistoryState(state, suppressRecording: true)
-        if let value = container.sessionService.lastNonEmptyHistoryValue(state) {
-            applyTaskTextIfNeeded(value, resetHistory: false)
+        if let value = currentHistoryValue(state) {
+            applyTaskTextIfNeeded(value, resetHistory: false, allowEmpty: true)
+            lastCommittedValue = value
         } else {
             applyFallbackSessionDescription(resetHistory: true)
         }
+        prevRemoteVersion = state.version
+        prevRemoteChecksum = state.checksum
+    }
+
+    private func updateUndoRedoDeviceId() {
+        let deviceId = multiConnectionManager.activeDeviceId?.uuidString.lowercased()
+        undoRedoManager.setDeviceId(deviceId)
+    }
+
+    private func currentHistoryValue(_ state: HistoryState) -> String? {
+        guard !state.entries.isEmpty else { return nil }
+        let clamped = min(max(0, Int(state.currentIndex)), state.entries.count - 1)
+        return state.entries[clamped].value
     }
 
     private func applyFallbackSessionDescription(resetHistory: Bool = false) {
@@ -256,21 +316,30 @@ public struct TaskInputView: View {
             return
         }
 
-        applyTaskTextIfNeeded(desc, resetHistory: resetHistory)
+        applyTaskTextIfNeeded(desc, resetHistory: resetHistory, allowEmpty: false)
     }
 
-    private func applyTaskTextIfNeeded(_ text: String, resetHistory: Bool) {
+    private func applyTaskTextIfNeeded(_ text: String, resetHistory: Bool, allowEmpty: Bool) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        guard taskDescription.trimmingCharacters(in: .whitespacesAndNewlines) != trimmed else { return }
+        if !allowEmpty && trimmed.isEmpty {
+            return
+        }
+
+        let currentTrimmed = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        if allowEmpty {
+            guard taskDescription != text else { return }
+        } else {
+            guard currentTrimmed != trimmed else { return }
+        }
 
         if resetHistory {
-            undoRedoManager.reset(with: trimmed)
+            undoRedoManager.reset(with: allowEmpty ? text : trimmed)
         }
-        taskDescription = trimmed
+        taskDescription = allowEmpty ? text : trimmed
+        lastCommittedValue = allowEmpty ? text : trimmed
 
         // Reset caret/selection state after text replacement on session change
-        let newCount = trimmed.count
+        let newCount = (allowEmpty ? text : trimmed).count
         selectedRange = NSRange(location: newCount, length: 0)
         if !isEditing {
             forceSelectionApply = true
@@ -281,6 +350,7 @@ public struct TaskInputView: View {
         if isApplyingRemoteMerge {
             return
         }
+        historySaveTask?.cancel()
         undoRedoManager.saveState(taskDescription)
         debounceTask?.cancel()
         debounceTask = Task {
@@ -292,17 +362,44 @@ public struct TaskInputView: View {
         if isApplyingRemoteMerge {
             return
         }
-        undoRedoManager.saveState(taskDescription)
+        scheduleHistorySnapshot()
         debounceTask?.cancel()
         debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
             guard !Task.isCancelled else { return }
             await performSync()
         }
     }
 
+    private func scheduleHistorySnapshot() {
+        historySaveTask?.cancel()
+        historySaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            undoRedoManager.saveState(taskDescription)
+        }
+    }
+
     private func performSync() async {
         guard !Task.isCancelled else { return }
+        let shouldStart = await MainActor.run {
+            if syncInFlight {
+                pendingSync = true
+                return false
+            }
+            syncInFlight = true
+            return true
+        }
+        guard shouldStart else { return }
+        defer {
+            Task { @MainActor in
+                syncInFlight = false
+                if pendingSync {
+                    pendingSync = false
+                    Task { await performSync() }
+                }
+            }
+        }
 
         let state = await MainActor.run { undoRedoManager.exportState() }
 
@@ -316,6 +413,7 @@ public struct TaskInputView: View {
             await MainActor.run {
                 undoRedoManager.applyRemoteHistoryState(newState, suppressRecording: true)
                 isEditing = false
+                lastCommittedValue = currentHistoryValue(newState)
                 if let pending = pendingHistoryState {
                     applyHistoryState(pending)
                     pendingHistoryState = nil
@@ -326,6 +424,10 @@ public struct TaskInputView: View {
 
             await MainActor.run {
                 isEditing = false
+            }
+
+            if let dataError = error as? DataServiceError, case .offline = dataError {
+                return
             }
 
             try? await Task.sleep(nanoseconds: 2_000_000_000)
@@ -342,6 +444,7 @@ public struct TaskInputView: View {
                     )
                     await MainActor.run {
                         undoRedoManager.applyRemoteHistoryState(retryState, suppressRecording: true)
+                        lastCommittedValue = currentHistoryValue(retryState)
                     }
                     print("[TaskInputView] Retry sync succeeded")
                 } catch {

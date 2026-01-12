@@ -421,8 +421,7 @@ public struct JobsMonitoringView: View {
     }
 
     private func applyResearchToSession(_ searchResults: [[String: Any]]) async {
-        guard let sessionId = container.sessionService.currentSession?.id,
-              let currentTaskDescription = container.sessionService.currentSession?.taskDescription else {
+        guard let sessionId = container.sessionService.currentSession?.id else {
             return
         }
 
@@ -434,30 +433,26 @@ public struct JobsMonitoringView: View {
             }
         }
 
-        let updatedTaskDescription = currentTaskDescription + findingsText
+        if findingsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return
+        }
 
         Task {
             do {
-                for try await response in CommandRouter.sessionUpdateTaskDescription(
+                _ = try await container.sessionService.appendTaskDescription(
                     sessionId: sessionId,
-                    taskDescription: updatedTaskDescription
-                ) {
-                    if let error = response.error {
-                        return
-                    }
-                    if response.isFinal {
-                        await MainActor.run {
-                            let generator = UINotificationFeedbackGenerator()
-                            generator.notificationOccurred(.success)
+                    appendText: findingsText,
+                    opType: "improvement"
+                )
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
 
-                            successMessage = "Research findings added to task description"
-                            showingSuccess = true
+                    successMessage = "Research findings added to task description"
+                    showingSuccess = true
 
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                showingSuccess = false
-                            }
-                        }
-                        break
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        showingSuccess = false
                     }
                 }
             } catch {
@@ -473,8 +468,7 @@ public struct JobsMonitoringView: View {
     }
 
     private func applyVideoAnalysisToSession(_ analysisData: [String: Any]) async {
-        guard let sessionId = container.sessionService.currentSession?.id,
-              let currentTaskDescription = container.sessionService.currentSession?.taskDescription else {
+        guard let sessionId = container.sessionService.currentSession?.id else {
             return
         }
 
@@ -482,30 +476,26 @@ public struct JobsMonitoringView: View {
         let analysis = analysisData["analysis"] as? String ?? ""
         let videoSummary = "\n\n<video_analysis_summary>\n\(analysis)\n</video_analysis_summary>"
 
-        let updatedTaskDescription = currentTaskDescription + videoSummary
+        if videoSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return
+        }
 
         Task {
             do {
-                for try await response in CommandRouter.sessionUpdateTaskDescription(
+                _ = try await container.sessionService.appendTaskDescription(
                     sessionId: sessionId,
-                    taskDescription: updatedTaskDescription
-                ) {
-                    if let error = response.error {
-                        return
-                    }
-                    if response.isFinal {
-                        await MainActor.run {
-                            let generator = UINotificationFeedbackGenerator()
-                            generator.notificationOccurred(.success)
+                    appendText: videoSummary,
+                    opType: "improvement"
+                )
+                await MainActor.run {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
 
-                            successMessage = "Video analysis added to task description"
-                            showingSuccess = true
+                    successMessage = "Video analysis added to task description"
+                    showingSuccess = true
 
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                                showingSuccess = false
-                            }
-                        }
-                        break
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        showingSuccess = false
                     }
                 }
             } catch {
@@ -527,4 +517,3 @@ struct IdentifiableString: Identifiable {
     let id = UUID()
     let value: String
 }
-

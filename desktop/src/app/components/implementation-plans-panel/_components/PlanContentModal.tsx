@@ -179,10 +179,10 @@ const PlanContentModal: React.FC<PlanContentModalProps> = ({
   const markdownFromMeta = parsedMeta?.markdownResponse as string | undefined;
   const effectiveMarkdown = markdownContentOverride ?? markdownFromMeta;
 
-  const planTitle = parsedMeta?.planTitle || parsedMeta?.generated_title || "Implementation Plan";
+  const planTitle = parsedMeta?.planTitle || parsedMeta?.generatedTitle || "Implementation Plan";
 
   // Check for user sign-off
-  const userSignoff = parsedMeta?.user_signoff;
+  const userSignoff = parsedMeta?.userSignoff;
   const isSignedOff = userSignoff?.state === "accepted";
 
   // Use unified streaming detection with ACTIVE fallback

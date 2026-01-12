@@ -299,8 +299,8 @@ impl UsageProcessingService {
         // Parse JSON only if needed
         if let Some(metadata) = &record.metadata {
             if let Some(obj) = metadata.as_object() {
-                // Try modelId first, then model_id
-                if let Some(model_id) = obj.get("modelId").or_else(|| obj.get("model_id")) {
+                // Only accept camelCase modelId
+                if let Some(model_id) = obj.get("modelId") {
                     if let Some(id) = model_id.as_str() {
                         return id.to_string();
                     }

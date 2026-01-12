@@ -21,6 +21,7 @@ export function useActiveSessionManager({
 }: UseActiveSessionManagerProps) {
   // Manage active session ID state
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [hasResolvedActiveSessionId, setHasResolvedActiveSessionId] = useState(false);
 
   // Track pending operations
   const pendingOperationRef = useRef<{
@@ -33,21 +34,42 @@ export function useActiveSessionManager({
 
   // Load the active session ID when the project directory changes
   useEffect(() => {
-    if (!projectDirectory) return;
+    let isMounted = true;
+
+    setHasResolvedActiveSessionId(false);
+    pendingOperationRef.current = undefined;
+    lastPersistedIdRef.current = null;
+    setActiveSessionId(null);
+
+    if (!projectDirectory) {
+      if (isMounted) {
+        setHasResolvedActiveSessionId(true);
+      }
+      return () => {
+        isMounted = false;
+      };
+    }
 
     const fetchActiveSessionId = async () => {
       try {
         const result = await getActiveSessionIdAction(projectDirectory);
 
-        if (result.isSuccess) {
+        if (isMounted && result.isSuccess) {
           setActiveSessionId(result.data ?? null);
         }
       } catch (_err) {
         // Failed to get active session
+      } finally {
+        if (isMounted) {
+          setHasResolvedActiveSessionId(true);
+        }
       }
     };
 
     void fetchActiveSessionId();
+    return () => {
+      isMounted = false;
+    };
   }, [projectDirectory]);
 
   // Set active session ID globally
@@ -95,10 +117,10 @@ export function useActiveSessionManager({
         // Check if action failed
         if (result && !result.isSuccess) {
           console.error("Failed to persist active session:", result.message);
+        } else {
+          // Update last persisted ID for deduplication only on success
+          lastPersistedIdRef.current = sessionId;
         }
-
-        // Update last persisted ID for deduplication
-        lastPersistedIdRef.current = sessionId;
 
         // Clear the pending operation reference on success
         if (pendingOperationRef.current?.sessionId === sessionId) {
@@ -121,10 +143,11 @@ export function useActiveSessionManager({
     () => ({
       // State (for SessionStateContext)
       activeSessionId,
+      hasResolvedActiveSessionId,
 
       // Actions (for SessionActionsContext)
       updateActiveSessionId,
     }),
-    [activeSessionId, updateActiveSessionId]
+    [activeSessionId, hasResolvedActiveSessionId, updateActiveSessionId]
   );
 }

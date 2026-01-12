@@ -13,12 +13,13 @@ public struct CommandRouter {
     }
 
     /// Resolves a usable relay connection: prefers active device, falls back to single connected device
-    private static func getUsableRelay() -> (deviceId: UUID, relay: ServerRelayClient)? {
-        // First, try active device - return it REGARDLESS of connection state
-        // ServerRelayClient will handle wait/queue for reconnection
+    private static func getUsableRelay() -> ServerRelayClient? {
         if let activeId = MultiConnectionManager.shared.activeDeviceId,
-           let relay = MultiConnectionManager.shared.relayConnection(for: activeId) {
-            return (activeId, relay)
+           let relay = MultiConnectionManager.shared.relayConnection(for: activeId),
+           relay.isConnected,
+           relay.hasSessionCredentials,
+           MultiConnectionManager.shared.connectionStates[activeId]?.isConnected == true {
+            return relay
         }
 
         // Fallback: if exactly one device is connected, use it
@@ -32,8 +33,9 @@ public struct CommandRouter {
         if connectedDevices.count == 1,
            let deviceId = connectedDevices.first,
            let relay = MultiConnectionManager.shared.relayConnection(for: deviceId),
-           relay.isConnected {
-            return (deviceId, relay)
+           relay.isConnected,
+           relay.hasSessionCredentials {
+            return relay
         }
 
         return nil
@@ -49,7 +51,7 @@ public struct CommandRouter {
         guard let usable = getUsableRelay() else {
             return failStreamNotConnected()
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "workflows.startFileFinder",
@@ -62,7 +64,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func workflowsStartWebSearch(
@@ -74,7 +76,7 @@ public struct CommandRouter {
         guard let usable = getUsableRelay() else {
             return failStreamNotConnected()
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "workflows.startWebSearch",
@@ -86,7 +88,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func filesSearch(
@@ -98,7 +100,7 @@ public struct CommandRouter {
         guard let usable = getUsableRelay() else {
             return failStreamNotConnected()
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "files.search",
@@ -110,7 +112,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 60.0)
+        return relayClient.invoke(request: request, timeout: 60.0)
     }
 
 // MARK: - Terminal Control
@@ -124,7 +126,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [:]
         if let jobId = jobId, !jobId.isEmpty {
@@ -139,7 +141,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalGetLog(
@@ -151,7 +153,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = ["sessionId": sessionId]
         if let maxLines = maxLines {
@@ -163,7 +165,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalDetach(
@@ -174,14 +176,14 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.detach",
             params: ["sessionId": sessionId]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalWriteData(
@@ -193,7 +195,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.write",
@@ -203,7 +205,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalKill(
@@ -214,7 +216,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.kill",
@@ -223,7 +225,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalResize(
@@ -236,7 +238,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.resize",
@@ -247,7 +249,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalWrite(
@@ -259,7 +261,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let base64 = text.data(using: .utf8)?.base64EncodedString() ?? ""
         let request = RpcRequest(
@@ -270,7 +272,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalGetStatus(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
@@ -279,14 +281,14 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.getStatus",
             params: ["sessionId": sessionId]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalGetMetadata(sessionId: String) -> AsyncThrowingStream<RpcResponse, Error> {
@@ -295,14 +297,14 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.getMetadata",
             params: ["sessionId": sessionId]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func terminalGetActiveSessions() -> AsyncThrowingStream<RpcResponse, Error> {
@@ -311,14 +313,14 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "terminal.getActiveSessions",
             params: [:]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansList(
@@ -330,7 +332,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         guard let sessionId = sessionId, !sessionId.isEmpty else {
             return AsyncThrowingStream { continuation in
@@ -349,7 +351,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansGet(
@@ -360,7 +362,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "plans.get",
@@ -369,7 +371,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansSave(
@@ -381,7 +383,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "plans.save",
@@ -391,7 +393,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansCreate(
@@ -403,7 +405,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "plans.create",
@@ -413,7 +415,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansActivate(
@@ -424,7 +426,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "plans.activate",
@@ -433,7 +435,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func plansDelete(
@@ -444,7 +446,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "plans.delete",
@@ -453,7 +455,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func speechTranscribe(
@@ -466,7 +468,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "speech.transcribe",
@@ -477,7 +479,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func textEnhance(
@@ -490,7 +492,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "text": text,
@@ -506,7 +508,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func textRefine(
@@ -520,7 +522,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "text": text,
@@ -536,7 +538,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionCreate(
@@ -549,7 +551,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "name": name,
@@ -567,7 +569,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionList(
@@ -580,7 +582,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let params: [String: Any] = [
             "projectDirectory": projectDirectory,
@@ -593,7 +595,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionGet(
@@ -604,7 +606,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.get",
@@ -613,105 +615,66 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionUpdate(
         id: String,
-        updates: [String: Any]
+        updates: [String: Any],
+        idempotencyKey: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.update",
             params: [
                 "sessionId": id,
                 "updateData": updates
-            ]
+            ],
+            idempotencyKey: idempotencyKey
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
-    }
-
-    public static func sessionUpdateTaskDescription(
-        sessionId: String,
-        taskDescription: String
-    ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
-        }
-        let (deviceId, relayClient) = usable
-
-        let request = RpcRequest(
-            method: "session.updateTaskDescription",
-            params: [
-                "sessionId": sessionId,
-                "taskDescription": taskDescription
-            ]
-        )
-
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
-    }
-
-    public static func sessionUpdateMergeInstructions(
-        sessionId: String,
-        mergeInstructions: String
-    ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
-        }
-        let (deviceId, relayClient) = usable
-
-        let request = RpcRequest(
-            method: "session.updateMergeInstructions",
-            params: [
-                "sessionId": sessionId,
-                "mergeInstructions": mergeInstructions
-            ]
-        )
-
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionDelete(
-        id: String
+        id: String,
+        idempotencyKey: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.delete",
             params: [
                 "sessionId": id
-            ]
+            ],
+            idempotencyKey: idempotencyKey
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionDuplicate(
         sourceSessionId: String,
-        newName: String?
+        newName: String?,
+        idempotencyKey: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "sourceSessionId": sourceSessionId
@@ -723,116 +686,35 @@ public struct CommandRouter {
 
         let request = RpcRequest(
             method: "session.duplicate",
-            params: params
+            params: params,
+            idempotencyKey: idempotencyKey
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionRename(
         sessionId: String,
-        newName: String
+        newName: String,
+        idempotencyKey: String? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.rename",
             params: [
                 "sessionId": sessionId,
                 "newName": newName
-            ]
+            ],
+            idempotencyKey: idempotencyKey
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
-    }
-
-    public static func sessionGetTaskDescriptionHistory(
-        sessionId: String
-    ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
-        }
-        let (deviceId, relayClient) = usable
-
-        let request = RpcRequest(
-            method: "session.getTaskDescriptionHistory",
-            params: [
-                "sessionId": sessionId
-            ]
-        )
-
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
-    }
-
-    public static func sessionSyncTaskDescriptionHistory(
-        sessionId: String,
-        history: [String]
-    ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
-        }
-        let (deviceId, relayClient) = usable
-
-        let request = RpcRequest(
-            method: "session.syncTaskDescriptionHistory",
-            params: [
-                "sessionId": sessionId,
-                "history": history
-            ]
-        )
-
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
-    }
-
-    public static func sessionUpdateFiles(
-        id: String,
-        addIncluded: [String]?,
-        removeIncluded: [String]?,
-        addExcluded: [String]?,
-        removeExcluded: [String]?
-    ) -> AsyncThrowingStream<RpcResponse, Error> {
-        guard let usable = getUsableRelay() else {
-            return AsyncThrowingStream { continuation in
-                continuation.finish(throwing: ServerRelayError.notConnected)
-            }
-        }
-        let (deviceId, relayClient) = usable
-
-        var params: [String: Any] = [
-            "sessionId": id
-        ]
-
-        if let addIncluded = addIncluded {
-            params["filesToAdd"] = addIncluded
-        }
-
-        if let removeIncluded = removeIncluded {
-            params["filesToRemove"] = removeIncluded
-        }
-
-        if let addExcluded = addExcluded {
-            params["excludedToAdd"] = addExcluded
-        }
-
-        if let removeExcluded = removeExcluded {
-            params["excludedToRemove"] = removeExcluded
-        }
-
-        let request = RpcRequest(
-            method: "session.updateFiles",
-            params: params
-        )
-
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionGetFileRelationships(
@@ -843,7 +725,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.getFileRelationships",
@@ -852,7 +734,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionGetOverview(
@@ -863,7 +745,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.getOverview",
@@ -872,7 +754,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionGetContents(
@@ -883,7 +765,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "session.getContents",
@@ -892,7 +774,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func filesGetMetadata(
@@ -904,7 +786,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "filePaths": filePaths
@@ -919,7 +801,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func jobGet(
@@ -930,7 +812,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "job.get",
@@ -939,7 +821,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func jobList(
@@ -957,7 +839,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         guard (sessionId != nil && !sessionId!.isEmpty) || (projectDirectory != nil && !projectDirectory!.isEmpty) else {
             return AsyncThrowingStream { continuation in
@@ -990,7 +872,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 60.0)
+        return relayClient.invoke(request: request, timeout: 60.0)
     }
 
     public static func jobCancel(
@@ -1002,7 +884,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = ["jobId": jobId]
         if let reason = reason {
@@ -1014,7 +896,7 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func jobDelete(
@@ -1025,14 +907,14 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "job.delete",
             params: ["jobId": jobId]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func jobUpdateContent(
@@ -1044,7 +926,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "job.updateContent",
@@ -1054,7 +936,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     // MARK: - Settings
@@ -1185,10 +1067,10 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(method: method, params: params)
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func sessionUpdateFileBrowserState(
@@ -1204,7 +1086,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "sessionId": sessionId,
@@ -1229,17 +1111,17 @@ public struct CommandRouter {
             params: params
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     // MARK: - HistoryState Methods
 
     /// Get history state from desktop
-    public static func sessionGetHistoryState(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> HistoryState {
+    public static func sessionGetHistoryState(sessionId: String, kind: String, summaryOnly: Bool = false, maxEntries: Int? = nil) async throws -> HistoryState {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "sessionId": sessionId,
@@ -1255,9 +1137,9 @@ public struct CommandRouter {
             params: params
         )
 
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        for try await response in relayClient.invoke(request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpcError", error.message)
+                throw ServerRelayError.serverError(String(error.code), error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1270,15 +1152,18 @@ public struct CommandRouter {
             }
         }
 
+        if !relayClient.isConnected {
+            throw ServerRelayError.disconnected
+        }
         throw ServerRelayError.invalidState("No history state received")
     }
 
     /// Sync history state to desktop
-    public static func sessionSyncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64) async throws -> HistoryState {
+    public static func sessionSyncHistoryState(sessionId: String, kind: String, state: HistoryState, expectedVersion: Int64, idempotencyKey: String? = nil) async throws -> HistoryState {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let encoder = JSONEncoder()
         let stateData = try encoder.encode(state)
@@ -1295,12 +1180,13 @@ public struct CommandRouter {
                 "kind": kind,
                 "state": sanitizedState,
                 "expectedVersion": coercedExpected?["expectedVersion"] ?? expectedVersion
-            ]
+            ],
+            idempotencyKey: idempotencyKey
         )
 
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        for try await response in relayClient.invoke(request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpcError", error.message)
+                throw ServerRelayError.serverError(String(error.code), error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1313,6 +1199,9 @@ public struct CommandRouter {
             }
         }
 
+        if !relayClient.isConnected {
+            throw ServerRelayError.disconnected
+        }
         throw ServerRelayError.invalidState("No sync result received")
     }
 
@@ -1321,7 +1210,7 @@ public struct CommandRouter {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let encoder = JSONEncoder()
         let stateData = try encoder.encode(remoteState)
@@ -1338,9 +1227,9 @@ public struct CommandRouter {
             ]
         )
 
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        for try await response in relayClient.invoke(request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpcError", error.message)
+                throw ServerRelayError.serverError(String(error.code), error.message)
             }
 
             if let result = response.result?.value, !(result is NSNull) {
@@ -1353,14 +1242,17 @@ public struct CommandRouter {
             }
         }
 
+        if !relayClient.isConnected {
+            throw ServerRelayError.disconnected
+        }
         throw ServerRelayError.invalidState("No merge result received")
     }
 
-    public static func sessionGetHistoryStateRaw(sessionId: String, kind: String, summaryOnly: Bool = true, maxEntries: Int? = nil) async throws -> [String: Any] {
+    public static func sessionGetHistoryStateRaw(sessionId: String, kind: String, summaryOnly: Bool = false, maxEntries: Int? = nil) async throws -> [String: Any] {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         var params: [String: Any] = [
             "sessionId": sessionId,
@@ -1376,9 +1268,9 @@ public struct CommandRouter {
             params: params
         )
 
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        for try await response in relayClient.invoke(request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpcError", error.message)
+                throw ServerRelayError.serverError(String(error.code), error.message)
             }
 
             if let result = response.result?.value as? [String: Any] {
@@ -1386,14 +1278,17 @@ public struct CommandRouter {
             }
         }
 
+        if !relayClient.isConnected {
+            throw ServerRelayError.disconnected
+        }
         throw ServerRelayError.invalidState("No history state received")
     }
 
-    public static func sessionSyncHistoryStateRaw(sessionId: String, kind: String, state: [String: Any], expectedVersion: Int64) async throws -> [String: Any] {
+    public static func sessionSyncHistoryStateRaw(sessionId: String, kind: String, state: [String: Any], expectedVersion: Int64, idempotencyKey: String? = nil) async throws -> [String: Any] {
         guard let usable = getUsableRelay() else {
             throw ServerRelayError.notConnected
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let sanitizedState = HistoryStateSanitizer.sanitizeForRPC(state)
 
@@ -1406,12 +1301,13 @@ public struct CommandRouter {
                 "kind": kind,
                 "state": sanitizedState,
                 "expectedVersion": coercedExpected?["expectedVersion"] ?? expectedVersion
-            ]
+            ],
+            idempotencyKey: idempotencyKey
         )
 
-        for try await response in relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request) {
+        for try await response in relayClient.invoke(request: request) {
             if let error = response.error {
-                throw ServerRelayError.serverError("rpcError", error.message)
+                throw ServerRelayError.serverError(String(error.code), error.message)
             }
 
             if let result = response.result?.value as? [String: Any] {
@@ -1419,6 +1315,9 @@ public struct CommandRouter {
             }
         }
 
+        if !relayClient.isConnected {
+            throw ServerRelayError.disconnected
+        }
         throw ServerRelayError.invalidState("No sync result received")
     }
 
@@ -1435,7 +1334,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "actions.getImplementationPlanPrompt",
@@ -1447,7 +1346,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func actionsCreateImplementationPlan(
@@ -1457,7 +1356,7 @@ public struct CommandRouter {
         relevantFiles: [String]
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         AsyncThrowingStream { continuation in
-            guard let (deviceId, relayClient) = getUsableRelay() else {
+            guard let relayClient = getUsableRelay() else {
                 continuation.finish(throwing: ServerRelayError.notConnected)
                 return
             }
@@ -1477,9 +1376,7 @@ public struct CommandRouter {
 
             Task {
                 do {
-                    for try await response in relayClient.invoke(
-                        targetDeviceId: deviceId.uuidString,
-                        request: request
+                    for try await response in relayClient.invoke(request: request
                     ) {
                         continuation.yield(response)
                     }
@@ -1501,7 +1398,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "job.updateContent",
@@ -1511,7 +1408,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     /// Create merged implementation plan
@@ -1525,7 +1422,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "actions.mergePlans",
@@ -1536,7 +1433,7 @@ public struct CommandRouter {
             ]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 
     public static func planGenerateMarkdown(jobId: String) -> AsyncThrowingStream<RpcResponse, Error> {
@@ -1545,7 +1442,7 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let params: [String: Any] = [
             "jobId": jobId
@@ -1557,7 +1454,7 @@ public struct CommandRouter {
         )
 
         // Markdown generation can take 2-3 minutes for large plans with many steps
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request, timeout: 180.0)
+        return relayClient.invoke(request: request, timeout: 180.0)
     }
 
     // MARK: - Account
@@ -1568,13 +1465,13 @@ public struct CommandRouter {
                 continuation.finish(throwing: ServerRelayError.notConnected)
             }
         }
-        let (deviceId, relayClient) = usable
+        let relayClient = usable
 
         let request = RpcRequest(
             method: "account.deleteAccount",
             params: [:]
         )
 
-        return relayClient.invoke(targetDeviceId: deviceId.uuidString, request: request)
+        return relayClient.invoke(request: request)
     }
 }

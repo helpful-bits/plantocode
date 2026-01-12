@@ -19,6 +19,17 @@ export interface HistoryState {
   checksum: string;
 }
 
+function safeParseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 // NOTE: Legacy actions removed - use getHistoryStateAction/syncHistoryStateAction instead
 
 // New HistoryState RPC actions
@@ -37,8 +48,8 @@ export async function getHistoryStateAction(
       ...result,
       entries: result.entries.map((e: any) => ({
         ...e,
-        includedFiles: typeof e.includedFiles === 'string' ? JSON.parse(e.includedFiles) : e.includedFiles,
-        forceExcludedFiles: typeof e.forceExcludedFiles === 'string' ? JSON.parse(e.forceExcludedFiles) : e.forceExcludedFiles,
+        includedFiles: safeParseJsonArray(e.includedFiles),
+        forceExcludedFiles: safeParseJsonArray(e.forceExcludedFiles),
       })),
     };
   }

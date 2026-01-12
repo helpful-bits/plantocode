@@ -753,10 +753,7 @@ export function extractErrorInfo(error: unknown): {
     const errorObj = error as any;
     
     // Check for various workflow context field names
-    const workflowContext = errorObj.workflowContext || 
-                           errorObj.workflow_context || 
-                           errorObj.workflowCtx ||
-                           errorObj.workflow_ctx;
+    const workflowContext = errorObj.workflowContext;
     
     if (workflowContext) {
       return {
@@ -793,12 +790,12 @@ function normalizeWorkflowContext(context: any): WorkflowErrorContext | undefine
   }
   
   return {
-    workflowId: context.workflowId || context.workflow_id || context.id,
-    stageName: context.stageName || context.stage_name || context.stage,
-    stageId: context.stageId || context.stage_id,
-    stageJobId: context.stageJobId || context.stage_job_id || context.job_id,
-    retryAttempt: context.retryAttempt || context.retry_attempt || context.retry,
-    originalJobId: context.originalJobId || context.original_job_id || context.original_id,
+    workflowId: context.workflowId || context.id,
+    stageName: context.stageName || context.stage,
+    stageId: context.stageId,
+    stageJobId: context.stageJobId || context.jobId,
+    retryAttempt: context.retryAttempt || context.retry,
+    originalJobId: context.originalJobId,
   };
 }
 
@@ -1150,4 +1147,3 @@ export async function logError(
     // Swallow to avoid user-visible impact
   }
 }
-

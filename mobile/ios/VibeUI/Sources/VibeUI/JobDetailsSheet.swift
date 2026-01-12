@@ -799,19 +799,18 @@ struct ResponseTab: View {
                     // Handle Use Files action - newFiles is already the diff (only new files)
                     guard let sessionId = container.sessionService.currentSession?.id else { return }
                     Task {
-                        for try await _ in CommandRouter.sessionUpdateFiles(
-                            id: sessionId,
+                        _ = try? await container.sessionService.updateSessionFiles(
+                            sessionId: sessionId,
                             addIncluded: newFiles,
                             removeIncluded: nil,
                             addExcluded: nil,
                             removeExcluded: nil
-                        ) {}
+                        )
                     }
                 },
                 onUseResearch: { results in
                     // Handle Use Research action
-                    guard let sessionId = container.sessionService.currentSession?.id,
-                          let currentTaskDescription = container.sessionService.currentSession?.taskDescription else { return }
+                    guard let sessionId = container.sessionService.currentSession?.id else { return }
 
                     var findingsText = ""
                     for (index, result) in results.enumerated() {
@@ -820,28 +819,33 @@ struct ResponseTab: View {
                         }
                     }
 
-                    let updatedTaskDescription = currentTaskDescription + findingsText
+                    if findingsText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return
+                    }
                     Task {
-                        for try await _ in CommandRouter.sessionUpdateTaskDescription(
+                        _ = try? await container.sessionService.appendTaskDescription(
                             sessionId: sessionId,
-                            taskDescription: updatedTaskDescription
-                        ) {}
+                            appendText: findingsText,
+                            opType: "improvement"
+                        )
                     }
                 },
                 onUseFindings: { data in
                     // Handle Use Findings action
-                    guard let sessionId = container.sessionService.currentSession?.id,
-                          let currentTaskDescription = container.sessionService.currentSession?.taskDescription else { return }
+                    guard let sessionId = container.sessionService.currentSession?.id else { return }
 
                     let analysis = data["analysis"] as? String ?? ""
                     let videoSummary = "\n\n<video_analysis_summary>\n\(analysis)\n</video_analysis_summary>"
-                    let updatedTaskDescription = currentTaskDescription + videoSummary
+                    if videoSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return
+                    }
 
                     Task {
-                        for try await _ in CommandRouter.sessionUpdateTaskDescription(
+                        _ = try? await container.sessionService.appendTaskDescription(
                             sessionId: sessionId,
-                            taskDescription: updatedTaskDescription
-                        ) {}
+                            appendText: videoSummary,
+                            opType: "improvement"
+                        )
                     }
                 }
             ) {
@@ -1038,4 +1042,3 @@ struct CircularProgressView: View {
         }
     }
 }
-

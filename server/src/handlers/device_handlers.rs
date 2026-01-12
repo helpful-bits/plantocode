@@ -101,6 +101,45 @@ fn is_valid_desktop_platform(s: &str) -> bool {
     matches!(s, "macos" | "windows" | "linux")
 }
 
+fn find_snake_case_key(value: &JsonValue) -> Option<String> {
+    fn visit(value: &JsonValue, path: &str) -> Option<String> {
+        match value {
+            JsonValue::Object(map) => {
+                for (key, nested) in map {
+                    let next_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{}.{}", path, key)
+                    };
+                    if key.contains('_') {
+                        return Some(next_path);
+                    }
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            JsonValue::Array(items) => {
+                for (idx, nested) in items.iter().enumerate() {
+                    let next_path = if path.is_empty() {
+                        format!("[{}]", idx)
+                    } else {
+                        format!("{}[{}]", path, idx)
+                    };
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    visit(value, "")
+}
+
 pub async fn register_device_handler(
     device_repo: web::Data<DeviceRepository>,
     user: AuthenticatedUser,
@@ -108,6 +147,14 @@ pub async fn register_device_handler(
     req: HttpRequest,
 ) -> Result<HttpResponse, AppError> {
     let device_id = extract_device_id(&req)?;
+    if let Some(capabilities) = req_body.capabilities.as_ref() {
+        if let Some(path) = find_snake_case_key(capabilities) {
+            return Err(AppError::Validation(format!(
+                "capabilities contains snake_case key at {}",
+                path
+            )));
+        }
+    }
 
     let client_type_header = req.headers()
         .get("X-Client-Type")
@@ -348,16 +395,15 @@ pub async fn unregister_device_handler(
     );
 
     // Broadcast device-unlinked event to user's other devices
-    let unlink_event = serde_json::json!({
-        "type": "device-unlinked",
-        "payload": {
-            "deviceId": device_id.to_string()
-        }
-    });
-
     let device_message = DeviceMessage {
-        message_type: "device-unlinked".to_string(),
-        payload: unlink_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+        message_type: "event".to_string(),
+        payload: serde_json::json!({
+            "eventType": "device-unlinked",
+            "payload": {
+                "deviceId": device_id.to_string()
+            }
+        }),
+        event_id: None,
         target_device_id: None,
         source_device_id: None,
         timestamp: chrono::Utc::now(),
@@ -481,8 +527,14 @@ pub async fn register_mobile_device_handler(
     let mut capabilities: serde_json::Value = req_body.capabilities.clone().unwrap_or_else(|| serde_json::json!({}));
     if let Some(token) = &req_body.push_token {
         if let Some(obj) = capabilities.as_object_mut() {
-            obj.insert("device_push_token".to_string(), serde_json::Value::String(token.clone()));
+            obj.insert("devicePushToken".to_string(), serde_json::Value::String(token.clone()));
         }
+    }
+    if let Some(path) = find_snake_case_key(&capabilities) {
+        return Err(AppError::Validation(format!(
+            "capabilities contains snake_case key at {}",
+            path
+        )));
     }
 
     let register_request = RegisterDeviceRequest {
@@ -632,7 +684,7 @@ mod tests {
             public_ip: Some("203.0.113.1".to_string()),
             relay_eligible: Some(true),
             available_ports: Some(vec![8080, 8081]),
-            capabilities: Some(json!({"supports_voice": true})),
+            capabilities: Some(json!({"supportsVoice": true})),
         };
 
         let serialized = serde_json::to_string(&request).unwrap();
@@ -688,7 +740,7 @@ pub async fn events_stream_handler(
                 serde_json::json!({
                     "type": "heartbeat",
                     "timestamp": chrono::Utc::now().to_rfc3339(),
-                    "user_id": user_id.to_string(),
+                    "userId": user_id.to_string(),
                 })
                 .to_string(),
             ));

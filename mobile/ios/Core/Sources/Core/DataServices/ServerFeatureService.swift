@@ -329,6 +329,7 @@ public class ServerFeatureService: ObservableObject {
         prompt: String?,
         temperature: Double?
     ) async throws -> TranscriptionResponse {
+        let safeDurationMs = max(1, durationMs)
         let boundary = UUID().uuidString
         let contentType = "multipart/form-data; boundary=\(boundary)"
 
@@ -349,10 +350,10 @@ public class ServerFeatureService: ObservableObject {
         bodyData.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
         bodyData.append(modelToUse + "\r\n")
 
-        // Field: duration_ms (required by server)
+        // Field: durationMs (required by server)
         bodyData.append("--\(boundary)\r\n")
-        bodyData.append("Content-Disposition: form-data; name=\"duration_ms\"\r\n\r\n")
-        bodyData.append("\(durationMs)\r\n")
+        bodyData.append("Content-Disposition: form-data; name=\"durationMs\"\r\n\r\n")
+        bodyData.append("\(safeDurationMs)\r\n")
 
         // Field: language (optional)
         if let language = language {
@@ -431,6 +432,7 @@ public class ServerFeatureService: ObservableObject {
         AsyncThrowingStream { continuation in
             Task {
                 do {
+                    let safeDurationMs = max(1, durationMs)
                     let boundary = UUID().uuidString
                     let contentType = "multipart/form-data; boundary=\(boundary)"
 
@@ -448,8 +450,8 @@ public class ServerFeatureService: ObservableObject {
                     bodyData.append(model + "\r\n")
 
                     bodyData.append("--\(boundary)\r\n")
-                    bodyData.append("Content-Disposition: form-data; name=\"duration_ms\"\r\n\r\n")
-                    bodyData.append("\(durationMs)\r\n")
+                    bodyData.append("Content-Disposition: form-data; name=\"durationMs\"\r\n\r\n")
+                    bodyData.append("\(safeDurationMs)\r\n")
 
                     if let language = language {
                         bodyData.append("--\(boundary)\r\n")

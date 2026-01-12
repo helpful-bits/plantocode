@@ -33,6 +33,8 @@ pub struct RegisterPayload {
     pub session_id: Option<String>,
     #[serde(default)]
     pub resume_token: Option<String>,
+    #[serde(default)]
+    pub last_event_id: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,41 +50,39 @@ pub struct RegisterMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayRequest {
+pub struct RpcRequestPayload {
+    pub id: String,
     pub method: String,
     #[serde(default)]
     pub params: JsonValue,
     #[serde(default)]
-    pub correlation_id: Option<String>,
-    #[serde(default)]
     pub idempotency_key: Option<String>,
+    #[serde(default)]
+    pub client_id: Option<String>,
+    #[serde(default)]
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayEventPayload {
-    pub target_device_id: String,
-    pub request: RelayRequest,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RelayEventMessage {
+pub struct RpcRequestMessage {
     #[serde(rename = "type")]
     pub message_type: String,
-    pub payload: RelayEventPayload,
+    pub payload: RpcRequestPayload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayResponsePayload {
-    pub correlation_id: String,
+pub struct RpcResponsePayload {
+    pub id: String,
     #[serde(default)]
     pub result: Option<JsonValue>,
     #[serde(default)]
-    pub error: Option<String>,
+    pub error: Option<JsonValue>,
     #[serde(default = "default_true")]
     pub is_final: bool,
+    #[serde(default)]
+    pub client_id: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -91,22 +91,10 @@ fn default_true() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RelayResponseMessage {
+pub struct RpcResponseMessage {
     #[serde(rename = "type")]
     pub message_type: String,
-    pub client_id: String,
-    pub response: RelayResponsePayload,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct OutboundRelayMessage {
-    #[serde(rename = "type")]
-    pub message_type: String,
-    pub client_id: String,
-    #[serde(default)]
-    pub user_id: Option<String>,
-    pub request: RelayRequest,
+    pub payload: RpcResponsePayload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -154,6 +142,59 @@ fn parse_framed_terminal_event(data: &[u8]) -> Option<(&str, &[u8])> {
     let session_id_bytes = &data[6..6 + session_id_len];
     let session_id = std::str::from_utf8(session_id_bytes).ok()?;
     Some((session_id, data))
+}
+
+fn extract_project_directory(payload: &JsonValue) -> Option<String> {
+    payload
+        .get("projectDirectory")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            payload
+                .get("job")
+                .and_then(|job| job.get("projectDirectory"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+}
+
+fn find_snake_case_key(value: &JsonValue) -> Option<String> {
+    fn visit(value: &JsonValue, path: &str) -> Option<String> {
+        match value {
+            JsonValue::Object(map) => {
+                for (key, nested) in map {
+                    let next_path = if path.is_empty() {
+                        key.to_string()
+                    } else {
+                        format!("{}.{}", path, key)
+                    };
+                    if key.contains('_') {
+                        return Some(next_path);
+                    }
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            JsonValue::Array(items) => {
+                for (idx, nested) in items.iter().enumerate() {
+                    let next_path = if path.is_empty() {
+                        format!("[{}]", idx)
+                    } else {
+                        format!("{}[{}]", path, idx)
+                    };
+                    if let Some(found) = visit(nested, &next_path) {
+                        return Some(found);
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    visit(value, "")
 }
 
 /// Token bucket rate limiter for per-connection rate limiting
@@ -282,6 +323,18 @@ impl DeviceLinkWs {
             }
         };
 
+        if let Some(path) = find_snake_case_key(&parsed) {
+            warn!(
+                connection_id = %self.connection_id,
+                user_id = ?self.user_id,
+                device_id = ?self.device_id,
+                offending_key = %path,
+                "Rejecting message with snake_case keys"
+            );
+            self.send_error("invalidPayload", "Payload keys must be camelCase", ctx);
+            return;
+        }
+
         let message_type = parsed
             .get("type")
             .and_then(|v| v.as_str())
@@ -322,17 +375,29 @@ impl DeviceLinkWs {
                     "Received pong message from client"
                 );
             }
-            "relay" => {
-                let msg = HandleRelayMessageInternal { payload: parsed };
+            "rpc.request" => {
+                let msg = HandleRpcRequestInternal { payload: parsed };
                 addr.do_send(msg);
             }
-            "relay_response" => {
-                let msg = HandleRelayResponseMessage { payload: parsed };
+            "rpc.response" => {
+                let msg = HandleRpcResponseMessage { payload: parsed };
                 addr.do_send(msg);
             }
             "event" => {
                 let msg = HandleEventMessage { payload: parsed };
                 addr.do_send(msg);
+            }
+            "event-ack" => {
+                let last_event_id = parsed
+                    .get("payload")
+                    .and_then(|v| v.get("lastEventId"))
+                    .and_then(|v| v.as_u64());
+
+                if let (Some(event_id), Some(user_id), Some(device_id), Some(connection_manager)) =
+                    (last_event_id, self.user_id, self.device_id.as_deref(), &self.connection_manager)
+                {
+                    connection_manager.update_last_event_ack(&user_id, device_id, event_id);
+                }
             }
             "terminal.binary.bind" => {
                 let msg = HandleTerminalBinaryBind { payload: parsed };
@@ -400,18 +465,19 @@ impl Actor for DeviceLinkWs {
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager)
         {
-            let status_event = serde_json::json!({
-                "type": "device-status",
-                "payload": {
-                    "deviceId": device_id,
-                    "status": "disconnected",
-                    "reason": "ws_closed"
-                }
+            let status_payload = serde_json::json!({
+                "deviceId": device_id,
+                "status": "disconnected",
+                "reason": "ws_closed"
             });
 
             let device_message = DeviceMessage {
-                message_type: "device-status".to_string(),
-                payload: status_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+                message_type: "event".to_string(),
+                payload: serde_json::json!({
+                    "eventType": "device-status",
+                    "payload": status_payload
+                }),
+                event_id: None,
                 target_device_id: None,
                 source_device_id: Some(device_id.clone()),
                 timestamp: chrono::Utc::now(),
@@ -483,7 +549,7 @@ impl Handler<RelayMessage> for DeviceLinkWs {
         );
 
         if let Ok(obj) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&msg.message) {
-            if !obj.contains_key("type") && !obj.contains_key("messageType") {
+            if !obj.contains_key("type") {
                 warn!(
                     connection_id = %self.connection_id,
                     log_stage = "relay:invalid_message",
@@ -552,13 +618,8 @@ impl StreamHandler<Result<Message, ws::ProtocolError>> for DeviceLinkWs {
                         connection_id = %self.connection_id,
                         user_id = ?self.user_id,
                         device_id = ?self.device_id,
-                        "Rate limit exceeded; closing WebSocket"
+                        "Rate limit exceeded; dropping message"
                     );
-                    ctx.close(Some(CloseReason {
-                        code: CloseCode::Policy,
-                        description: Some("rate limit exceeded".into()),
-                    }));
-                    ctx.stop();
                     return;
                 }
 
@@ -661,13 +722,13 @@ struct HandleHeartbeatMessage {
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct HandleRelayMessageInternal {
+struct HandleRpcRequestInternal {
     payload: JsonValue,
 }
 
 #[derive(Message)]
 #[rtype(result = "()")]
-struct HandleRelayResponseMessage {
+struct HandleRpcResponseMessage {
     payload: JsonValue,
 }
 
@@ -706,20 +767,14 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         let payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
             Some(p) => p,
             None => {
-                // Payload is at root level - use root directly
-                match msg.payload.as_object() {
-                    Some(p) => p,
-                    None => {
-                        warn!(
-                            connection_id = %self.connection_id,
-                            log_stage = "register:early_return",
-                            code = "invalid_payload",
-                            "Registration failed: invalid payload structure"
-                        );
-                        self.send_error("invalidPayload", "Invalid payload structure in register message", ctx);
-                        return;
-                    }
-                }
+                warn!(
+                    connection_id = %self.connection_id,
+                    log_stage = "register:early_return",
+                    code = "invalid_payload",
+                    "Registration failed: missing payload object"
+                );
+                self.send_error("invalidPayload", "Missing payload object in register message", ctx);
+                return;
             }
         };
 
@@ -749,6 +804,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 return;
             }
         };
+        let normalized_device_id = device_id.to_lowercase();
 
         let device_name = payload
             .get("deviceName")
@@ -819,7 +875,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                                 addr.do_send(RelayMessage {
                                     message: serde_json::json!({
                                         "type": "error",
-                                        "code": "device_ownership_failed",
+                                        "code": "deviceOwnershipFailed",
                                         "message": "Device does not belong to authenticated user",
                                         "timestamp": chrono::Utc::now()
                                     })
@@ -872,9 +928,11 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         // Check for resume attempt
         let resume_session_id = payload.get("sessionId").and_then(|v| v.as_str());
         let resume_token_param = payload.get("resumeToken").and_then(|v| v.as_str());
+        let last_event_id = payload.get("lastEventId").and_then(|v| v.as_u64()).unwrap_or(0);
 
         // Track whether session was resumed for consolidated response
-        let was_resumed = if let (Some(sid), Some(token), Some(relay_store)) =
+        let mut was_resumed = false;
+        if let (Some(sid), Some(token), Some(relay_store)) =
             (resume_session_id, resume_token_param, &self.relay_store)
         {
             // STEP 1.3: Log resume attempt
@@ -887,7 +945,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             );
 
             // Attempt to resume existing session
-            if let Some(expires_at) = relay_store.validate_resume(&user_id, &device_id, sid, token)
+            if let Some(expires_at) = relay_store.validate_resume(&user_id, &normalized_device_id, sid, token)
             {
                 // Resume successful - store session metadata
                 self.session_id = Some(sid.to_string());
@@ -903,48 +961,27 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     log_stage = "register:session_resumed",
                     "Device session resumed successfully"
                 );
-                true
+                was_resumed = true;
             } else {
-                // Resume failed - send explicit error before creating new session
+                // Resume failed - send explicit error and require fresh registration
                 warn!(
                     connection_id = %self.connection_id,
                     user_id = %user_id,
                     device_id = %device_id,
                     log_stage = "register:resume_failed",
-                    "Session resume failed, sending error and creating new session"
+                    "Session resume failed, sending error and awaiting re-registration"
                 );
                 self.send_error("invalidResume", "Session resume failed, please re-register", ctx);
-
-                // Create new session for backward compatibility
-                if let Some(relay_store) = &self.relay_store {
-                    let (new_session_id, new_resume_token, expires_at) =
-                        relay_store.create_session(&user_id, &device_id);
-                    self.session_id = Some(new_session_id);
-                    self.resume_token = Some(new_resume_token);
-                    self.expires_at = Some(expires_at);
-
-                    // STEP 1.5: Log session creation in resume path
-                    info!(
-                        connection_id = %self.connection_id,
-                        user_id = %user_id,
-                        device_id = %device_id,
-                        log_stage = "register:session_created",
-                        "New session created after failed resume"
-                    );
-                } else {
-                    warn!(
-                        connection_id = %self.connection_id,
-                        user_id = %user_id,
-                        "Relay store unavailable, proceeding without session"
-                    );
-                }
-                false
+                self.session_id = None;
+                self.resume_token = None;
+                self.expires_at = None;
+                return;
             }
         } else {
             // Normal registration flow - create new session
             if let Some(relay_store) = &self.relay_store {
                 let (session_id, resume_token, expires_at) =
-                    relay_store.create_session(&user_id, &device_id);
+                    relay_store.create_session(&user_id, &normalized_device_id);
                 self.session_id = Some(session_id);
                 self.resume_token = Some(resume_token);
                 self.expires_at = Some(expires_at);
@@ -964,7 +1001,6 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                     "Relay store unavailable, proceeding without session"
                 );
             }
-            false
         };
 
         info!(
@@ -976,7 +1012,6 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
         );
 
         // Normalize device_id to lowercase for consistent lookups
-        let normalized_device_id = device_id.to_lowercase();
         self.device_id = Some(normalized_device_id.clone());
         self.device_name = Some(device_name.clone());
 
@@ -1109,6 +1144,27 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 "Connection registered with connection manager"
             );
 
+            let cm = connection_manager.clone();
+            let uid = user_id;
+            let device_id_for_replay = normalized_device_id.clone();
+            ctx.spawn(
+                async move {
+                    let sent = cm
+                        .send_buffered_events_since(&uid, &device_id_for_replay, last_event_id)
+                        .await;
+                    if sent > 0 {
+                        info!(
+                            user_id = %uid,
+                            device_id = %device_id_for_replay,
+                            last_event_id = last_event_id,
+                            replay_count = sent,
+                            "Replayed buffered relay events"
+                        );
+                    }
+                }
+                .into_actor(self),
+            );
+
             // Drain pending commands for desktop devices
             if self.client_type.as_deref() == Some("desktop") {
                 let key = (user_id.to_string(), normalized_device_id.clone());
@@ -1185,17 +1241,18 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
             }
 
             // After connection manager registration, broadcast device-status event
-            let status_event = serde_json::json!({
-                "type": "device-status",
-                "payload": {
-                    "deviceId": device_id,
-                    "status": "online"
-                }
+            let status_payload = serde_json::json!({
+                "deviceId": device_id,
+                "status": "online"
             });
 
             let device_message = DeviceMessage {
-                message_type: "device-status".to_string(),
-                payload: status_event.get("payload").cloned().unwrap_or(serde_json::json!({})),
+                message_type: "event".to_string(),
+                payload: serde_json::json!({
+                    "eventType": "device-status",
+                    "payload": status_payload
+                }),
+                event_id: None,
                 target_device_id: None,
                 source_device_id: Some(device_id.clone()),
                 timestamp: chrono::Utc::now(),
@@ -1241,18 +1298,30 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleHeartbeatMessage, ctx: &mut Self::Context) -> Self::Result {
+        let payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
+            Some(p) => p,
+            None => {
+                self.send_error("invalidPayload", "Missing heartbeat payload object", ctx);
+                return;
+            }
+        };
+
         // Touch relay session to extend TTL
         if let (Some(session_id), Some(relay_store)) = (&self.session_id, &self.relay_store) {
             relay_store.touch(session_id);
         }
 
         // Extract and broadcast activeSessionId hint to peers
-        if let Some(active_session_id) = msg.payload.get("activeSessionId").and_then(|v| v.as_str()) {
+        if let Some(active_session_id) = payload.get("activeSessionId").and_then(|v| v.as_str()) {
             if !active_session_id.is_empty() {
                 if let (Some(user_id), Some(connection_manager)) = (self.user_id, &self.connection_manager) {
                     let hint_msg = DeviceMessage {
-                        message_type: "active-session-changed".to_string(),
-                        payload: serde_json::json!({ "sessionId": active_session_id }),
+                        message_type: "event".to_string(),
+                        payload: serde_json::json!({
+                            "eventType": "active-session-changed",
+                            "payload": { "sessionId": active_session_id }
+                        }),
+                        event_id: None,
                         target_device_id: None,
                         source_device_id: self.device_id.clone(),
                         timestamp: chrono::Utc::now(),
@@ -1272,24 +1341,20 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
 
         if let (Some(device_id), Some(device_repo)) = (&self.device_id, &self.device_repository) {
             let heartbeat = HeartbeatRequest {
-                cpu_usage: msg
-                    .payload
+                cpu_usage: payload
                     .get("cpuUsage")
                     .and_then(|v| v.as_f64())
                     .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-                memory_usage: msg
-                    .payload
+                memory_usage: payload
                     .get("memoryUsage")
                     .and_then(|v| v.as_f64())
                     .and_then(|v| BigDecimal::from_str(&v.to_string()).ok()),
-                disk_space_gb: msg.payload.get("diskSpaceGb").and_then(|v| v.as_i64()),
-                active_jobs: msg
-                    .payload
+                disk_space_gb: payload.get("diskSpaceGb").and_then(|v| v.as_i64()),
+                active_jobs: payload
                     .get("activeJobs")
                     .and_then(|v| v.as_i64())
                     .unwrap_or(0) as i32,
-                status: msg
-                    .payload
+                status: payload
                     .get("status")
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string()),
@@ -1321,64 +1386,58 @@ impl Handler<HandleHeartbeatMessage> for DeviceLinkWs {
                 connection_manager.update_last_seen(&user_id, device_id);
             }
         }
+
+        // Lightweight keepalive response for clients without WS ping visibility
+        ctx.text(serde_json::json!({ "type": "pong" }).to_string());
     }
 }
 
 /// Expected Message Schemas:
 ///
-/// Mobile → Server (Relay):
+/// Mobile → Server (RPC Request):
 /// {
-///   "type": "relay",
+///   "type": "rpc.request",
 ///   "payload": {
-///     "targetDeviceId": "<desktop-uuid>",
-///     "messageType": "rpc",
-///     "payload": {
-///       "method": "<method-name>",
-///       "params": {...},
-///       "id": "<correlation-id>"
-///     }
-///   }
-/// }
-///
-/// Server → Desktop (Relay):
-/// {
-///   "type": "relay",
-///   "clientId": "<mobile-uuid>",
-///   "request": {
+///     "id": "<request-id>",
 ///     "method": "<method-name>",
 ///     "params": {...},
-///     "correlationId": "<correlation-id>"
+///     "idempotencyKey": "<optional>"
 ///   }
 /// }
 ///
-/// Desktop → Server (RelayResponse):
+/// Server → Desktop (RPC Request):
 /// {
-///   "type": "relay_response",
-///   "clientId": "<desktop-uuid>",
-///   "response": {
-///     "correlationId": "<correlation-id>",
+///   "type": "rpc.request",
+///   "payload": {
+///     "clientId": "<mobile-uuid>",
+///     "userId": "<user-id>",
+///     "id": "<request-id>",
+///     "method": "<method-name>",
+///     "params": {...},
+///     "idempotencyKey": "<optional>"
+///   }
+/// }
+///
+/// Desktop → Server (RPC Response):
+/// {
+///   "type": "rpc.response",
+///   "payload": {
+///     "clientId": "<mobile-uuid>",
+///     "id": "<request-id>",
 ///     "result": {...} | null,
-///     "error": "<error-message>" | null,
+///     "error": { "code": <int>, "message": "<string>" } | null,
 ///     "isFinal": true
 ///   }
 /// }
-impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
+impl Handler<HandleRpcRequestInternal> for DeviceLinkWs {
     type Result = ();
 
-    fn handle(&mut self, msg: HandleRelayMessageInternal, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: HandleRpcRequestInternal, ctx: &mut Self::Context) -> Self::Result {
         if let (Some(session_id), Some(relay_store)) = (&self.session_id, &self.relay_store) {
             relay_store.touch(session_id);
         }
 
-        let root = match msg.payload.as_object() {
-            Some(obj) => obj,
-            None => {
-                self.send_error("invalidPayload", "Root must be an object", ctx);
-                return;
-            }
-        };
-
-        let outer = match root.get("payload").and_then(|v| v.as_object()) {
+        let outer = match msg.payload.get("payload").and_then(|v| v.as_object()) {
             Some(obj) => obj,
             None => {
                 self.send_error("invalidPayload", "Missing payload object", ctx);
@@ -1386,23 +1445,7 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             }
         };
 
-        let target_device_id = match outer.get("targetDeviceId").and_then(|v| v.as_str()) {
-            Some(id) if !id.trim().is_empty() => id,
-            _ => {
-                self.send_error("missingTargetDeviceId", "Missing or empty targetDeviceId", ctx);
-                return;
-            }
-        };
-
-        let request_obj = match outer.get("request").and_then(|v| v.as_object()) {
-            Some(obj) => obj,
-            None => {
-                self.send_error("invalidRpcPayload", "Missing request object", ctx);
-                return;
-            }
-        };
-
-        let method = match request_obj.get("method").and_then(|v| v.as_str()) {
+        let method = match outer.get("method").and_then(|v| v.as_str()) {
             Some(m) if !m.trim().is_empty() => m,
             _ => {
                 self.send_error("missingMethod", "Missing or empty method", ctx);
@@ -1410,14 +1453,15 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             }
         };
 
-        let mut params = request_obj.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
+        let mut params = outer.get("params").cloned().unwrap_or_else(|| serde_json::json!({}));
 
-        let correlation_id = request_obj.get("correlationId")
+        let request_id = outer
+            .get("id")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-        let idempotency_key = request_obj.get("idempotencyKey").cloned();
+        let idempotency_key = outer.get("idempotencyKey").cloned();
 
         if method == "session.syncHistoryState" {
             let params_obj = match params.as_object() {
@@ -1466,30 +1510,6 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
             }
         }
 
-        let authenticated_user_id = self.user_id.map(|id| id.to_string()).unwrap_or_default();
-
-        let mut request = serde_json::json!({
-            "method": method,
-            "params": params,
-            "correlationId": correlation_id
-        });
-
-        if let Some(key) = idempotency_key {
-            if let Some(req_obj) = request.as_object_mut() {
-                req_obj.insert("idempotencyKey".to_string(), key);
-            }
-        }
-
-        let forward = serde_json::json!({
-            "type": "relay",
-            "clientId": self.device_id.clone().unwrap_or_default(),
-            "userId": authenticated_user_id,
-            "request": request
-        });
-
-        let envelope_str = forward.to_string();
-
-        // 6. Forward via send_raw_to_device
         if let Some(connection_manager) = &self.connection_manager {
             let user_id = match self.user_id {
                 Some(id) => id,
@@ -1499,79 +1519,81 @@ impl Handler<HandleRelayMessageInternal> for DeviceLinkWs {
                 }
             };
 
-            let connection_manager_clone = connection_manager.clone();
-            let target_id = target_device_id.to_string();
-            let addr = ctx.address();
-            let correlation_id_clone = correlation_id.clone();
-            let device_id_clone = self.device_id.clone().unwrap_or_default();
-
-            ctx.spawn(
-                async move {
-                    match connection_manager_clone.send_raw_to_device(
-                        &user_id,
-                        &target_id,
-                        &envelope_str,
-                    ) {
-                        Ok(_) => {
-                            debug!("Relay envelope forwarded successfully to {}", target_id);
+            let target_id = match connection_manager.get_primary_desktop_device_id(&user_id) {
+                Some(id) => id,
+                None => {
+                    let error_response = serde_json::json!({
+                        "type": "rpc.response",
+                        "payload": {
+                            "id": request_id,
+                            "result": null,
+                            "error": {
+                                "code": -32010,
+                                "message": "Desktop is offline"
+                            },
+                            "isFinal": true
                         }
-                        Err(e) => {
-                            warn!(
-                                error = %e,
-                                target_device = %target_id,
-                                user_id = %user_id,
-                                "Failed to forward relay message to target device, queueing for later delivery"
-                            );
-
-                            // Queue the message for later delivery when desktop comes online
-                            let key = (user_id.to_string(), target_id.clone());
-                            if let Ok(envelope_value) = serde_json::from_str::<serde_json::Value>(&envelope_str) {
-                                queue().enqueue(key, envelope_value);
-
-                                let queued_response = serde_json::json!({
-                                    "type": "relay_response",
-                                    "clientId": device_id_clone,
-                                    "response": {
-                                        "correlationId": correlation_id_clone,
-                                        "result": {
-                                            "queued": true,
-                                            "message": "Desktop is offline. Command will be delivered when it comes online."
-                                        },
-                                        "error": null,
-                                        "isFinal": true
-                                    }
-                                });
-                                addr.do_send(RelayMessage {
-                                    message: queued_response.to_string(),
-                                });
-                            } else {
-                                let error_response = serde_json::json!({
-                                    "type": "relay_response",
-                                    "clientId": device_id_clone,
-                                    "response": {
-                                        "correlationId": correlation_id_clone,
-                                        "result": null,
-                                        "error": "relayFailed",
-                                        "isFinal": true
-                                    }
-                                });
-                                addr.do_send(RelayMessage {
-                                    message: error_response.to_string(),
-                                });
-                            }
-                        }
-                    }
+                    });
+                    ctx.text(error_response.to_string());
+                    return;
                 }
-                .into_actor(self),
-            );
+            };
+
+            let mut request_payload = serde_json::json!({
+                "id": request_id,
+                "method": method,
+                "params": params,
+                "clientId": self.device_id.clone().unwrap_or_default(),
+                "userId": user_id.to_string()
+            });
+
+            if let Some(key) = idempotency_key {
+                if let Some(obj) = request_payload.as_object_mut() {
+                    obj.insert("idempotencyKey".to_string(), key);
+                }
+            }
+
+            let forward = serde_json::json!({
+                "type": "rpc.request",
+                "payload": request_payload
+            });
+
+            let envelope_str = forward.to_string();
+
+            if let Err(e) = connection_manager.send_raw_to_device(
+                &user_id,
+                &target_id,
+                &envelope_str,
+            ) {
+                warn!(
+                    error = %e,
+                    target_device = %target_id,
+                    user_id = %user_id,
+                    "Failed to forward rpc.request to desktop"
+                );
+
+                let error_response = serde_json::json!({
+                    "type": "rpc.response",
+                    "payload": {
+                        "id": request_id,
+                        "result": null,
+                        "error": {
+                            "code": -32010,
+                            "message": "Desktop is offline"
+                        },
+                        "isFinal": true
+                    }
+                });
+                ctx.text(error_response.to_string());
+            }
         }
     }
 }
 
-impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
+impl Handler<HandleRpcResponseMessage> for DeviceLinkWs {
     type Result = ();
 
-    fn handle(&mut self, msg: HandleRelayResponseMessage, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: HandleRpcResponseMessage, ctx: &mut Self::Context) -> Self::Result {
         // Validate authentication
         let user_id = match self.user_id {
             Some(id) => id,
@@ -1586,29 +1608,39 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
             return;
         }
 
-        let client_id = match msg.payload.get("clientId").and_then(|v| v.as_str()) {
-            Some(id) => id,
+        let payload_obj = match msg.payload.get("payload").and_then(|v| v.as_object()) {
+            Some(obj) => obj,
             None => {
                 self.send_error(
-                    "missingClientId",
-                    "Missing clientId in relay_response message",
+                    "invalidPayload",
+                    "Missing payload in rpc.response message",
                     ctx,
                 );
                 return;
             }
         };
 
-        let response_payload = msg
-            .payload
-            .get("response")
-            .cloned()
-            .unwrap_or(JsonValue::Null);
+        let client_id = match payload_obj.get("clientId").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => {
+                self.send_error(
+                    "missingClientId",
+                    "Missing clientId in rpc.response message",
+                    ctx,
+                );
+                return;
+            }
+        };
+
+        let mut response_payload = JsonValue::Object(payload_obj.clone());
+        if let Some(obj) = response_payload.as_object_mut() {
+            obj.remove("clientId");
+        }
 
         if let Some(connection_manager) = &self.connection_manager {
             let relay_response = serde_json::json!({
-                "type": "relay_response",
-                "clientId": client_id,
-                "response": response_payload
+                "type": "rpc.response",
+                "payload": response_payload
             });
 
             let client_id_str = client_id.to_string();
@@ -1634,11 +1666,6 @@ impl Handler<HandleRelayResponseMessage> for DeviceLinkWs {
                         error = %e,
                         "Failed to forward relay response"
                     );
-                    self.send_error(
-                        "relayFailed",
-                        &format!("Failed to forward relay response: {}", e),
-                        ctx,
-                    );
                 }
             }
         }
@@ -1649,54 +1676,51 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
     type Result = ();
 
     fn handle(&mut self, msg: HandleEventMessage, ctx: &mut Self::Context) -> Self::Result {
-        // Accept both eventType (new) and messageType (legacy) for compatibility
-        let event_type = msg
-            .payload
-            .get("eventType")
-            .or_else(|| msg.payload.get("messageType"))
-            .and_then(|v| v.as_str())
-            .unwrap_or("event")
-            .to_string();
+        let root_payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
+            Some(obj) => obj,
+            None => {
+                self.send_error("invalidPayload", "Missing event payload object", ctx);
+                return;
+            }
+        };
 
-        let mut event_payload = msg
-            .payload
+        let event_type = match root_payload.get("eventType").and_then(|v| v.as_str()) {
+            Some(value) if !value.trim().is_empty() => value.to_string(),
+            _ => {
+                self.send_error("invalidPayload", "Missing eventType", ctx);
+                return;
+            }
+        };
+
+        let event_payload = root_payload
             .get("payload")
             .cloned()
             .unwrap_or(JsonValue::Null);
 
-        // Normalize payload identity for job events - ensure jobId and sessionId exist at payload level
-        // This enables all clients to deterministically route and merge events by stable identity
+        // Enforce canonical payload identity for job events
         if event_type.starts_with("job:") {
-            if let Some(payload_obj) = event_payload.as_object_mut() {
-                // Determine canonical jobId in priority order:
-                // 1. root.jobId
-                // 2. payload.jobId
-                // 3. payload.job.id
-                // 4. payload.job.jobId (defensive)
-                let canonical_job_id = msg.payload.get("jobId").cloned()
-                    .or_else(|| payload_obj.get("jobId").cloned())
-                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("id")).cloned())
-                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("jobId")).cloned());
-
-                // Determine canonical sessionId in priority order:
-                // 1. root.sessionId
-                // 2. payload.sessionId
-                // 3. payload.job.sessionId
-                let canonical_session_id = msg.payload.get("sessionId").cloned()
-                    .or_else(|| payload_obj.get("sessionId").cloned())
-                    .or_else(|| payload_obj.get("job").and_then(|j| j.get("sessionId")).cloned());
-
-                // Inject missing fields to ensure consistent identity at payload level
-                if let Some(job_id) = canonical_job_id {
-                    if !payload_obj.contains_key("jobId") {
-                        payload_obj.insert("jobId".to_string(), job_id);
-                    }
+            let payload_obj = match event_payload.as_object() {
+                Some(obj) => obj,
+                None => {
+                    self.send_error("invalidPayload", "Job events require an object payload", ctx);
+                    return;
                 }
-                if let Some(session_id) = canonical_session_id {
-                    if !payload_obj.contains_key("sessionId") {
-                        payload_obj.insert("sessionId".to_string(), session_id);
-                    }
-                }
+            };
+
+            let job_id_ok = payload_obj
+                .get("jobId")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+            let session_id_ok = payload_obj
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false);
+
+            if !job_id_ok || !session_id_ok {
+                self.send_error("invalidPayload", "Job events must include jobId and sessionId", ctx);
+                return;
             }
         }
 
@@ -1717,10 +1741,21 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
                 );
                 if active_status {
                     if let Some(session_id) = event_payload.get("sessionId").and_then(|v| v.as_str()) {
+                        let project_directory = extract_project_directory(&event_payload);
                         if let Some(connection_manager) = &self.connection_manager {
+                            let mut hint_payload = serde_json::json!({ "sessionId": session_id });
+                            if let Some(project_directory) = project_directory {
+                                if let Some(obj) = hint_payload.as_object_mut() {
+                                    obj.insert("projectDirectory".to_string(), JsonValue::String(project_directory));
+                                }
+                            }
                             let hint_msg = DeviceMessage {
-                                message_type: "active-session-changed".to_string(),
-                                payload: serde_json::json!({ "sessionId": session_id }),
+                                message_type: "event".to_string(),
+                                payload: serde_json::json!({
+                                    "eventType": "active-session-changed",
+                                    "payload": hint_payload
+                                }),
+                                event_id: None,
                                 target_device_id: None,
                                 source_device_id: self.device_id.clone(),
                                 timestamp: chrono::Utc::now(),
@@ -1741,10 +1776,21 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
         } else if event_type == "job:created" {
             if let Some(job) = event_payload.get("job") {
                 if let Some(session_id) = job.get("sessionId").and_then(|v| v.as_str()) {
+                    let project_directory = extract_project_directory(&event_payload);
                     if let Some(connection_manager) = &self.connection_manager {
+                        let mut hint_payload = serde_json::json!({ "sessionId": session_id });
+                        if let Some(project_directory) = project_directory {
+                            if let Some(obj) = hint_payload.as_object_mut() {
+                                obj.insert("projectDirectory".to_string(), JsonValue::String(project_directory));
+                            }
+                        }
                         let hint_msg = DeviceMessage {
-                            message_type: "active-session-changed".to_string(),
-                            payload: serde_json::json!({ "sessionId": session_id }),
+                            message_type: "event".to_string(),
+                            payload: serde_json::json!({
+                                "eventType": "active-session-changed",
+                                "payload": hint_payload
+                            }),
+                            event_id: None,
                             target_device_id: None,
                             source_device_id: self.device_id.clone(),
                             timestamp: chrono::Utc::now(),
@@ -1801,8 +1847,12 @@ impl Handler<HandleEventMessage> for DeviceLinkWs {
         if let Some(connection_manager) = &self.connection_manager {
             let source_device_id = self.device_id.clone();
             let event_message = DeviceMessage {
-                message_type: event_type.clone(),
-                payload: event_payload,
+                message_type: "event".to_string(),
+                payload: serde_json::json!({
+                    "eventType": event_type.clone(),
+                    "payload": event_payload
+                }),
+                event_id: None,
                 target_device_id: None,
                 source_device_id: source_device_id.clone(),
                 timestamp: chrono::Utc::now(),
@@ -1864,27 +1914,13 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             }
         };
 
-        let payload = msg.payload.get("payload")
-            .and_then(|v| v.as_object())
-            .or_else(|| msg.payload.as_object());
-
-        let payload = match payload {
+        let payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
             Some(p) => p,
             None => {
-                self.send_error("missingPayload", "Missing or invalid payload in terminal.binary.bind message", ctx);
+                self.send_error("missingPayload", "Missing payload in terminal.binary.bind message", ctx);
                 return;
             }
         };
-
-        let producer_device_id_original = match payload.get("producerDeviceId").and_then(|v| v.as_str()) {
-            Some(id) => id.to_string(),
-            None => {
-                self.send_error("missingProducerDeviceId", "Missing producerDeviceId in bind request", ctx);
-                return;
-            }
-        };
-
-        let producer_device_id = producer_device_id_original.to_lowercase();
 
         let session_id = match payload.get("sessionId").and_then(|v| v.as_str()) {
             Some(id) => id,
@@ -1899,20 +1935,13 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
             .unwrap_or(true);
 
         if let Some(connection_manager) = &self.connection_manager {
-            if !connection_manager.is_device_connected(&user_id, &producer_device_id) {
-                self.send_error("producerNotConnected", "Producer device not connected", ctx);
-                return;
-            }
-
-            if let Some(producer_conn) = connection_manager.get_connection(&user_id, &producer_device_id) {
-                if producer_conn.user_id != user_id {
-                    self.send_error("unauthorized", "Producer device belongs to different user", ctx);
+            let producer_device_id = match connection_manager.get_primary_desktop_device_id(&user_id) {
+                Some(id) => id,
+                None => {
+                    self.send_error("producerNotConnected", "Desktop is not connected", ctx);
                     return;
                 }
-            } else {
-                self.send_error("producerNotFound", "Producer device not found", ctx);
-                return;
-            }
+            };
 
             if let Some(consumer_device_id) = &self.device_id {
                 let consumer_device_id_normalized = consumer_device_id.to_lowercase();
@@ -1930,7 +1959,6 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                 let bind_message = serde_json::json!({
                     "type": "terminal.binary.bind",
                     "payload": {
-                        "consumerDeviceId": consumer_device_id_normalized,
                         "sessionId": session_id,
                         "includeSnapshot": include_snapshot
                     }
@@ -1947,7 +1975,16 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                         "Failed to forward bind request to producer"
                     );
                     self.send_error("forwardFailed", "Failed to forward bind request to producer", ctx);
+                    return;
                 }
+
+                let ack = serde_json::json!({
+                    "type": "terminal.binary.bound",
+                    "payload": {
+                        "sessionId": session_id
+                    }
+                });
+                ctx.text(ack.to_string());
             }
         }
     }
@@ -1965,11 +2002,7 @@ impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
             }
         };
 
-        let payload = msg.payload.get("payload")
-            .and_then(|v| v.as_object())
-            .or_else(|| msg.payload.as_object());
-
-        let payload = match payload {
+        let payload = match msg.payload.get("payload").and_then(|v| v.as_object()) {
             Some(p) => p,
             None => {
                 self.send_error("missingPayload", "Missing payload in terminal.binary.unbind message", ctx);
@@ -1985,40 +2018,36 @@ impl Handler<HandleTerminalBinaryUnbind> for DeviceLinkWs {
             }
         };
 
-        let producer_device_id = match payload.get("producerDeviceId").and_then(|v| v.as_str()) {
-            Some(id) => id.to_lowercase(),
-            None => {
-                self.send_error("missingProducerDeviceId", "Missing producerDeviceId in unbind request", ctx);
-                return;
-            }
-        };
-
         if let Some(connection_manager) = &self.connection_manager {
-            connection_manager.clear_binary_route_for_session(&user_id, &producer_device_id, session_id);
-            info!(
-                user_id = %user_id,
-                producer = %producer_device_id,
-                session_id = %session_id,
-                "Binary route cleared for session"
-            );
-
-            let unbind_msg = serde_json::json!({
-                "type": "terminal.binary.unbind",
-                "payload": {
-                    "sessionId": session_id
-                }
-            });
-            if let Err(e) = connection_manager.send_raw_to_device(
-                &user_id,
-                &producer_device_id,
-                &unbind_msg.to_string(),
-            ) {
-                warn!(
+            if let Some(producer_device_id) = connection_manager.get_primary_desktop_device_id(&user_id) {
+                connection_manager.clear_binary_route_for_session(&user_id, &producer_device_id, session_id);
+                info!(
+                    user_id = %user_id,
                     producer = %producer_device_id,
                     session_id = %session_id,
-                    error = %e,
-                    "Failed to forward unbind notification to producer"
+                    "Binary route cleared for session"
                 );
+
+                let unbind_msg = serde_json::json!({
+                    "type": "terminal.binary.unbind",
+                    "payload": {
+                        "sessionId": session_id
+                    }
+                });
+                if let Err(e) = connection_manager.send_raw_to_device(
+                    &user_id,
+                    &producer_device_id,
+                    &unbind_msg.to_string(),
+                ) {
+                    warn!(
+                        producer = %producer_device_id,
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to forward unbind notification to producer"
+                    );
+                }
+            } else {
+                self.send_error("producerNotConnected", "Desktop is not connected", ctx);
             }
         }
     }

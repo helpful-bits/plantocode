@@ -46,6 +46,15 @@
       "priority": 200
     },
     {
+      "id": "normalize_history_device_ids",
+      "from_version": "*",
+      "to_version": ">=1.0.0",
+      "migration_file": "migrations/cleanup/normalize_history_device_ids.sql",
+      "description": "Normalize task/file history device_id values to lowercase",
+      "required": false,
+      "priority": 210
+    },
+    {
       "id": "add_workflow_indexes",
       "from_version": "*",
       "to_version": ">=1.1.0",

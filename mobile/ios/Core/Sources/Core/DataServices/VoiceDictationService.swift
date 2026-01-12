@@ -265,7 +265,7 @@ public final class VoiceDictationService: ObservableObject {
                         return
                     }
 
-                    let durationMs = lastRecordingDurationMs ?? 1000
+                    let durationMs = max(1, lastRecordingDurationMs ?? 1000)
 
                     let job = TranscriptionJob(
                         id: UUID(),

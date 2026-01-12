@@ -79,8 +79,8 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
           const metadata = typeof job.metadata === 'string'
             ? JSON.parse(job.metadata)
             : job.metadata || {};
-          // Check for title in multiple places: planTitle, generated_title, displayName
-          const title = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
+          // Check for title in multiple places: planTitle, generatedTitle, displayName
+          const title = metadata.planTitle || metadata.generatedTitle || metadata.displayName || "";
           const description = metadata.description || "";
           const jobType = job.taskType === "implementation_plan_merge" ? "merge plan" : "implementation plan";
 
@@ -299,7 +299,7 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
                   const metadata = typeof job.metadata === 'string'
                     ? JSON.parse(job.metadata)
                     : job.metadata || {};
-                  planTitle = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
+                  planTitle = metadata.planTitle || metadata.generatedTitle || metadata.displayName || "";
                 } catch {
                   // Ignore parsing errors
                 }
@@ -356,8 +356,8 @@ export const MonitoringPanel = ({ onBack, onOpenTerminal }: MonitoringPanelProps
                   const metadata = typeof job.metadata === 'string'
                     ? JSON.parse(job.metadata)
                     : job.metadata || {};
-                  // Check for title in multiple places: planTitle, generated_title, displayName
-                  planTitle = metadata.planTitle || metadata.generated_title || metadata.displayName || "";
+                  // Check for title in multiple places: planTitle, generatedTitle, displayName
+                  planTitle = metadata.planTitle || metadata.generatedTitle || metadata.displayName || "";
                   planDescription = metadata.description || "";
                 } catch {
                   // Ignore parsing errors

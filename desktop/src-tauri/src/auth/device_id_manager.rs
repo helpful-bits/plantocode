@@ -40,9 +40,13 @@ pub fn get_or_create(app: &AppHandle) -> Result<String, AppError> {
     }
     let value = if let Ok(bytes) = fs::read(&path) {
         let id = String::from_utf8(bytes).unwrap_or_else(|_| Uuid::new_v4().to_string());
-        id.to_uppercase()
+        let normalized = id.to_lowercase();
+        if normalized != id {
+            let _ = fs::write(&path, &normalized);
+        }
+        normalized
     } else {
-        let v = Uuid::new_v4().to_string().to_uppercase();
+        let v = Uuid::new_v4().to_string().to_lowercase();
         let _ = fs::write(&path, &v);
         v
     };

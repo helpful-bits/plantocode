@@ -354,11 +354,11 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 };
 
                 let root_directories = response_json
-                    .get("root_directories")
+                    .get("rootDirectories")
                     .and_then(|v| v.as_array())
                     .ok_or_else(|| {
                         AppError::JobError(format!(
-                            "Missing or invalid 'root_directories' field in root folder selection job {}",
+                            "Missing or invalid 'rootDirectories' field in root folder selection job {}",
                             job_id
                         ))
                     })?;
@@ -370,7 +370,7 @@ pub(super) async fn extract_and_store_stage_data_internal(
                 );
 
                 serde_json::json!({
-                    "root_directories": root_directories,
+                    "rootDirectories": root_directories,
                     "directoryCount": root_directories.len()
                 })
             }

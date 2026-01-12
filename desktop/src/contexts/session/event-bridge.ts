@@ -1,4 +1,5 @@
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
+import { getSessionAction } from "@/actions";
 import { type HistoryState } from "@/actions/session/history.actions";
 
 /**
@@ -30,6 +31,7 @@ type Handlers = {
   onSessionUpdated?: (session: any) => void;
   onSessionDeleted?: (sessionId: string) => void;
   onSessionCreated?: (session: any) => void;
+  onRelayReplayGap?: (detail: any) => void;
 };
 
 let initialized = false;
@@ -40,6 +42,7 @@ const handlers = new Set<Handlers>();
 const lastAppliedSwitch = { sessionId: null as null | string };
 const historyStateChangedCallbacks = new Map<string, Set<(event: HistoryStateChangedEvent) => void>>();
 const lastHistorySeen = new Map<string, { version: number; checksum: string }>();
+const activeSessionLookup = new Set<string>();
 
 function emitHistoryChanged(detail: any) {
   const key = `${detail.sessionId}:${detail.kind}`;
@@ -70,6 +73,25 @@ function emitHistoryChanged(detail: any) {
   }
 }
 
+function emitRelayReplayGap(detail: any) {
+  window.dispatchEvent(
+    new CustomEvent('relay-replay-gap', {
+      detail,
+    })
+  );
+}
+
+function safeParseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function initSessionEventBridge() {
   if (initialized) return;
   initialized = true;
@@ -85,6 +107,23 @@ export async function initSessionEventBridge() {
           lastAppliedSwitch.sessionId = sessionId;
           handlers.forEach(h => h.onActiveSessionChanged?.(sessionId, projectDirectory));
         }
+      } else if (sessionId && !projectDirectory && !activeSessionLookup.has(sessionId)) {
+        activeSessionLookup.add(sessionId);
+        getSessionAction(sessionId)
+          .then((result) => {
+            activeSessionLookup.delete(sessionId);
+            const session = result.isSuccess ? result.data : null;
+            if (!session?.projectDirectory) {
+              return;
+            }
+            if (lastAppliedSwitch.sessionId !== sessionId) {
+              lastAppliedSwitch.sessionId = sessionId;
+              handlers.forEach(h => h.onActiveSessionChanged?.(sessionId, session.projectDirectory));
+            }
+          })
+          .catch(() => {
+            activeSessionLookup.delete(sessionId);
+          });
       }
       return;
     }
@@ -119,8 +158,8 @@ export async function initSessionEventBridge() {
           ...detail.state,
           entries: detail.state.entries.map((e: any) => ({
             ...e,
-            includedFiles: typeof e.includedFiles === 'string' ? JSON.parse(e.includedFiles) : e.includedFiles,
-            forceExcludedFiles: typeof e.forceExcludedFiles === 'string' ? JSON.parse(e.forceExcludedFiles) : e.forceExcludedFiles,
+            includedFiles: safeParseJsonArray(e.includedFiles),
+            forceExcludedFiles: safeParseJsonArray(e.forceExcludedFiles),
           })),
         };
       }
@@ -135,6 +174,16 @@ export async function initSessionEventBridge() {
       };
 
       emitHistoryChanged(transformedDetail);
+      return;
+    }
+
+    if (data.type === "event-replay-gap") {
+      const detail = {
+        ...(data.payload || {}),
+        relayOrigin: data.relayOrigin || "remote",
+      };
+      emitRelayReplayGap(detail);
+      handlers.forEach(h => h.onRelayReplayGap?.(detail));
       return;
     }
   });

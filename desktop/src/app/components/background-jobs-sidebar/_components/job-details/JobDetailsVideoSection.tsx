@@ -28,12 +28,12 @@ export function JobDetailsVideoSection() {
     return null;
   }
 
-  // Extract video path from metadata - check multiple locations
-  const videoPath = (parsedMetadata as any)?.videoPath || 
-                   (parsedMetadata as any)?.taskData?.videoPath || 
+  const jobPayloadForWorker = (parsedMetadata as any)?.jobPayloadForWorker;
+  const payloadData = jobPayloadForWorker?.type === "VideoAnalysis" ? jobPayloadForWorker.data : undefined;
+  const videoPath = (parsedMetadata as any)?.taskData?.videoPath ||
+                   payloadData?.videoPath ||
+                   (parsedMetadata as any)?.videoPath ||
                    (parsedMetadata as any)?.additionalParams?.videoPath ||
-                   (parsedMetadata as any)?.jobPayloadForWorker?.VideoAnalysis?.video_path ||
-                   (parsedMetadata as any)?.jobPayloadForWorker?.videoAnalysis?.video_path ||
                    null;
 
   useEffect(() => {

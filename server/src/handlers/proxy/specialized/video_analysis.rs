@@ -93,10 +93,10 @@ pub async fn video_analysis_handler(
         request_id: Some(final_request_id.clone()),
         metadata: Some(json!({
             "task": "video_analysis",
-            "task_type": "video_analysis",
-            "duration_ms": duration_ms,
+            "taskType": "video_analysis",
+            "durationMs": duration_ms,
             "status": "pending",
-            "original_request_id": request_id
+            "originalRequestId": request_id
         })),
         provider_reported_cost: Some(estimated_cost.clone()),
     };
@@ -246,11 +246,11 @@ pub async fn video_analysis_handler(
     // Finalize charge with actual usage
     let final_metadata = json!({
         "task": "video_analysis",
-        "duration_ms": duration_ms,
+        "durationMs": duration_ms,
         "status": "completed",
-        "upload_method": if file_size < INLINE_SIZE_LIMIT { "inline" } else { "file_api" },
-        "file_size_mb": file_size / (1024 * 1024),
-        "original_request_id": request_id
+        "uploadMethod": if file_size < INLINE_SIZE_LIMIT { "inline" } else { "file_api" },
+        "fileSizeMb": file_size / (1024 * 1024),
+        "originalRequestId": request_id
     });
 
     billing_service

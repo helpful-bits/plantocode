@@ -54,6 +54,27 @@ public struct ImplementationPlansView: View {
         planCreatorViewModel.localErrorMessage ?? jobsService.error?.localizedDescription
     }
 
+    private var shouldSuppressConnectionAlerts: Bool {
+        !multiConnectionManager.activeDeviceIsConnectedOrReconnecting
+    }
+
+    private func shouldShowErrorMessage(_ message: String) -> Bool {
+        if !shouldSuppressConnectionAlerts {
+            return true
+        }
+        return !isConnectionErrorMessage(message)
+    }
+
+    private func isConnectionErrorMessage(_ message: String) -> Bool {
+        let normalized = message.lowercased()
+        return normalized.contains("connection")
+            || normalized.contains("not connected")
+            || normalized.contains("offline")
+            || normalized.contains("relay")
+            || normalized.contains("network")
+            || normalized.contains("timeout")
+    }
+
     private var allPlanJobIds: [String] {
         plans.map { $0.jobId }
     }
@@ -243,7 +264,7 @@ public struct ImplementationPlansView: View {
             if !plans.isEmpty {
                 VStack(spacing: 0) {
                     // Show error as non-blocking banner if present
-                    if let errorMessage = errorMessage {
+                    if let errorMessage = errorMessage, shouldShowErrorMessage(errorMessage) {
                         StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)
                             .padding(.horizontal)
                             .padding(.top, Theme.Spacing.sm)
@@ -345,7 +366,7 @@ public struct ImplementationPlansView: View {
                 .background(Color.backgroundPrimary)
             }
             // Show error message only if no plans and not loading
-            else if let errorMessage = errorMessage {
+            else if let errorMessage = errorMessage, shouldShowErrorMessage(errorMessage) {
                 VStack {
                     Spacer()
                     StatusAlertView(variant: .destructive, title: "Error", message: errorMessage)

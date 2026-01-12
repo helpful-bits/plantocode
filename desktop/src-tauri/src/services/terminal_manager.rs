@@ -342,12 +342,8 @@ impl TerminalManager {
 
                         // Send raw binary to mobile via device link client
                         if let Some(client) = app.try_state::<Arc<crate::services::device_link_client::DeviceLinkClient>>() {
-                            let connected = client.is_connected();
-                            let bound = client.is_session_bound(&sid);
-                            if connected && bound {
-                                if let Err(e) = client.send_terminal_output_binary(&sid, &chunk) {
-                                    log::warn!("Failed to send terminal binary for session {}: {}", sid, e);
-                                }
+                            if let Err(e) = client.send_terminal_output_binary(&sid, &chunk) {
+                                log::warn!("Failed to send terminal binary for session {}: {}", sid, e);
                             }
                         }
                     }

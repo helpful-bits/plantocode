@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 /// Usage update information sent during streaming
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct UsageUpdate {
     pub request_id: String,
     pub tokens_input: i64,
@@ -25,21 +26,35 @@ pub enum StreamEvent {
     /// Usage update with token counts and cost
     UsageUpdate(UsageUpdate),
     /// Stream has started
-    StreamStarted { request_id: String },
+    StreamStarted {
+        #[serde(rename = "requestId")]
+        request_id: String,
+    },
     /// Stream was cancelled
-    StreamCancelled { request_id: String, reason: String },
+    StreamCancelled {
+        #[serde(rename = "requestId")]
+        request_id: String,
+        reason: String,
+    },
     /// Detailed error information
     ErrorDetails {
+        #[serde(rename = "requestId")]
         request_id: String,
         error: ErrorDetails,
     },
     /// Stream has completed successfully
     StreamCompleted {
+        #[serde(rename = "requestId")]
         request_id: String,
+        #[serde(rename = "finalCost")]
         final_cost: f64,
+        #[serde(rename = "tokensInput")]
         tokens_input: i64,
+        #[serde(rename = "tokensOutput")]
         tokens_output: i64,
+        #[serde(rename = "cacheReadTokens")]
         cache_read_tokens: i64,
+        #[serde(rename = "cacheWriteTokens")]
         cache_write_tokens: i64,
     },
 }

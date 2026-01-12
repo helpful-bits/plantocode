@@ -31,6 +31,7 @@ pub struct DesktopRuntimeAIConfig {
     pub tasks: BTreeMap<String, TaskSpecificModelConfig>,
     pub providers: Vec<ProviderWithModels>,
     pub max_concurrent_jobs: Option<u32>,
+    pub codex_cli: Option<DesktopCodexCliSettings>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +57,17 @@ pub struct DesktopModelInfo {
     pub price_cache_read: Option<String>,
     /// Price cache write per million tokens in USD
     pub price_cache_write: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesktopCodexCliSettings {
+    pub preferred_model: Option<String>,
+    pub mini_model: Option<String>,
+    pub fallback_model: Option<String>,
+    pub model_overrides: Option<HashMap<String, String>>,
+    pub reasoning_effort: Option<String>,
+    pub mini_reasoning_effort: Option<String>,
 }
 
 /// Load the complete DesktopRuntimeAIConfig from database for caching
@@ -170,10 +182,14 @@ pub async fn load_desktop_runtime_ai_config(
             AppError::Internal(format!("Failed to get AI settings from database: {}", e))
         })?;
 
+    let crate::db::repositories::settings_repository::DatabaseAIModelSettings {
+        tasks,
+        max_concurrent_jobs,
+        codex_cli,
+    } = task_configs;
+
     // Convert database types to response types
-    let tasks: BTreeMap<String, TaskSpecificModelConfig> = task_configs
-        .tasks
-        .into_iter()
+    let tasks: BTreeMap<String, TaskSpecificModelConfig> = tasks.into_iter()
         .map(|(key, db_config)| {
             (
                 key,
@@ -191,7 +207,15 @@ pub async fn load_desktop_runtime_ai_config(
     let config = DesktopRuntimeAIConfig {
         tasks,
         providers,
-        max_concurrent_jobs: task_configs.max_concurrent_jobs,
+        max_concurrent_jobs,
+        codex_cli: codex_cli.map(|settings| DesktopCodexCliSettings {
+            preferred_model: settings.preferred_model,
+            mini_model: settings.mini_model,
+            fallback_model: settings.fallback_model,
+            model_overrides: settings.model_overrides,
+            reasoning_effort: settings.reasoning_effort,
+            mini_reasoning_effort: settings.mini_reasoning_effort,
+        }),
     };
 
     info!(
