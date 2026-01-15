@@ -681,12 +681,13 @@ extension JobsDataService {
 
     /// Handle job:deleted event - removes job from canonical store and recomputes derived state
     func handleJobDeleted(jobId: String) {
-        // Remove from canonical store (single source of truth)
+        // Remove from both stores so summaries remain authoritative for list UI.
         jobsById.removeValue(forKey: jobId)
+        jobSummariesById.removeValue(forKey: jobId)
         lastAccumulatedLengths.removeValue(forKey: jobId)
 
-        // Recompute derived state (will update jobs array and jobsIndex)
-        recomputeDerivedState()
+        // Recompute from summaries so the list doesn't collapse if jobsById is sparse.
+        recomputeDerivedStateFromSummaries()
     }
 
     /// Handle jobs:list-invalidated event - triggers reconciliation

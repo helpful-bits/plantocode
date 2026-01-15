@@ -58,10 +58,10 @@ export function getByPath(obj: any, path: string): any {
 
 /**
  * Normalizes locale input to valid Locale type
- * Returns locale if valid (de, fr, es), otherwise returns 'en'
+ * Returns locale if valid, otherwise returns 'en'
  */
 export function normalizeLocale(input: string | undefined | null): Locale {
-  if (input === 'de' || input === 'fr' || input === 'es') return input;
+  if (input === 'de' || input === 'fr' || input === 'es' || input === 'ja' || input === 'ko') return input;
   return 'en';
 }
 
@@ -77,13 +77,15 @@ export function getLocaleFromHeaders(headers: Headers): Locale {
 
 /**
  * Parses locale from URL pathname
- * Returns locale for /de, /fr, /es or /{locale}/*, otherwise 'en'
+ * Returns locale for /{locale} or /{locale}/*, otherwise 'en'
  * This is the source of truth for locale
  */
 export function getLocaleFromPath(pathname: string): Locale {
   if (pathname === '/de' || pathname.startsWith('/de/')) return 'de';
   if (pathname === '/fr' || pathname.startsWith('/fr/')) return 'fr';
   if (pathname === '/es' || pathname.startsWith('/es/')) return 'es';
+  if (pathname === '/ja' || pathname.startsWith('/ja/')) return 'ja';
+  if (pathname === '/ko' || pathname.startsWith('/ko/')) return 'ko';
   return 'en';
 }
 
@@ -182,6 +184,22 @@ const JSON_IMPORTS: Record<string, () => Promise<any>> = {
   'es/pages': () => import('@/messages/es/pages.json'),
   'es/legal': () => import('@/messages/es/legal.json'),
   'es/seo': () => import('@/messages/es/seo.json'),
+  // ja
+  'ja/common': () => import('@/messages/ja/common.json'),
+  'ja/home': () => import('@/messages/ja/home.json'),
+  'ja/features': () => import('@/messages/ja/features.json'),
+  'ja/docs': () => import('@/messages/ja/docs.json'),
+  'ja/pages': () => import('@/messages/ja/pages.json'),
+  'ja/legal': () => import('@/messages/ja/legal.json'),
+  'ja/seo': () => import('@/messages/ja/seo.json'),
+  // ko
+  'ko/common': () => import('@/messages/ko/common.json'),
+  'ko/home': () => import('@/messages/ko/home.json'),
+  'ko/features': () => import('@/messages/ko/features.json'),
+  'ko/docs': () => import('@/messages/ko/docs.json'),
+  'ko/pages': () => import('@/messages/ko/pages.json'),
+  'ko/legal': () => import('@/messages/ko/legal.json'),
+  'ko/seo': () => import('@/messages/ko/seo.json'),
 };
 
 /**

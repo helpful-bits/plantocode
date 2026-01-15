@@ -606,7 +606,7 @@ pub struct PathFinderRequestArgs {
     pub max_tokens: Option<u32>,
     pub include_file_contents: Option<bool>,
     pub included_files: Option<Vec<String>>,
-    pub excluded_files: Option<Vec<String>>,
+    pub force_excluded_files: Option<Vec<String>>,
 }
 
 // Request arguments for read_implementation_plan command

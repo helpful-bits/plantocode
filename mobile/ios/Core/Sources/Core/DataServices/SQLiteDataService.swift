@@ -22,7 +22,9 @@ public class SQLiteDataService: ObservableObject {
     ) {
         self.apiClient = apiClient
         self.cacheManager = cacheManager
-        loadTemplates()
+        // Note: loadTemplates() removed from init - it was causing 401 errors
+        // because it fires before authentication is ready.
+        // Templates will be loaded on-demand when getTemplates() is called.
     }
 
     // MARK: - Public Methods

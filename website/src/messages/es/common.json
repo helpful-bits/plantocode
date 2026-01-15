@@ -18,7 +18,8 @@
   },
   "cta": {
     "download": "Descargar",
-    "talkToArchitect": "Hablar con un Experto"
+    "talkToArchitect": "Hablar con un Experto",
+    "viewSource": "Ver código fuente"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +80,10 @@
     "support": "Soporte",
     "tagline": "Planifica e implementa cambios de código - encuentra archivos, genera y fusiona planes de IA, ejecútalos en un terminal persistente.",
     "talkToArchitect": "Hablar con un Experto",
-    "terms": "Términos"
+    "terms": "Términos",
+    "evolution": "Evolución",
+    "runtimeWalkthrough": "Recorrido del runtime",
+    "sourceCode": "Código fuente"
   },
   "label": {
     "english": "Inglés",
@@ -101,7 +105,18 @@
     "docs": "Documentación",
     "downloads": "Descargas",
     "features": "Características",
-    "solutions": "Soluciones"
+    "solutions": "Soluciones",
+    "architecture": "Arquitectura",
+    "runtimeWalkthrough": "Recorrido del runtime",
+    "more": "Más",
+    "evolution": "Evolución",
+    "source": "Código fuente",
+    "evolutionDescription": "Cómo ha evolucionado la arquitectura con el tiempo",
+    "downloadsDescription": "Obtén las últimas versiones",
+    "supportDescription": "Soporte comunitario y recursos",
+    "changelogDescription": "Actualizaciones y lanzamientos recientes",
+    "aboutDescription": "Sobre el proyecto y el equipo",
+    "sourceDescription": "Explora el código fuente completo en GitHub"
   },
   "solution": {
     "hardBugs": {
@@ -120,5 +135,12 @@
       "description": "Limpieza de deuda técnica",
       "label": "Mantenimiento"
     }
+  },
+  "videoButton": {
+    "label": "Ver video de recorrido"
+  },
+  "videoModal": {
+    "closeLabel": "Cerrar video",
+    "unsupported": "Tu navegador no soporta la etiqueta de video."
   }
 }

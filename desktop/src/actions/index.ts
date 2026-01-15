@@ -16,3 +16,4 @@ export * from "./path-finder";
 export * from "./project-settings.actions";
 export * from "./session";
 export * from "./voice-transcription";
+export * from "./project-directory";

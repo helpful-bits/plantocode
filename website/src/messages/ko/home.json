@@ -165,53 +165,9 @@
     "title": "인간 참여형 거버넌스"
   },
   "hero": {
-    "titleLine1": "복잡한 변경 사항 계획",
-    "titleLine2": "아키텍트 수준의 정밀도로",
-    "subtitle": "[b]AI 아키텍트[/b]가 정확한 파일 경로와 함께 상세한 구현 계획을 생성합니다. 실행 전에 모든 변경 사항을 검토하고 승인합니다. [b]클린 아키텍처[/b].",
     "cta": {
       "viewDemo": "데모 보기",
-      "howItWorks": "작동 방식 보기"
-    },
-    "panel1": {
-      "title": "명확화 및 범위 설정",
-      "description": "선택적 AI 개선 기능을 갖춘 음성 또는 텍스트 입력. 이 작업과 특별히 관련된 파일을 격리합니다.",
-      "descriptionDesktop": "음성 또는 텍스트로 시작합니다. 선택적 텍스트 개선 및 작업 개선에 AI를 사용합니다. 그런 다음 대상 검색을 통해 정확한 파일 범위를 지정합니다.",
-      "link": "작동 방식 보기",
-      "linkDesktop": "검색 탐색",
-      "features": {
-        "voice": "음성 받아쓰기",
-        "textImprovement": "텍스트 개선",
-        "taskRefinement": "작업 개선",
-        "fileDiscovery": "대상 파일 검색",
-        "scopedSelection": "작업별 선택"
-      }
-    },
-    "panel2": {
-      "title": "다중 관점",
-      "description": "동일한 작업, 동일한 파일, 동일한 컨텍스트. 여러 번 실행 - 동일한 모델 또는 혼합. 각 AI는 고유한 아키텍처 취향을 가지고 있습니다. 표준화된 형식으로 다양한 유효한 접근 방식을 확인하십시오.",
-      "link": "워크플로우 탐색",
-      "runs": {
-        "run1": "실행 1 - GPT-5.2",
-        "run2": "실행 2 - Gemini 3 Pro",
-        "run3": "실행 3 - GPT-5.2"
-      },
-      "tags": {
-        "middlewareFirst": "미들웨어 접근 방식",
-        "serviceLayer": "서비스 레이어 접근 방식",
-        "apiFirst": "API 우선 접근 방식"
-      }
-    },
-    "panel3": {
-      "title": "자동 병합",
-      "description": "시스템은 모든 계획을 평가하고 등급을 매겨 코드베이스에 아키텍처적으로 가장 적합한 접근 방식을 식별한 다음 이를 하나의 우수한 구현으로 병합합니다. 선택적 병합 지침이 합성을 안내합니다.",
-      "link": "병합 세부 정보",
-      "merge": {
-        "line1": "입력: 4개 계획(2×GPT-5.2, 2×Gemini)",
-        "line2": "범위: 모든 계획의 파일",
-        "line3": "전략: 병합 지침 적용",
-        "line4": "출력: 파일별 계획",
-        "line5": "출처: [src:P2], [src:P1]"
-      }
+      "howItWorks": "런타임 워크스루"
     }
   },
   "integrations": {
@@ -304,5 +260,130 @@
     },
     "subtitle": "소프트웨어 개발에서 가장 어려운 문제에 대한 실제 솔루션",
     "title": "복잡한 개발 과제 해결"
+  },
+  "gallery": {
+    "heading": "시스템 아키텍처 및 구현 워크스루",
+    "intro": "각 패널은 데스크톱 앱과 백엔드의 협업을 보여줍니다: Tauri 셸, Rust 작업 프로세서, SQLite 영속성, 계획 및 실행을 조정하는 모델 오케스트레이션.",
+    "video": {
+      "title": "시스템 워크스루 비디오",
+      "description": "계획 파이프라인의 짧고 완전한 워크스루: 작업 입력, 파일 검색 작업, 계획 생성, 병합 지침, 실행 인계.",
+      "bullets": [
+        "Tauri 셸과 React UI가 워크플로를 표시",
+        "Rust 백그라운드 작업이 진행 상황 업데이트를 스트리밍",
+        "SQLite가 세션, 작업, 로그를 저장",
+        "LLM 계획이 생성되고 구조화되어 병합"
+      ]
+    },
+    "cards": {
+      "fileFinder": {
+        "title": "파일 검색 파이프라인",
+        "description": "4단계 Rust 워크플로: LLM 지원 루트 선택, 정규식 필터링, 관련성 점수화, 집중된 파일 세트를 구축하기 위한 확장 경로 검색.",
+        "features": [
+          "루트 폴더 선택이 디렉토리 트리와 작업 설명을 사용",
+          "정규식 필터가 패턴 그룹을 생성하고 git ls-files를 적용",
+          "관련성 점수화가 토큰 추정으로 파일 내용을 분할",
+          "확장 경로 파인더가 파일 및 트리 데이터로 컨텍스트를 확장"
+        ]
+      },
+      "fileFinderWorkflow": {
+        "title": "영속화된 파일 컨텍스트",
+        "description": "각 워크플로 단계가 background_jobs에 결과를 기록하여 파일 세트를 세션 간에 재사용하고 나중에 검사할 수 있습니다.",
+        "features": [
+          "워크플로 단계가 작업 레코드로 저장",
+          "선택된 파일 목록이 JSON 응답으로 영속화",
+          "세션 included_files가 작업 간에 재사용",
+          "SQLite 기록이 재시작 후에도 유지"
+        ]
+      },
+      "videoAnalysis": {
+        "title": "비디오 분석 수집",
+        "description": "화면 녹화가 `/api/llm/video/analyze` 엔드포인트로 프롬프트 및 FPS 설정과 함께 전송되어 구조화된 요약을 생성합니다.",
+        "features": [
+          "멀티파트 업로드에 duration_ms와 framerate 포함",
+          "모델 형식은 provider/model (google/* 필요)",
+          "사용량과 비용이 서버 청구 로그에서 추적",
+          "요약이 작업 메타데이터 아티팩트로 저장"
+        ]
+      },
+      "implementationPlans": {
+        "title": "멀티 모델 계획 생성",
+        "description": "ImplementationPlanProcessor가 전체 파일 내용에서 계획 초안을 스트리밍하고, 병합 작업이 여러 초안을 하나의 계획으로 통합합니다.",
+        "features": [
+          "계획 작업에 선택된 파일 내용 + 디렉토리 트리 포함",
+          "구조화된 계획 메타데이터를 작업별로 캡처",
+          "병합 프롬프트가 <source_plans>와 <user_instructions> 사용",
+          "최종 계획이 소스 초안과 함께 저장"
+        ]
+      },
+      "backgroundTasks": {
+        "title": "백그라운드 작업 모니터링",
+        "description": "Rust 작업 프로세서가 UI에 진행 상황과 상태 전환을 스트리밍하면서 작업 기록을 SQLite에 영속화합니다.",
+        "features": [
+          "Created, queued, preparing, running, completed/failed/canceled",
+          "Tauri 이벤트를 통한 스트리밍 업데이트",
+          "실행별 토큰 사용량 캡처",
+          "장시간 실행 작업 취소"
+        ]
+      },
+      "settingsPrompts": {
+        "title": "프롬프트 및 모델 구성",
+        "description": "런타임 모델 설정은 `/api/config/desktop-runtime-config`에서 가져오고, 프롬프트 재정의는 SQLite에 저장됩니다.",
+        "features": [
+          "작업별 허용 모델 및 기본값",
+          "서버 API에서 제공하는 시스템 프롬프트",
+          "project_system_prompts의 프로젝트 수준 프롬프트 재정의",
+          "런타임 기본 설정용 로컬 key_value_store"
+        ]
+      },
+      "terminalVoiceRecording": {
+        "title": "워크플로 자동화 버튼",
+        "description": "복사 버튼이 작업 컨텍스트가 포함된 템플릿 기반 프롬프트를 삽입하여 터미널이나 외부 도구로 인계합니다.",
+        "features": [
+          "템플릿이 작업 모델 구성에서 가져옴",
+          "플레이스홀더가 활성 계획에 대해 해결",
+          "PTY 세션 또는 클립보드로 인계",
+          "감사를 위해 작업 메타데이터에 액션 연결"
+        ]
+      },
+      "mergeInstructionsWorkflow": {
+        "title": "계획 병합 지침",
+        "description": "ImplementationPlanMergeProcessor가 XML 태그가 지정된 소스 계획과 선택적 지침을 사용하여 여러 계획 초안을 병합합니다.",
+        "features": [
+          "소스 계획이 작업 ID로 가져옴",
+          "병합 지침이 메타데이터에 저장",
+          "파일 내용 + 디렉토리 트리가 컨텍스트 추가",
+          "병합된 계획이 입력과 함께 저장"
+        ]
+      },
+      "billingTransactions": {
+        "title": "사용량 및 비용 원장",
+        "description": "서버 측 사용량 항목과 작업 메타데이터가 제공업체 전반의 모델 사용량을 캡처합니다.",
+        "features": [
+          "작업별 토큰 및 비용 메타데이터",
+          "제공업체 인식 사용량 항목",
+          "청구 엔드포인트가 사용량 요약 노출",
+          "모델 지출에 대한 감사 추적"
+        ]
+      }
+    },
+    "viewFullSize": "전체 크기로 보기",
+    "cta": {
+      "title": "컨텍스트 내에서 아키텍처 탐색",
+      "description": "각 UI 패널을 기본 프로세서에 매핑한 다음 아키텍처 문서와 빌드 가이드를 더 깊이 살펴보세요.",
+      "primary": "아키텍처 개요",
+      "secondary": "런타임 워크스루"
+    }
+  },
+  "technicalLanding": {
+    "title": "PlanToCode: 시스템 기술 워크스루",
+    "description": "PlanToCode가 어떻게 구축되었는지 기술적으로 설명합니다. 아키텍처를 학습하고, 패턴을 재사용하거나, 유사한 계획 파이프라인을 구축할 수 있습니다. 데스크톱 앱은 API 키로 구성된 외부 LLM 제공업체를 사용합니다.",
+    "walkthroughTitle": "단계별: 구성 요소가 함께 작동하는 방식",
+    "walkthroughDescription": "데스크톱 앱, Rust/Tauri 백엔드, SQLite 데이터베이스, LLM 오케스트레이션 파이프라인이 작업을 조정하고 결과를 UI로 스트리밍하는 방법을 완전히 설명합니다.",
+    "tags": [
+      "Tauri",
+      "Rust",
+      "SQLite",
+      "LLM 오케스트레이션"
+    ]
   }
 }

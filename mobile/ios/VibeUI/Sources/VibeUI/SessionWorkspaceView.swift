@@ -165,7 +165,9 @@ public struct SessionWorkspaceView: View {
             OfflineModeBanner(onGoOnline: {
                 viewModel.goOnline()
             })
-        } else if viewModel.showFullConnectionBanner && viewModel.workspaceConnectivityState == .degradedDisconnected,
+        } else if viewModel.showFullConnectionBanner,
+                  viewModel.workspaceConnectivityState == .degradedDisconnected
+                    || viewModel.workspaceConnectivityState == .transientReconnecting,
                   let activeDeviceId = multiConnectionManager.activeDeviceId,
                   let connectionState = multiConnectionManager.connectionStates[activeDeviceId] {
             ConnectionStatusBanner(
@@ -778,7 +780,7 @@ struct ConnectionStatusBanner: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Text(titleText)
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundColor(Color.appWarningForeground)
@@ -786,37 +788,26 @@ struct ConnectionStatusBanner: View {
                         Text(subtitleText)
                             .font(.system(size: 14))
                             .foregroundColor(Color.appMutedForeground)
+
+                        if let failureMessage = failureMessage, !isReconnecting {
+                            Text(failureMessage)
+                                .font(.footnote)
+                                .foregroundColor(Color.appMutedForeground)
+                                .multilineTextAlignment(.leading)
+                        }
                     }
 
                     Spacer()
                 }
 
-                if let failureMessage = failureMessage {
-                    HStack(alignment: .top, spacing: 8) {
-                        Image(systemName: "info.circle")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(Color.appWarning)
-
-                        Text(failureMessage)
-                            .font(.footnote)
+                if let failureMessage = failureMessage, !isReconnecting {
+                    Button(action: onDismissFailure) {
+                        Text("Dismiss")
+                            .font(.footnote.weight(.semibold))
                             .foregroundColor(Color.appMutedForeground)
-                            .multilineTextAlignment(.leading)
-
-                        Spacer()
-
-                        Button(action: onDismissFailure) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(Color.mutedForeground)
-                        }
                     }
-                    .padding(10)
-                    .background(Color.appWarningBackground.opacity(0.6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.appWarningBorder.opacity(0.6), lineWidth: 1)
-                    )
-                    .cornerRadius(8)
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // Action buttons
@@ -883,6 +874,14 @@ struct ConnectionStatusBanner: View {
             .cornerRadius(12)
             .padding(.horizontal, 16)
             .padding(.top, 8)
+        }
+        .onAppear {
+            switch state {
+            case .connecting, .handshaking, .authenticating, .reconnecting:
+                isReconnecting = true
+            case .connected, .failed, .disconnected, .closing:
+                isReconnecting = false
+            }
         }
         .onChange(of: state) { newState in
             switch newState {

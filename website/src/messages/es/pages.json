@@ -6,6 +6,10 @@
     }
   },
   "about": {
+    "meta": {
+      "description": "Planificación de desarrollo con IA con integración multi-modelo, terminales persistentes, transcripción de voz y síntesis arquitectónica.",
+      "title": "Acerca de PlanToCode - Herramienta de Planificación de Desarrollo con IA"
+    },
     "architecture": {
       "comment": "Construido para flujos de trabajo de desarrollo complejos, no para simples chats con IA",
       "title": "Fundamento Técnico"
@@ -51,10 +55,6 @@
       "subtitle": "PlanToCode ayuda a los desarrolladores a planificar y enviar cambios de código encontrando archivos impactados, generando y fusionando planes, y ejecutándolos en una terminal.",
       "title": "Acerca de PlanToCode"
     },
-    "meta": {
-      "description": "Planificación de desarrollo con IA con integración multi-modelo, terminales persistentes, transcripción de voz y síntesis arquitectónica.",
-      "title": "Acerca de PlanToCode - Herramienta de Planificación de Desarrollo con IA"
-    },
     "philosophy": {
       "noTruncation": {
         "description": "Cargamos contenido completo de archivos. Sin truncamiento preventivo - solo advertencias inteligentes. Obtienes el contexto completo necesario para trabajo de desarrollo serio.",
@@ -85,6 +85,449 @@
         "title": "Inteligencia Multi-Modelo"
       },
       "title": "Lo Que Construimos"
+    }
+  },
+  "architecture": {
+    "meta": {
+      "title": "System Architecture - PlanToCode",
+      "description": "Detailed overview of the PlanToCode architecture: Tauri shell, Rust backend, SQLite persistence, and multi-model LLM orchestration."
+    }
+  },
+  "evolution": {
+    "meta": {
+      "title": "System Evolution and Tradeoffs - PlanToCode",
+      "description": "How PlanToCode evolved, why specific technologies were chosen, and what tradeoffs those decisions created."
+    }
+  },
+  "aboutPage": {
+    "hero": {
+      "title": "What PlanToCode Is For",
+      "description": "PlanToCode is a desktop planning workspace that turns tasks into reviewable implementation plans. It connects file discovery, plan generation, and execution handoff into one tracked pipeline."
+    },
+    "reference": {
+      "title": "Reference architecture focus",
+      "description": "The system wires together a Tauri shell, a Rust backend, SQLite persistence, and an LLM proxy layer. This page explains how those parts fit together so you can learn from the architecture."
+    },
+    "governance": {
+      "title": "Safety, Governance, and Guardrails",
+      "description": "Governance is a core architectural decision: plans are artifacts that can be reviewed, edited, and approved before execution."
+    },
+    "stack": {
+      "title": "Where This Fits in Your Stack",
+      "description": "PlanToCode sits alongside your editor and local tools. It assumes Git workflows and external LLM providers, then routes plans and execution through the same session history."
+    }
+  },
+  "architecturePage": {
+    "hero": {
+      "title": "Architecture Overview",
+      "description": "PlanToCode is a Tauri desktop application with a Rust backend, a React/Next.js frontend, and a SQLite-backed local database. Planning and analysis depend on external LLM providers configured with your API keys. This page explains how those pieces fit together so you can reason about or adapt the design."
+    },
+    "visuals": {
+      "systemMap": {
+        "title": "System map snapshot",
+        "description": "This diagram depicts the PlanToCode system architecture as four interconnected layers arranged vertically. Top Layer - Desktop Frontend: A React/Next.js box containing components (Plan Viewer, Terminal Panel, Session Manager) connected via labeled arrows 'invoke()' and 'listen()' to Tauri IPC Bridge. Second Layer - Rust Backend: Contains WorkflowOrchestrator (scheduling multi-stage jobs), TerminalSessionManager (PTY lifecycle), and JobProcessors (FileDiscovery, PlanGeneration, TextImprovement, DeepResearch). Arrows show 'spawn()' to job threads and 'emit()' events back to UI. Third Layer - Persistence: SQLite database cylinder showing tables: sessions, background_jobs, terminal_output, project_settings, key_value_store. Bidirectional arrows labeled 'read/write' connect to Rust services. Fourth Layer - External Services: Server box with Auth (/api/auth), LLM Proxy (/api/llm/*), and Usage Tracking; arrows point outward to Provider icons (OpenAI, Anthropic, Google, OpenRouter) with 'route()' labels. Data flows: Task input flows down through layers; LLM responses stream back up via SSE; job status updates propagate via Tauri events. Key labels include 'HTTPS/WSS' on server connections, 'SQLite' on persistence, and 'FFI' on Rust-to-system calls.",
+        "imageSrc": "/images/architecture/system-map.svg",
+        "imageAlt": "Diagram showing PlanToCode system map",
+        "caption": "Four-layer architecture with data flowing down and events streaming back up."
+      }
+    },
+    "sections": {
+      "shell": {
+        "title": "Tauri Shell and Desktop Frontend",
+        "description": "The desktop app bundles a React UI inside a Tauri shell. Frontend code calls Rust commands for tasks like file system access, terminal sessions, and background job orchestration."
+      },
+      "core": {
+        "title": "Rust Core and SQLite Persistence",
+        "description": "The Rust core manages background jobs, PTY sessions, and durable state. SQLite stores sessions, job history, and terminal output, acting as a local append-only record of what the system has done."
+      },
+      "jobs": {
+        "title": "Background Job Orchestration",
+        "description": "A workflow orchestrator schedules multi-stage jobs (file discovery, plan generation, research). Each stage is a Rust processor that can call out to LLM providers, read or write to the project, and emit streaming updates back to the UI."
+      },
+      "llm": {
+        "title": "Multi-Model LLM Integration",
+        "description": "The server layer routes requests to different providers, normalizes responses, and tracks usage. The desktop app receives a unified streaming API regardless of provider."
+      }
+    },
+    "communication": {
+      "title": "How the Pieces Communicate",
+      "description": "Commands flow from the React UI into Tauri, which invokes Rust functions. Long-running work is executed as background jobs that stream updates (including partial LLM tokens) back to the UI. SQLite acts as both a cache and a durable log so sessions and terminal history can be replayed or resumed.",
+      "followup": "For a deeper dive, read the architecture documentation and the build-your-own guides that map these concepts to code modules."
+    }
+  },
+  "evolutionPage": {
+    "hero": {
+      "title": "Evolution and Tradeoffs",
+      "description": "This page outlines the major architectural decisions behind PlanToCode and how the system changed as new workflows and constraints appeared."
+    },
+    "visuals": {
+      "timeline": {
+        "title": "Architecture timeline",
+        "description": "This horizontal timeline diagram shows the evolution of PlanToCode across five major phases. Phase 1 'Editor Plugin Era' (leftmost): VS Code extension icon with features listed (inline suggestions, basic file context). Arrow labeled 'Limitation: No execution control' points to Phase 2. Phase 2 'Standalone Shell': Tauri desktop app icon with features (dedicated UI, local SQLite, PTY sessions). Arrow labeled 'Added: Job orchestration' points to Phase 3. Phase 3 'Multi-Stage Workflows': Workflow diagram icon showing connected stages (FileDiscovery, Scoring, Planning, Execution). Arrow labeled 'Added: Review gates' points to Phase 4. Phase 4 'Multi-Provider LLM': Server routing icon with provider logos (OpenAI, Anthropic, Google, OpenRouter) showing unified API normalization. Arrow labeled 'Added: Model flexibility' points to Phase 5. Phase 5 'Current Architecture' (rightmost): Complete system icon showing Desktop + Server + Mobile components. Below the timeline, key architectural decisions are annotated: 'Tauri over Electron' at Phase 2, 'SQLite as local truth' at Phase 2, 'Background job queue' at Phase 3, 'Server-side provider routing' at Phase 4, 'Cross-platform sync' at Phase 5. Tradeoff callouts include 'Binary size vs. ecosystem' (Tauri), 'Local-first vs. cloud sync' (SQLite), 'Latency vs. flexibility' (LLM routing).",
+        "imageSrc": "/images/evolution/timeline.png",
+        "imageAlt": "Timeline of PlanToCode system evolution",
+        "caption": "Placeholder for an evolution timeline graphic."
+      }
+    },
+    "origins": {
+      "title": "Project Origins",
+      "description": "PlanToCode began as an experiment in separating planning from execution: use LLMs to propose concrete implementation plans, then execute them via local tools and terminals. Early prototypes were editor-centric; over time, the architecture moved toward a dedicated desktop shell with tighter control over file access and job orchestration."
+    },
+    "choices": {
+      "title": "Technology Choices",
+      "items": [
+        {
+          "title": "Tauri over Electron:",
+          "description": "Chosen for a smaller binary, a Rust backend, and a more constrained security model. It also enables shared logic between CLI-like workflows and the desktop app."
+        },
+        {
+          "title": "SQLite as the local source of truth:",
+          "description": "A file-based database is easy to ship, snapshot, and inspect. It stores sessions, job metadata, and terminal history so workflows can be resumed or audited."
+        },
+        {
+          "title": "Multi-provider LLM routing:",
+          "description": "The server supports multiple providers and models, normalizing responses and tracking usage centrally. This makes it easier to swap models without rewriting the desktop client."
+        }
+      ]
+    },
+    "sourceAvailable": {
+      "title": "What the system focuses on",
+      "description": "The focus is on planning-first workflows: file discovery, multi-model plan generation, review, and execution handoff. These stages depend on external LLM providers for scoring and drafting, while the desktop app handles review, storage, and execution logs."
+    }
+  },
+  "changelog": {
+    "meta": {
+      "title": "Changelog - Latest Updates",
+      "description": "Release notes for PlanToCode, highlighting architecture, workflow, and system changes."
+    },
+    "hero": {
+      "title": "Changelog",
+      "subtitle": "Release notes focused on architecture changes, workflow updates, and system improvements."
+    },
+    "changes": {
+      "added": "Added",
+      "improved": "Improved",
+      "fixed": "Fixed",
+      "removed": "Removed"
+    },
+    "footer": {
+      "title": "Follow updates",
+      "subtitle": "Track release notes and architecture changes as the system evolves.",
+      "followX": "Follow updates on X",
+      "joinCommunity": "Join the community"
+    }
+  },
+  "downloads": {
+    "cta": {
+      "architect": "Habla con un experto",
+      "docs": "Documentación de terminal",
+      "footer": "Hecho en Alemania • Cumple GDPR • Almacenamiento Local de Sesiones",
+      "professional": "Opciones profesionales",
+      "title": "¿Listo para Subir de Nivel?"
+    },
+    "hero": {
+      "subtitle": "Planifica cambios de código con una herramienta - encuentra archivos relevantes, genera y fusiona planes, y ejecuta comandos en una terminal persistente.",
+      "title": "Descargar PlanToCode"
+    },
+    "macos": {
+      "professional": {
+        "description": "Completamente notarizado por Apple. Firmado con código. Terminal integrada con auto-detección CLI y persistencia de sesión.",
+        "title": "Listo para Profesionales"
+      },
+      "requirements": {
+        "internet": "Conexión a internet requerida para características de IA",
+        "os": "macOS 11.0 (Big Sur) o posterior",
+        "processor": "Procesador Apple Silicon (M1/M2/M3/M4)",
+        "ram": "4GB RAM mínimo (8GB recomendado)",
+        "title": "Requisitos del Sistema"
+      },
+      "subtitle": "Para Usuarios Intensivos de Agentes de Código",
+      "title": "macOS"
+    },
+    "meta": {
+      "description": "Descarga PlanToCode para macOS y Windows. $5 créditos gratis. Planifica cambios multi-archivo con IA, revisa antes de ejecutar. Sin tarjeta de crédito requerida.",
+      "title": "Descargar PlanToCode - macOS y Windows | Prueba Gratis"
+    },
+    "trust": {
+      "planning": {
+        "description": "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Enfoque de Consejo de LLMs.",
+        "title": "Planificación Multi-Modelo"
+      },
+      "pricing": {
+        "description": "Comienza inmediatamente. Pago por uso. Sin suscripciones. Transparencia de tokens para usuarios avanzados que rastrean costos.",
+        "title": "Precios Basados en Uso"
+      },
+      "professional": {
+        "description": "Servidores mono-inquilino. Despliegue on-premise. Gobernanza de terminal. Construido para equipos que no pueden usar solo la nube.",
+        "title": "Opciones Profesionales"
+      },
+      "terminal": {
+        "description": "Ejecuta claude, cursor, codex o gemini directamente. La transcripción de voz está disponible, y los registros persisten localmente para que puedas reanudar el trabajo sin cambio de contexto.",
+        "title": "Terminal Integrada"
+      },
+      "title": "Construido para Usuarios Intensivos de Agentes de Código"
+    },
+    "windows": {
+      "integration": {
+        "description": "Soporte para PowerShell y Command Prompt. Ejecuta claude, cursor, codex o gemini con monitoreo de salud y recuperación.",
+        "title": "Integración de Terminal"
+      },
+      "requirements": {
+        "internet": "Conexión a internet requerida para características de IA",
+        "os1": "Windows 10 versión 1903 (Build 18362) o posterior",
+        "os2": "Windows 11 soportado",
+        "processor": "Procesador x64 o ARM64",
+        "ram": "4GB RAM mínimo (8GB recomendado)",
+        "title": "Requisitos del Sistema"
+      },
+      "subtitle": "Microsoft Store - Listo para Profesionales",
+      "title": "Windows"
+    },
+    "mobile": {
+      "button": "Descargar en App Store",
+      "connected": {
+        "description": "Controla tus sesiones de escritorio de PlanToCode de forma remota. Revisa planes, gestiona terminales y mantente productivo en movimiento.",
+        "title": "Control Remoto"
+      },
+      "features": {
+        "design": "Lenguaje de diseño nativo de iOS/iPadOS",
+        "monitor": "Monitorea sesiones de terminal remotamente",
+        "review": "Revisa y edita planes de implementación sobre la marcha",
+        "sync": "Sincroniza con workspace de escritorio sin problemas",
+        "title": "Características",
+        "voice": "Transcripción de voz para captura rápida de ideas"
+      },
+      "subtitle": "Control Remoto para iPhone e iPad",
+      "title": "App Móvil iOS"
+    }
+  },
+  "securityNotarization": {
+    "meta": {
+      "title": "macOS Notarization and Gatekeeper - PlanToCode",
+      "description": "How the macOS build is signed and notarized, how Gatekeeper verifies it, and where to read Apple's docs.",
+      "imageAlt": "PlanToCode macOS notarization and Gatekeeper overview"
+    },
+    "hero": {
+      "title": "macOS notarization",
+      "subtitle": "The macOS build is signed and notarized by Apple. Notarization validates developer identity and scans the build for malicious content; Gatekeeper uses the notarization ticket when the app is first opened."
+    },
+    "links": {
+      "gatekeeper": {
+        "label": "Apple Support:",
+        "text": "Gatekeeper and runtime protection"
+      },
+      "notarize": {
+        "label": "Apple Developer:",
+        "text": "Notarizing macOS software before distribution"
+      }
+    },
+    "footer": {
+      "text": "If Gatekeeper blocks first launch, use Finder -> Open to approve the app, or visit",
+      "link": "Downloads"
+    }
+  },
+  "legal": {
+    "meta": {
+      "title": "Select Your Region - Legal Documents | PlanToCode",
+      "description": "Choose your region (EU/UK or United States) to view applicable legal documents including terms of service, privacy policy, and regional compliance requirements."
+    },
+    "restricted": {
+      "meta": {
+        "title": "451 - Service Not Available in Your Region",
+        "description": "This service is not available in your geographic region."
+      }
+    }
+  },
+  "howItWorks": {
+    "cta": {
+      "links": {
+        "architecture": "Architecture overview",
+        "buildYourOwn": "Build your own pipeline",
+        "docs": "Ver documentación",
+        "workflows": "Implementation plan docs",
+        "demo": "Prueba la demo interactiva",
+        "planning": "Aprende sobre edición de planes"
+      },
+      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo para equipos corporativos que adoptan agentes de código con IA con confianza. Captura requisitos de cualquier fuente, refina con IA, genera planes granulares, revisa con control completo y ejecuta de forma segura.",
+      "title": "¿Listo para Transformar Tu Flujo de Trabajo de Desarrollo Corporativo?"
+    },
+    "hero": {
+      "badge": "Flujo de Trabajo Profesional de Planificación con IA",
+      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo de desarrollo corporativo con IA",
+      "title": "Cómo funciona"
+    },
+    "keyFeatures": {
+      "deploy": {
+        "description": "Usa el servidor proxy Rust incluido con tus propias claves API cuando necesites mantener las solicitudes en infraestructura que controlas.",
+        "title": "Despliega en tus términos"
+      },
+      "governance": {
+        "description": "Revisa cada plan antes de la ejecución. Edita enfoques, fusiona estrategias, aprueba o rechaza. La IA asiste, los humanos controlan. Construido para equipos donde la calidad del código importa.",
+        "title": "Gobernanza Humano-en-el-Bucle"
+      },
+      "sessions": {
+        "description": "La salida del terminal se almacena localmente y las sesiones se restauran al iniciar. Cierra la app, vuelve la próxima semana, continúa depurando.",
+        "title": "Sesiones Persistentes"
+      },
+      "title": "Por Qué los Equipos Corporativos Eligen Este Flujo de Trabajo"
+    },
+    "meta": {
+      "description": "La planificación de implementación con IA previene el caos. Descubrimiento de archivos, planes multi-modelo, revisión humana y ejecución segura con cualquier agente de código.",
+      "title": "Cómo Funciona - Flujo de Trabajo de Planificación con IA"
+    },
+    "workflow": {
+      "exampleMergeInstructions": "Example merge instructions:",
+      "step1": {
+        "description": "Comienza capturando requisitos iniciales de múltiples fuentes. Sube grabaciones de reuniones de Microsoft Teams para análisis multimodal, graba presentaciones de pantalla para capturar contexto visual, o usa dictado de voz para captura rápida de ideas. Todos los métodos de entrada alimentan el mismo flujo de trabajo de refinamiento.",
+        "meetings": {
+          "description": "Sube reuniones de Teams. La IA multimodal analiza transcripciones de audio (con identificación de hablante) y contenido visual (pantallas compartidas, documentos) para extraer requisitos, decisiones y elementos de acción.",
+          "title": "Grabaciones de Reuniones"
+        },
+        "links": {
+          "meeting": "Meeting ingestion details",
+          "voice": "Voice transcription details"
+        },
+        "screen": {
+          "description": "Graba flujos de trabajo, errores o presentaciones de UI. Gemini Vision analiza tanto narración de audio como contenido visual para capturar contexto completo para recopilación de requisitos.",
+          "title": "Grabaciones de Pantalla"
+        },
+        "subtitle": "Grabaciones de reuniones, capturas de pantalla y dictado de voz",
+        "title": "Captura Ideas y Contexto",
+        "voice": {
+          "description": "Habla requisitos naturalmente. OpenAI gpt-4o-transcribe transcribe con inserción de texto inteligente e identificación de hablante para captura rápida de especificaciones.",
+          "title": "Dictado de Voz"
+        }
+      },
+      "step2": {
+        "description": "Transforma transcripciones crudas de reuniones, grabaciones de voz y notas aproximadas en especificaciones claras y listas para implementación usando dos tipos distintos de prompts de IA que trabajan juntos para asegurar tanto claridad como completitud.",
+        "subtitle": "Dos tipos de prompts de IA para claridad y completitud",
+        "taskRefinement": {
+          "description": "Expande descripciones de tareas identificando requisitos implícitos, llenando vacíos pasados por alto, aclarando comportamiento esperado y casos límite, y agregando consideraciones técnicas para preparación de implementación.",
+          "title": "Refinamiento de Tareas"
+        },
+        "textEnhancement": {
+          "description": "Mejora gramática, estructura de oraciones, claridad y concisión mientras mantiene tu intención original, tono y nivel de detalle técnico. Perfecto para pulir transcripciones de voz y notas de reuniones.",
+          "title": "Mejora de Texto"
+        },
+        "links": {
+          "specCapture": "Specification capture details"
+        },
+        "title": "Refina en Especificaciones Accionables"
+      },
+      "step3": {
+        "description": "El descubrimiento de archivos con IA identifica archivos relevantes en tu base de código. Múltiples modelos de IA generan planes de implementación con granularidad archivo por archivo—rutas exactas de archivos, rangos específicos de líneas y tipos claros de operación (modificar/crear/eliminar). Esta granularidad hace que la evaluación de impacto sea cristalina.",
+        "features": {
+          "dependencies": "Análisis de dependencias y evaluación de impacto",
+          "models": "Soporte multi-modelo (GPT-5.2, Claude 4, Gemini 3 Pro)",
+          "multiple": "Generación de múltiples planes para comparación de enfoques",
+          "operations": "Tipos claros de operación (modificar, crear, eliminar)",
+          "paths": "Rutas exactas de archivos de la estructura de tu repositorio",
+          "ranges": "Rangos específicos de líneas y detalles de modificación"
+        },
+        "links": {
+          "fileDiscovery": "File discovery pipeline",
+          "planGeneration": "Plan generation details"
+        },
+        "subtitle": "Planes archivo por archivo con rutas exactas de repositorio",
+        "title": "Genera Planes de Implementación Granulares"
+      },
+      "step4": {
+        "capabilities": {
+          "approve": "Aprobar para ejecución o rechazar con pista de auditoría",
+          "editing": "Edición directa de todos los pasos y detalles del plan",
+          "editor": "Editor profesional Monaco con resaltado de sintaxis",
+          "merge": "Fusionar múltiples planes con instrucciones personalizadas",
+          "modifications": "Solicitar modificaciones o enfoques alternativos",
+          "visibility": "Visibilidad completa de los cambios propuestos"
+        },
+        "description": "Los planes se abren en el editor Monaco para revisión integral. Los líderes de equipo examinan cada cambio propuesto, editan pasos directamente, fusionan múltiples enfoques con instrucciones personalizadas, o rechazan planes completamente. No ocurren cambios de código sin aprobación humana explícita—asegurando alineación con requisitos corporativos y flujos de trabajo de equipo.",
+        "links": {
+          "governance": "Review and governance",
+          "merge": "Plan merging details"
+        },
+        "subtitle": "Control completo antes de cualquier cambio de código",
+        "title": "Revisa, Edita y Aprueba (Humano-en-el-Bucle)"
+      },
+      "step5": {
+        "description": "Después de la aprobación, transmite de forma segura el plan a tu agente de código elegido (Claude Code, Cursor, Codex) o desarrollador de software asignado. La granularidad archivo por archivo previene regresiones y modificaciones no intencionadas—asegurando ejecución segura. Terminal integrada con sesiones persistentes permite ejecución inmediata y depuración.",
+        "links": {
+          "terminal": "Terminal integration details",
+          "planDocs": "Implementation plan format"
+        },
+        "subtitle": "Transferencia segura a desarrolladores o agentes de código",
+        "title": "Ejecuta con Confianza",
+        "tools": {
+          "audit": "Pista de auditoría completa de ejecución",
+          "claude": "CLI de Claude Code con soporte de modo plan",
+          "codex": "Ejecución CLI de OpenAI Codex",
+          "cursor": "Integración CLI de Cursor",
+          "sessions": "Sesiones de terminal persistentes con auto-recuperación",
+          "terminal": "Terminal integrada con transcripción de voz"
+        }
+      },
+      "title": "El Flujo de Trabajo Completo"
+    },
+    "demo": {
+      "button": "Prueba la Demo Interactiva",
+      "description": "Mira la demo interactiva para ver el flujo de trabajo completo",
+      "title": "Véalo en Acción"
+    },
+    "useCases": {
+      "bugs": {
+        "description": "Graba capturas de pantalla de errores, obtén análisis de IA, genera planes de depuración, ejecuta con control completo de terminal.",
+        "items": {
+          "persistent": "Registro de terminal persistente",
+          "systematic": "Enfoques sistemáticos de depuración",
+          "visual": "Contexto visual con grabación de pantalla"
+        },
+        "title": "Investigación de Errores Complejos"
+      },
+      "features": {
+        "description": "Características multi-archivo que requieren planificación cuidadosa. Genera múltiples enfoques, fusiona las mejores partes, edita para tu base de código específica.",
+        "items": {
+          "api": "Diseño e integración de API",
+          "cross": "Implementación de características entre componentes",
+          "schema": "Cambios de esquema de base de datos"
+        },
+        "title": "Desarrollo de Características Grandes"
+      },
+      "legacy": {
+        "description": "La IA entiende patrones legacy y deuda técnica. Genera planes seguros de refactorización, actualizaciones de bibliotecas y mejoras arquitectónicas.",
+        "items": {
+          "breaking": "Planes de migración de cambios importantes",
+          "cleanup": "Limpieza de deuda técnica",
+          "dependency": "Estrategias de actualización de dependencias"
+        },
+        "title": "Mantenimiento de Base de Código Legacy"
+      },
+      "professional": {
+        "description": "Aprobaciones de comandos, retención de sesiones, despliegue mono-inquilino. Construido para equipos donde un comando incorrecto cuesta millones.",
+        "items": {
+          "audit": "Pistas de auditoría completas",
+          "governance": "Gobernanza y aprobaciones de terminal",
+          "onprem": "Opciones de despliegue on-premise"
+        },
+        "title": "Desarrollo Profesional"
+      },
+      "title": "Construido para Equipos de Desarrollo Corporativos"
+    }
+  },
+  "support": {
+    "button": "Contactar Soporte",
+    "hero": {
+      "subtitle": "Obtén ayuda con PlanToCode",
+      "title": "Soporte"
+    },
+    "meta": {
+      "description": "Obtén ayuda con instalación de PlanToCode, integración de Claude Code, Cursor y Codex. Solución de problemas y solicitudes de características. Tiempo de respuesta de 24h.",
+      "title": "Soporte de PlanToCode - Ayuda y Solución de Problemas"
+    },
+    "resources": {
+      "changelog": "Registro de Cambios",
+      "feedback": "Retroalimentación",
+      "help": "Centro de Ayuda",
+      "roadmap": "Hoja de Ruta",
+      "title": "Recursos de FeatureBase"
     }
   },
   "comparisons": {
@@ -469,241 +912,6 @@
       "title": "Demo interactiva"
     }
   },
-  "downloads": {
-    "cta": {
-      "architect": "Habla con un experto",
-      "docs": "Documentación de terminal",
-      "footer": "Hecho en Alemania • Cumple GDPR • Almacenamiento Local de Sesiones",
-      "professional": "Opciones profesionales",
-      "title": "¿Listo para Subir de Nivel?"
-    },
-    "hero": {
-      "subtitle": "Planifica cambios de código con una herramienta - encuentra archivos relevantes, genera y fusiona planes, y ejecuta comandos en una terminal persistente.",
-      "title": "Descargar PlanToCode"
-    },
-    "macos": {
-      "professional": {
-        "description": "Completamente notarizado por Apple. Firmado con código. Terminal integrada con auto-detección CLI y persistencia de sesión.",
-        "title": "Listo para Profesionales"
-      },
-      "requirements": {
-        "internet": "Conexión a internet requerida para características de IA",
-        "os": "macOS 11.0 (Big Sur) o posterior",
-        "processor": "Procesador Apple Silicon (M1/M2/M3/M4)",
-        "ram": "4GB RAM mínimo (8GB recomendado)",
-        "title": "Requisitos del Sistema"
-      },
-      "subtitle": "Para Usuarios Intensivos de Agentes de Código",
-      "title": "macOS"
-    },
-    "meta": {
-      "description": "Descarga PlanToCode para macOS y Windows. $5 créditos gratis. Planifica cambios multi-archivo con IA, revisa antes de ejecutar. Sin tarjeta de crédito requerida.",
-      "title": "Descargar PlanToCode - macOS y Windows | Prueba Gratis"
-    },
-    "mobile": {
-      "button": "Descargar en App Store",
-      "connected": {
-        "description": "Controla tus sesiones de escritorio de PlanToCode de forma remota. Revisa planes, gestiona terminales y mantente productivo en movimiento.",
-        "title": "Control Remoto"
-      },
-      "features": {
-        "design": "Lenguaje de diseño nativo de iOS/iPadOS",
-        "monitor": "Monitorea sesiones de terminal remotamente",
-        "review": "Revisa y edita planes de implementación sobre la marcha",
-        "sync": "Sincroniza con workspace de escritorio sin problemas",
-        "title": "Características",
-        "voice": "Transcripción de voz para captura rápida de ideas"
-      },
-      "subtitle": "Control Remoto para iPhone e iPad",
-      "title": "App Móvil iOS"
-    },
-    "trust": {
-      "planning": {
-        "description": "GPT-5.2, Claude Sonnet 4, Gemini 3 Pro, o3/o4-mini, Grok 4, DeepSeek R1, Kimi K2. Enfoque de Consejo de LLMs.",
-        "title": "Planificación Multi-Modelo"
-      },
-      "pricing": {
-        "description": "Comienza inmediatamente. Pago por uso. Sin suscripciones. Transparencia de tokens para usuarios avanzados que rastrean costos.",
-        "title": "Precios Basados en Uso"
-      },
-      "professional": {
-        "description": "Servidores mono-inquilino. Despliegue on-premise. Gobernanza de terminal. Construido para equipos que no pueden usar solo la nube.",
-        "title": "Opciones Profesionales"
-      },
-      "terminal": {
-        "description": "Ejecuta claude, cursor, codex o gemini directamente. La transcripción de voz está disponible, y los registros persisten localmente para que puedas reanudar el trabajo sin cambio de contexto.",
-        "title": "Terminal Integrada"
-      },
-      "title": "Construido para Usuarios Intensivos de Agentes de Código"
-    },
-    "windows": {
-      "integration": {
-        "description": "Soporte para PowerShell y Command Prompt. Ejecuta claude, cursor, codex o gemini con monitoreo de salud y recuperación.",
-        "title": "Integración de Terminal"
-      },
-      "requirements": {
-        "internet": "Conexión a internet requerida para características de IA",
-        "os1": "Windows 10 versión 1903 (Build 18362) o posterior",
-        "os2": "Windows 11 soportado",
-        "processor": "Procesador x64 o ARM64",
-        "ram": "4GB RAM mínimo (8GB recomendado)",
-        "title": "Requisitos del Sistema"
-      },
-      "subtitle": "Microsoft Store - Listo para Profesionales",
-      "title": "Windows"
-    }
-  },
-  "howItWorks": {
-    "cta": {
-      "links": {
-        "demo": "Prueba la demo interactiva",
-        "docs": "Ver documentación",
-        "planning": "Aprende sobre edición de planes"
-      },
-      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo para equipos corporativos que adoptan agentes de código con IA con confianza. Captura requisitos de cualquier fuente, refina con IA, genera planes granulares, revisa con control completo y ejecuta de forma segura.",
-      "title": "¿Listo para Transformar Tu Flujo de Trabajo de Desarrollo Corporativo?"
-    },
-    "demo": {
-      "button": "Prueba la Demo Interactiva",
-      "description": "Mira la demo interactiva para ver el flujo de trabajo completo",
-      "title": "Véalo en Acción"
-    },
-    "hero": {
-      "badge": "Flujo de Trabajo Profesional de Planificación con IA",
-      "subtitle": "Desde captura de reuniones hasta ejecución segura—el flujo de trabajo completo de desarrollo corporativo con IA",
-      "title": "Cómo funciona"
-    },
-    "keyFeatures": {
-      "deploy": {
-        "description": "Usa el servidor proxy Rust incluido con tus propias claves API cuando necesites mantener las solicitudes en infraestructura que controlas.",
-        "title": "Despliega en tus términos"
-      },
-      "governance": {
-        "description": "Revisa cada plan antes de la ejecución. Edita enfoques, fusiona estrategias, aprueba o rechaza. La IA asiste, los humanos controlan. Construido para equipos donde la calidad del código importa.",
-        "title": "Gobernanza Humano-en-el-Bucle"
-      },
-      "sessions": {
-        "description": "La salida del terminal se almacena localmente y las sesiones se restauran al iniciar. Cierra la app, vuelve la próxima semana, continúa depurando.",
-        "title": "Sesiones Persistentes"
-      },
-      "title": "Por Qué los Equipos Corporativos Eligen Este Flujo de Trabajo"
-    },
-    "meta": {
-      "description": "La planificación de implementación con IA previene el caos. Descubrimiento de archivos, planes multi-modelo, revisión humana y ejecución segura con cualquier agente de código.",
-      "title": "Cómo Funciona - Flujo de Trabajo de Planificación con IA"
-    },
-    "useCases": {
-      "bugs": {
-        "description": "Graba capturas de pantalla de errores, obtén análisis de IA, genera planes de depuración, ejecuta con control completo de terminal.",
-        "items": {
-          "persistent": "Registro de terminal persistente",
-          "systematic": "Enfoques sistemáticos de depuración",
-          "visual": "Contexto visual con grabación de pantalla"
-        },
-        "title": "Investigación de Errores Complejos"
-      },
-      "features": {
-        "description": "Características multi-archivo que requieren planificación cuidadosa. Genera múltiples enfoques, fusiona las mejores partes, edita para tu base de código específica.",
-        "items": {
-          "api": "Diseño e integración de API",
-          "cross": "Implementación de características entre componentes",
-          "schema": "Cambios de esquema de base de datos"
-        },
-        "title": "Desarrollo de Características Grandes"
-      },
-      "legacy": {
-        "description": "La IA entiende patrones legacy y deuda técnica. Genera planes seguros de refactorización, actualizaciones de bibliotecas y mejoras arquitectónicas.",
-        "items": {
-          "breaking": "Planes de migración de cambios importantes",
-          "cleanup": "Limpieza de deuda técnica",
-          "dependency": "Estrategias de actualización de dependencias"
-        },
-        "title": "Mantenimiento de Base de Código Legacy"
-      },
-      "professional": {
-        "description": "Aprobaciones de comandos, retención de sesiones, despliegue mono-inquilino. Construido para equipos donde un comando incorrecto cuesta millones.",
-        "items": {
-          "audit": "Pistas de auditoría completas",
-          "governance": "Gobernanza y aprobaciones de terminal",
-          "onprem": "Opciones de despliegue on-premise"
-        },
-        "title": "Desarrollo Profesional"
-      },
-      "title": "Construido para Equipos de Desarrollo Corporativos"
-    },
-    "workflow": {
-      "step1": {
-        "description": "Comienza capturando requisitos iniciales de múltiples fuentes. Sube grabaciones de reuniones de Microsoft Teams para análisis multimodal, graba presentaciones de pantalla para capturar contexto visual, o usa dictado de voz para captura rápida de ideas. Todos los métodos de entrada alimentan el mismo flujo de trabajo de refinamiento.",
-        "meetings": {
-          "description": "Sube reuniones de Teams. La IA multimodal analiza transcripciones de audio (con identificación de hablante) y contenido visual (pantallas compartidas, documentos) para extraer requisitos, decisiones y elementos de acción.",
-          "title": "Grabaciones de Reuniones"
-        },
-        "screen": {
-          "description": "Graba flujos de trabajo, errores o presentaciones de UI. Gemini Vision analiza tanto narración de audio como contenido visual para capturar contexto completo para recopilación de requisitos.",
-          "title": "Grabaciones de Pantalla"
-        },
-        "subtitle": "Grabaciones de reuniones, capturas de pantalla y dictado de voz",
-        "title": "Captura Ideas y Contexto",
-        "voice": {
-          "description": "Habla requisitos naturalmente. OpenAI gpt-4o-transcribe transcribe con inserción de texto inteligente e identificación de hablante para captura rápida de especificaciones.",
-          "title": "Dictado de Voz"
-        }
-      },
-      "step2": {
-        "description": "Transforma transcripciones crudas de reuniones, grabaciones de voz y notas aproximadas en especificaciones claras y listas para implementación usando dos tipos distintos de prompts de IA que trabajan juntos para asegurar tanto claridad como completitud.",
-        "subtitle": "Dos tipos de prompts de IA para claridad y completitud",
-        "taskRefinement": {
-          "description": "Expande descripciones de tareas identificando requisitos implícitos, llenando vacíos pasados por alto, aclarando comportamiento esperado y casos límite, y agregando consideraciones técnicas para preparación de implementación.",
-          "title": "Refinamiento de Tareas"
-        },
-        "textEnhancement": {
-          "description": "Mejora gramática, estructura de oraciones, claridad y concisión mientras mantiene tu intención original, tono y nivel de detalle técnico. Perfecto para pulir transcripciones de voz y notas de reuniones.",
-          "title": "Mejora de Texto"
-        },
-        "title": "Refina en Especificaciones Accionables"
-      },
-      "step3": {
-        "description": "El descubrimiento de archivos con IA identifica archivos relevantes en tu base de código. Múltiples modelos de IA generan planes de implementación con granularidad archivo por archivo—rutas exactas de archivos, rangos específicos de líneas y tipos claros de operación (modificar/crear/eliminar). Esta granularidad hace que la evaluación de impacto sea cristalina.",
-        "features": {
-          "dependencies": "Análisis de dependencias y evaluación de impacto",
-          "models": "Soporte multi-modelo (GPT-5.2, Claude 4, Gemini 3 Pro)",
-          "multiple": "Generación de múltiples planes para comparación de enfoques",
-          "operations": "Tipos claros de operación (modificar, crear, eliminar)",
-          "paths": "Rutas exactas de archivos de la estructura de tu repositorio",
-          "ranges": "Rangos específicos de líneas y detalles de modificación"
-        },
-        "subtitle": "Planes archivo por archivo con rutas exactas de repositorio",
-        "title": "Genera Planes de Implementación Granulares"
-      },
-      "step4": {
-        "capabilities": {
-          "approve": "Aprobar para ejecución o rechazar con pista de auditoría",
-          "editing": "Edición directa de todos los pasos y detalles del plan",
-          "editor": "Editor profesional Monaco con resaltado de sintaxis",
-          "merge": "Fusionar múltiples planes con instrucciones personalizadas",
-          "modifications": "Solicitar modificaciones o enfoques alternativos",
-          "visibility": "Visibilidad completa de los cambios propuestos"
-        },
-        "description": "Los planes se abren en el editor Monaco para revisión integral. Los líderes de equipo examinan cada cambio propuesto, editan pasos directamente, fusionan múltiples enfoques con instrucciones personalizadas, o rechazan planes completamente. No ocurren cambios de código sin aprobación humana explícita—asegurando alineación con requisitos corporativos y flujos de trabajo de equipo.",
-        "subtitle": "Control completo antes de cualquier cambio de código",
-        "title": "Revisa, Edita y Aprueba (Humano-en-el-Bucle)"
-      },
-      "step5": {
-        "description": "Después de la aprobación, transmite de forma segura el plan a tu agente de código elegido (Claude Code, Cursor, Codex) o desarrollador de software asignado. La granularidad archivo por archivo previene regresiones y modificaciones no intencionadas—asegurando ejecución segura. Terminal integrada con sesiones persistentes permite ejecución inmediata y depuración.",
-        "subtitle": "Transferencia segura a desarrolladores o agentes de código",
-        "title": "Ejecuta con Confianza",
-        "tools": {
-          "audit": "Pista de auditoría completa de ejecución",
-          "claude": "CLI de Claude Code con soporte de modo plan",
-          "codex": "Ejecución CLI de OpenAI Codex",
-          "cursor": "Integración CLI de Cursor",
-          "sessions": "Sesiones de terminal persistentes con auto-recuperación",
-          "terminal": "Terminal integrada con transcripción de voz"
-        }
-      },
-      "title": "El Flujo de Trabajo Completo"
-    }
-  },
   "planMode": {
     "capabilities": {
       "architect": {
@@ -901,24 +1109,6 @@
         "security": "Consideraciones de seguridad y cumplimiento"
       },
       "title": "Temas Comunes que Cubrimos"
-    }
-  },
-  "support": {
-    "button": "Contactar Soporte",
-    "hero": {
-      "subtitle": "Obtén ayuda con PlanToCode",
-      "title": "Soporte"
-    },
-    "meta": {
-      "description": "Obtén ayuda con instalación de PlanToCode, integración de Claude Code, Cursor y Codex. Solución de problemas y solicitudes de características. Tiempo de respuesta de 24h.",
-      "title": "Soporte de PlanToCode - Ayuda y Solución de Problemas"
-    },
-    "resources": {
-      "changelog": "Registro de Cambios",
-      "feedback": "Retroalimentación",
-      "help": "Centro de Ayuda",
-      "roadmap": "Hoja de Ruta",
-      "title": "Recursos de FeatureBase"
     }
   },
   "workflows": {

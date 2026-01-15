@@ -31,7 +31,6 @@ public final class ProjectSyncService {
     }
 
     private func attachRelay(for deviceId: UUID) {
-        // Prevent duplicate attachments
         relayCancellable?.cancel()
         self.lastAppliedDirectory = nil
 
@@ -49,12 +48,19 @@ public final class ProjectSyncService {
                     let trimmed = dir.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !trimmed.isEmpty else { return }
 
-                    if AppState.shared.selectedProjectDirectory == trimmed || lastAppliedDirectory == trimmed {
+                    let previousDir = AppState.shared.selectedProjectDirectory
+
+                    if previousDir == trimmed || lastAppliedDirectory == trimmed {
+                        lastAppliedDirectory = trimmed
                         return
                     }
 
                     AppState.shared.selectedProjectDirectory = trimmed
                     self.lastAppliedDirectory = trimmed
+
+                    Task { @MainActor in
+                        await self.refreshSessionsForNewDirectory(trimmed)
+                    }
                 }
             }
     }
@@ -62,5 +68,26 @@ public final class ProjectSyncService {
     private func detachRelay() {
         relayCancellable?.cancel()
         relayCancellable = nil
+    }
+
+    private func refreshSessionsForNewDirectory(_ projectDirectory: String) async {
+        guard let dataServices = PlanToCodeCore.shared.dataServices else { return }
+
+        let sessionService = dataServices.sessionService
+        let jobsService = dataServices.jobsService
+
+        do {
+            let sessions = try await sessionService.fetchSessions(projectDirectory: projectDirectory)
+
+            if let activeSession = sessions.first {
+                sessionService.currentSession = activeSession
+
+                await jobsService.startSessionScopedSync(
+                    sessionId: activeSession.id,
+                    projectDirectory: projectDirectory
+                )
+            }
+        } catch {
+        }
     }
 }

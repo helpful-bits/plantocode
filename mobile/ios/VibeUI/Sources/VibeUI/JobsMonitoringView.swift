@@ -15,6 +15,8 @@ public struct JobsMonitoringView: View {
     @State private var cancellables = Set<AnyCancellable>()
     @State private var successMessage: String?
     @State private var showingSuccess = false
+    @State private var jobsSnapshot: [BackgroundJob] = []
+    @State private var jobsSnapshotClearTask: Task<Void, Never>?
 
     public init(jobsService: JobsDataService) {
         self._jobsService = ObservedObject(wrappedValue: jobsService)
@@ -26,10 +28,12 @@ public struct JobsMonitoringView: View {
             return []
         }
 
+        let sourceJobs = jobsSnapshot.isEmpty ? jobsService.jobs : jobsSnapshot
+
         // Mobile sessions should see all jobs (not filtered by session)
         let shouldFilterBySession = !currentSessionId.hasPrefix("mobile-session-")
 
-        return jobsService.jobs
+        return sourceJobs
             .filter { job in
                 if shouldFilterBySession {
                     return job.sessionId == currentSessionId
@@ -192,6 +196,22 @@ public struct JobsMonitoringView: View {
             selectedJobId = nil
             Task { await jobsService.reconcileJobs(reason: .sessionChanged) }
         }
+        .onReceive(jobsService.$jobsVersion) { _ in
+            let isBusy = jobsService.isLoading || jobsService.isRefreshing
+            if jobsService.jobs.isEmpty {
+                if jobsService.hasLoadedOnce && !isBusy {
+                    scheduleJobsSnapshotClear()
+                }
+            } else {
+                jobsSnapshotClearTask?.cancel()
+                jobsSnapshot = jobsService.jobs
+            }
+        }
+        .onAppear {
+            if jobsSnapshot.isEmpty {
+                jobsSnapshot = jobsService.jobs
+            }
+        }
         .overlay(
             Group {
                 if showingSuccess, let message = successMessage {
@@ -237,6 +257,17 @@ public struct JobsMonitoringView: View {
             }
         } message: {
             Text(errorMessage ?? "An error occurred")
+        }
+    }
+
+    private func scheduleJobsSnapshotClear() {
+        jobsSnapshotClearTask?.cancel()
+        jobsSnapshotClearTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            let isBusy = jobsService.isLoading || jobsService.isRefreshing
+            if jobsService.hasLoadedOnce && !isBusy && jobsService.jobs.isEmpty {
+                jobsSnapshot = []
+            }
         }
     }
 

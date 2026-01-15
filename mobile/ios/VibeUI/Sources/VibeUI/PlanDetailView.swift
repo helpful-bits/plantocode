@@ -376,61 +376,61 @@ public struct PlanDetailView: View {
     @ViewBuilder
     private func editorControls() -> some View {
         HStack(spacing: 0) {
-            Button {
-                isEditMode.toggle()
-                if !isEditMode {
-                    isEditorFocused = false
+            HStack(spacing: 24) {
+                Button {
+                    isEditMode.toggle()
+                    if !isEditMode {
+                        isEditorFocused = false
+                    }
+                } label: {
+                    Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(Color.primary)
                 }
-            } label: {
-                Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
-                    .font(.title3)
-                    .foregroundColor(Color.primary)
+
+                Button {
+                    navigateToPlan(direction: .previous)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
+                }
+                .disabled(!canGoPrevious)
+
+                Button {
+                    navigateToPlan(direction: .next)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
+                }
+                .disabled(!canGoNext)
+
+                Button {
+                    showingTerminal = true
+                } label: {
+                    Image(systemName: "terminal")
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
+                        .foregroundColor(Color.primary)
+                }
             }
 
-            Spacer()
-                .frame(width: 24)
+            Spacer(minLength: 16)
 
-            Button {
-                navigateToPlan(direction: .previous)
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.title3)
-                    .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
-            }
-            .disabled(!canGoPrevious)
-
-            Spacer()
-                .frame(width: 24)
-
-            Button {
-                navigateToPlan(direction: .next)
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.title3)
-                    .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
-            }
-            .disabled(!canGoNext)
-
-            Spacer()
-                .frame(width: 40)
-
-            Button {
-                showingTerminal = true
-            } label: {
-                Image(systemName: "terminal")
-                    .font(.title3)
-                    .foregroundColor(Color.primary)
-            }
-
-            if !isLandscape && !markdownContent.isEmpty {
-                Spacer()
-                    .frame(width: 24)
-
+            if !isLandscape {
                 Button(showingMarkdown ? "Show Original" : "Show Markdown") {
                     showingMarkdown.toggle()
                 }
                 .font(.caption)
                 .foregroundColor(Color.primary)
+                .frame(width: 120, alignment: .trailing)
+                .opacity(markdownContent.isEmpty ? 0 : 1)
+                .disabled(markdownContent.isEmpty)
+                .accessibilityHidden(markdownContent.isEmpty)
             }
         }
     }

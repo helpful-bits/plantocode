@@ -37,6 +37,7 @@ pub struct DeviceMessage {
 /// Connection information for a device
 #[derive(Clone, Debug)]
 pub struct DeviceConnection {
+    pub connection_id: Uuid, // Unique ID to identify this specific connection instance
     pub device_id: String,
     pub user_id: Uuid,
     pub device_name: String,
@@ -265,6 +266,7 @@ impl DeviceConnectionManager {
     /// If a connection already exists for this device, it will be gracefully closed
     pub fn register_connection(
         &self,
+        connection_id: Uuid,
         user_id: Uuid,
         device_id: String,
         device_name: String,
@@ -288,6 +290,8 @@ impl DeviceConnectionManager {
                     );
                     // Close the old WebSocket connection
                     // The actor will clean itself up via stopped() hook
+                    // Note: The old actor's stopped() will call remove_connection() with its own connection_id,
+                    // which will NOT match the new connection, so the new connection won't be removed.
                     old_connection.ws_addr.do_send(CloseConnection);
                 }
             }
@@ -296,6 +300,7 @@ impl DeviceConnectionManager {
         let is_desktop = matches!(client_type, ClientType::Desktop);
 
         let connection = DeviceConnection {
+            connection_id,
             device_id: device_id_lower.clone(),
             user_id,
             device_name: device_name.clone(),
@@ -339,30 +344,49 @@ impl DeviceConnectionManager {
         );
     }
 
-    /// Remove a device connection
-    pub fn remove_connection(&self, user_id: &Uuid, device_id: &str) {
+    /// Remove a device connection, but only if the connection_id matches.
+    /// This prevents a race condition where a new connection replaces an old one,
+    /// and then the old connection's cleanup removes the new connection.
+    pub fn remove_connection(&self, connection_id: &Uuid, user_id: &Uuid, device_id: &str) {
         // Normalize device ID to lowercase for case-insensitive comparisons
         let device_id_lower = device_id.to_lowercase();
 
         if let Some(user_devices) = self.connections.get(user_id) {
-            if user_devices.remove(&device_id_lower).is_some() {
-                info!(
+            // Only remove if the connection_id matches the current connection
+            // This prevents removing a newer connection when an old one closes
+            let should_remove = user_devices
+                .get(&device_id_lower)
+                .map(|conn| conn.connection_id == *connection_id)
+                .unwrap_or(false);
+
+            if should_remove {
+                if user_devices.remove(&device_id_lower).is_some() {
+                    info!(
+                        user_id = %user_id,
+                        device_id = %device_id,
+                        connection_id = %connection_id,
+                        "Device disconnected from WebSocket"
+                    );
+
+                    // Remove user entry if no devices remain
+                    if user_devices.is_empty() {
+                        drop(user_devices); // Release the reference
+                        self.connections.remove(user_id);
+                        debug!(user_id = %user_id, "Removed empty user entry from connection manager");
+                    }
+                }
+
+                // Clear binary routes for this device
+                self.clear_binary_routes_for_device(user_id, device_id);
+            } else {
+                debug!(
                     user_id = %user_id,
                     device_id = %device_id,
-                    "Device disconnected from WebSocket"
+                    connection_id = %connection_id,
+                    "Skipping remove_connection - connection_id doesn't match (newer connection exists)"
                 );
-
-                // Remove user entry if no devices remain
-                if user_devices.is_empty() {
-                    drop(user_devices); // Release the reference
-                    self.connections.remove(user_id);
-                    debug!(user_id = %user_id, "Removed empty user entry from connection manager");
-                }
             }
         }
-
-        // Clear binary routes for this device
-        self.clear_binary_routes_for_device(user_id, device_id);
     }
 
     /// Get a device connection
@@ -588,14 +612,14 @@ impl DeviceConnectionManager {
                 let connection = device_entry.value();
 
                 if connection.last_seen < cutoff_time {
-                    to_remove.push((user_id, device_id));
+                    to_remove.push((connection.connection_id, user_id, device_id));
                 }
             }
         }
 
         // Remove stale connections
-        for (user_id, device_id) in to_remove {
-            self.remove_connection(&user_id, &device_id);
+        for (connection_id, user_id, device_id) in to_remove {
+            self.remove_connection(&connection_id, &user_id, &device_id);
             removed_count += 1;
 
             warn!(

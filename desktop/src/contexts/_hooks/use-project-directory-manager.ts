@@ -5,6 +5,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useProjectPersistenceService } from "@/hooks/useProjectPersistenceService";
 import { AppError, getErrorMessage } from "@/utils/error-handling";
 import { getExternalFoldersAction, setExternalFoldersAction } from "../../actions/project-settings/external-folders.actions";
+import { broadcastProjectDirectoryChangedAction } from "../../actions/project-directory";
 
 import { useNotification } from "../notification-context";
 
@@ -49,6 +50,8 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
 
         if (dir) {
           setState((prev) => ({ ...prev, projectDirectory: dir }));
+          // Broadcast initial directory to sync with mobile
+          await broadcastProjectDirectoryChangedAction(dir);
         }
       } catch (err) {
         if (isMounted) {
@@ -98,6 +101,8 @@ export function useProjectDirectoryManager(): ProjectDirectoryManager {
 
       try {
         await saveProjectDirectory(dir);
+        // Broadcast to other connected devices
+        await broadcastProjectDirectoryChangedAction(dir);
       } catch (saveErr) {
         const persistenceErrorMessage = saveErr instanceof AppError
           ? `Project directory set for this session, but failed to save for future sessions: ${saveErr.message}`

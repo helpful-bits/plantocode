@@ -18,7 +18,8 @@
   },
   "cta": {
     "download": "다운로드",
-    "talkToArchitect": "전문가와 상담"
+    "talkToArchitect": "전문가와 상담",
+    "viewSource": "소스 코드 보기"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +80,10 @@
     "support": "지원",
     "tagline": "코드 변경 계획 및 배포 - 파일 찾기, AI 플랜 생성 및 병합, 영구 터미널에서 실행.",
     "talkToArchitect": "전문가와 상담",
-    "terms": "이용 약관"
+    "terms": "이용 약관",
+    "evolution": "발전",
+    "runtimeWalkthrough": "런타임 워크스루",
+    "sourceCode": "소스 코드"
   },
   "label": {
     "english": "영어",
@@ -101,7 +105,18 @@
     "docs": "문서",
     "downloads": "다운로드",
     "features": "기능",
-    "solutions": "솔루션"
+    "solutions": "솔루션",
+    "architecture": "아키텍처",
+    "runtimeWalkthrough": "런타임 워크스루",
+    "more": "더 보기",
+    "evolution": "발전",
+    "source": "소스 코드",
+    "evolutionDescription": "시간이 지남에 따라 아키텍처가 어떻게 발전했는지",
+    "downloadsDescription": "최신 빌드 다운로드",
+    "supportDescription": "커뮤니티 지원 및 리소스",
+    "changelogDescription": "최근 업데이트 및 릴리스",
+    "aboutDescription": "프로젝트 및 팀 소개",
+    "sourceDescription": "GitHub에서 전체 소스 코드 탐색"
   },
   "solution": {
     "hardBugs": {
@@ -120,5 +135,12 @@
       "description": "기술 부채 정리",
       "label": "유지보수"
     }
+  },
+  "videoButton": {
+    "label": "워크스루 비디오 보기"
+  },
+  "videoModal": {
+    "closeLabel": "비디오 닫기",
+    "unsupported": "브라우저가 비디오 태그를 지원하지 않습니다."
   }
 }

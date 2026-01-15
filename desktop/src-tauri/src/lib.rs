@@ -630,6 +630,7 @@ pub fn run() {
             commands::session_commands::sync_history_state_command,
             commands::session_commands::merge_history_state_command,
             commands::session_commands::get_device_id_command,
+            commands::project_directory_commands::broadcast_project_directory_changed_command,
             commands::setup_commands::trigger_initial_keychain_access,
             commands::setup_commands::get_storage_mode,
             commands::setup_commands::check_existing_keychain_access,

@@ -259,6 +259,11 @@ public class PushNotificationManager: NSObject, ObservableObject {
         guard PlanToCodeCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true else {
             return
         }
+#if canImport(UIKit)
+        if UIApplication.shared.applicationState == .active {
+            return
+        }
+#endif
 
         let displayModel = model.map(PlanContentParser.displayModelName)
         let titleText = (planTitle?.isEmpty == false) ? planTitle! : "Implementation plan ready"
@@ -604,8 +609,11 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let userInfo = notification.request.content.userInfo
+        let categoryIdentifier = notification.request.content.categoryIdentifier
+        let notificationType = (userInfo["type"] as? String)
+            ?? (categoryIdentifier.isEmpty ? nil : categoryIdentifier)
 
-        if let type = userInfo["type"] as? String {
+        if let type = notificationType {
             let fileFinderEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyFileFinderResultsEnabled ?? true
             let planReadyEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyPlanReadyEnabled ?? true
             let terminalInactivityEnabled = PlanToCodeCore.shared.dataServices?.settingsService.notifyTerminalInactivityEnabled ?? true
@@ -624,6 +632,21 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
                 completionHandler([])
                 return
             }
+
+#if canImport(UIKit)
+            if type == Self.IMPLEMENTATION_PLAN_COMPLETE,
+               let jobId = userInfo["jobId"] as? String,
+               PlanToCodeCore.shared.dataServices?.jobsService.isViewingImplementationPlan(jobId: jobId) == true {
+                completionHandler([])
+                return
+            }
+
+            if type == Self.IMPLEMENTATION_PLAN_COMPLETE,
+               UIApplication.shared.applicationState == .active {
+                completionHandler([])
+                return
+            }
+#endif
         }
 
         completionHandler([.banner, .sound, .badge])

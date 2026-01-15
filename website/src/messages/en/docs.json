@@ -953,7 +953,11 @@
     "category": "Product Guide",
     "cta": {
       "description": "Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate implementation plans.",
-      "heading": "Try text improvement in the desktop app"
+      "heading": "Try text improvement in the desktop app",
+      "links": {
+        "architecture": "Architecture overview",
+        "buildYourOwn": "Build your own"
+      }
     },
     "date": "2025-09-21",
     "description": "How PlanToCode rewrites highlighted text without changing formatting and links the result back to your workspace.",
@@ -992,6 +996,51 @@
         "imageSrc": "/images/docs/text-improvement/flow.svg",
         "imageAlt": "Text improvement flow diagram"
       }
+    },
+    "processorDetails": {
+      "heading": "Processor implementation details",
+      "processor": "The {code} handles the text rewriting workflow on the Rust backend.",
+      "stepsHeading": "Processing steps",
+      "steps": [
+        "Parse the incoming payload with original text and selection metadata",
+        "Build the system prompt from the configured text_improvement template",
+        "Submit the request to the LLM task runner without streaming",
+        "Extract the improved text from the model response",
+        "Record token usage, cost, and prompt template for billing",
+        "Emit the result back to the UI via Tauri events"
+      ]
+    },
+    "inlineRewriting": {
+      "heading": "Inline rewriting behaviour",
+      "description": "When the improved text returns, the provider automatically replaces the original selection. The rewriting preserves whitespace, line breaks, and any inline formatting present in the source. If the editor is Monaco-based, the change is applied as a single undo-able edit operation.",
+      "contextsHeading": "Supported contexts",
+      "contexts": [
+        "Task description input fields",
+        "Plan terminal dictation area",
+        "Monaco plan viewers and editors",
+        "Any standard HTML input or textarea"
+      ]
+    },
+    "modelConfiguration": {
+      "heading": "Model configuration",
+      "description": "Text improvement uses the text_improvement task configuration from the desktop runtime config. You can override the default model and parameters in the settings panel.",
+      "settingsHeading": "Configurable settings",
+      "settings": [
+        "Allowed models list (default: Claude Sonnet 4.5, Gemini 3 Pro)",
+        "Maximum token limit (default: 4096)",
+        "Temperature setting (default: 0.7)",
+        "System prompt template override"
+      ]
+    },
+    "keyFiles": {
+      "heading": "Key implementation files",
+      "items": [
+        "desktop/src/contexts/TextImprovementProvider.tsx",
+        "desktop/src/components/TextImprovementPopover.tsx",
+        "desktop/src/actions/text-improvement/index.ts",
+        "desktop/src-tauri/src/jobs/processors/text_improvement.rs",
+        "server/src/config/task_model_config.rs"
+      ]
     }
   },
   "voiceTranscription": {

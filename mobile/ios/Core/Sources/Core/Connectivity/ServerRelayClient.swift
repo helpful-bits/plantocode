@@ -116,6 +116,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
     // Connection management
     private var heartbeatTimer: Timer?
     private var registrationTimer: Timer?
+    private var registrationRetryTask: Task<Void, Never>?
+    private var registrationSendAttempts: Int = 0
+    private let maxRegistrationSendAttempts: Int = 6
+
+    // Connection debouncing to prevent rapid reconnection attempts
+    // This helps avoid NWConnection state issues from rapid connect/cancel cycles
+    private var lastConnectionAttemptTime: Date?
+    private let minConnectionInterval: TimeInterval = 0.5
 
     private var cancellables = Set<AnyCancellable>()
     private var isDisconnecting = false
@@ -129,6 +137,16 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     /// Provider to get current active session ID for heartbeat payloads.
     public var activeSessionIdProvider: (() -> String?)?
+
+    private var registrationEpoch: UInt64 = 0
+    private var isRegistrationInFlight: Bool = false
+    private let registrationLock = NSLock()
+
+    public var forceNewSessionNextRegister: Bool = false
+
+    private var consecutiveInvalidResumeCount: Int = 0
+    private var firstInvalidResumeAt: Date?
+    public var onInvalidResumeLoop: (() -> Void)?
 
     // MARK: - Public Interface
 
@@ -151,6 +169,12 @@ public class ServerRelayClient: NSObject, ObservableObject {
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 120
         config.waitsForConnectivity = true
+        config.allowsCellularAccess = true
+        config.allowsExpensiveNetworkAccess = true
+        config.allowsConstrainedNetworkAccess = true
+        if #available(iOS 11.0, *) {
+            config.multipathServiceType = .handover
+        }
 
         let delegate = sessionDelegate ?? CertificatePinningManager.shared.createURLSessionDelegate(endpointType: .relay)
         self.urlSession = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
@@ -283,6 +307,15 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 return
             }
 
+            // Debounce rapid connection attempts to prevent NWConnection state issues
+            if let lastAttempt = self.lastConnectionAttemptTime,
+               Date().timeIntervalSince(lastAttempt) < self.minConnectionInterval {
+                self.logger.debug("Connection attempt debounced - too soon after last attempt")
+                promise(.failure(.invalidState("Connection attempt too frequent")))
+                return
+            }
+            self.lastConnectionAttemptTime = Date()
+
             // Build WebSocket URL - prefer Config.deviceLinkWebSocketURL for consistency
             let wsURL: URL
             if let configURL = URL(string: Config.serverURL), configURL == self.serverURL {
@@ -342,6 +375,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
                 self.isConnected = false
             }
 
+            self.registrationRetryTask?.cancel()
+            self.registrationRetryTask = nil
+            self.registrationSendAttempts = 0
+
             self.webSocketTask = self.urlSession.webSocketTask(with: request)
             self.webSocketTask?.maximumMessageSize = 32 * 1024 * 1024
             self.webSocketTask?.resume()
@@ -386,6 +423,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
         try? KeychainManager.shared.delete(for: .relayResumeToken(deviceId: deviceId.uuidString.lowercased()))
     }
 
+    public func markForceNewSession() {
+        registrationEpoch += 1
+        forceNewSessionNextRegister = true
+        clearResumeToken()
+        sessionId = nil
+        resumeToken = nil
+    }
+
     /// Disconnect from the relay
     /// - Parameter isUserInitiated: If true, fails all pending RPCs. If false (network drop), keeps state for reconnection.
     public func disconnect(isUserInitiated: Bool = true) {
@@ -404,6 +449,10 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         stopHeartbeat()
         stopWatchdog()
+
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+        registrationSendAttempts = 0
 
         registrationTimer?.invalidate()
         registrationTimer = nil
@@ -431,6 +480,48 @@ public class ServerRelayClient: NSObject, ObservableObject {
         }
         // Non-user disconnect (e.g., network change / transient outage):
         // - Keep pendingRPCCalls so invoke() timeouts handle failures if reconnect never happens.
+    }
+
+    /// Disconnect and mark as reconnecting without clearing session credentials.
+    /// - Parameter failPendingCalls: If true, fails all pending RPCs immediately.
+    public func disconnectForReconnect(failPendingCalls: Bool = false) {
+        if isDisconnecting { return }
+        if webSocketTask == nil, connectionState == .reconnecting {
+            return
+        }
+        isDisconnecting = true
+        defer { isDisconnecting = false }
+
+        logger.info("Disconnecting from server relay for reconnect")
+
+        publishOnMain {
+            self.connectionState = .reconnecting
+            self.isConnected = false
+        }
+        stopHeartbeat()
+        stopWatchdog()
+
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+        registrationSendAttempts = 0
+
+        registrationTimer?.invalidate()
+        registrationTimer = nil
+
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
+        if failPendingCalls {
+            executeSafelyOnRpcQueue {
+                let pendingIds = Array(self.pendingRPCCalls.keys)
+                let subjects = Array(self.pendingRPCCalls.values)
+
+                for (id, subject) in zip(pendingIds, subjects) {
+                    subject.send(completion: .failure(.disconnected))
+                    self.removePendingCall(id: id)
+                }
+            }
+        }
     }
 
     // MARK: - RPC Calls
@@ -473,6 +564,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
     private func rpcTimeout(for method: String) -> TimeInterval {
         switch method {
+        case "system.ping":
+            return 3.0  // Reduced from 8s for faster offline detection
         case "files.search", "job.list", "job.get", "session.syncHistoryState", "session.mergeHistoryState", "session.getHistoryState":
             return 90.0
         case "session.list", "session.get", "session.update", "settings.getProjectTaskModelSettings", "actions.estimatePromptTokens":
@@ -519,7 +612,9 @@ public class ServerRelayClient: NSObject, ObservableObject {
             }
 
             let responseSubject = PassthroughSubject<RpcResponse, ServerRelayError>()
-            let effectiveTimeout = max(timeout, self.rpcTimeout(for: req.method))
+            let effectiveTimeout: TimeInterval = (timeout == 30.0)
+                ? self.rpcTimeout(for: req.method)
+                : timeout
 
             rpcQueue.async {
                 self.pendingRPCCalls[req.id] = responseSubject
@@ -702,45 +797,81 @@ public class ServerRelayClient: NSObject, ObservableObject {
         return jsonString
     }
 
-    // Send registration message on open
     private func sendRegistration() {
-        // Build registration payload matching device_link_ws RegisterPayload schema
-        // Uses compactMapValues to omit nil values for a clean JSON structure
-        let storedResumeToken: String?
-        let storedSessionId: String?
+        guard registrationPromise != nil else { return }
 
-        let resumeItem = KeychainManager.KeychainItem.relayResumeToken(deviceId: self.deviceId)
-        var resumeMeta = try? KeychainManager.shared.retrieve(
-            type: RelaySessionMeta.self,
-            for: resumeItem,
-            prompt: nil
-        )
-        if resumeMeta == nil {
-            let legacyDeviceId = self.deviceId.uppercased()
-            if legacyDeviceId != self.deviceId {
-                let legacyItem = KeychainManager.KeychainItem.relayResumeToken(deviceId: legacyDeviceId)
-                if let legacyMeta = try? KeychainManager.shared.retrieve(
+        let capturedEpoch = registrationEpoch
+
+        registrationLock.lock()
+        if isRegistrationInFlight {
+            registrationLock.unlock()
+            return
+        }
+        isRegistrationInFlight = true
+        registrationLock.unlock()
+
+        let deviceIdCopy = self.deviceId
+        let forceNew = forceNewSessionNextRegister
+        if forceNewSessionNextRegister {
+            forceNewSessionNextRegister = false
+        }
+
+        // Move keychain operations off main thread to prevent blocking UI
+        Task.detached(priority: .userInitiated) { [weak self] in
+            guard let self = self else { return }
+
+            var storedResumeToken: String?
+            var storedSessionId: String?
+
+            if forceNew {
+                storedSessionId = nil
+                storedResumeToken = nil
+            } else {
+                let resumeItem = KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceIdCopy)
+                var resumeMeta = try? KeychainManager.shared.retrieve(
                     type: RelaySessionMeta.self,
-                    for: legacyItem,
+                    for: resumeItem,
                     prompt: nil
-                ) {
-                    resumeMeta = legacyMeta
-                    try? KeychainManager.shared.store(object: legacyMeta, for: resumeItem)
-                    try? KeychainManager.shared.delete(for: legacyItem)
+                )
+                if resumeMeta == nil {
+                    let legacyDeviceId = deviceIdCopy.uppercased()
+                    if legacyDeviceId != deviceIdCopy {
+                        let legacyItem = KeychainManager.KeychainItem.relayResumeToken(deviceId: legacyDeviceId)
+                        if let legacyMeta = try? KeychainManager.shared.retrieve(
+                            type: RelaySessionMeta.self,
+                            for: legacyItem,
+                            prompt: nil
+                        ) {
+                            resumeMeta = legacyMeta
+                            try? KeychainManager.shared.store(object: legacyMeta, for: resumeItem)
+                            try? KeychainManager.shared.delete(for: legacyItem)
+                        }
+                    }
+                }
+
+                if let resumeMeta {
+                    storedSessionId = resumeMeta.sessionId
+                    storedResumeToken = resumeMeta.resumeToken
+                    self.logger.info("Attempting to register with resume credentials, deviceId=\(deviceIdCopy)")
+                } else {
+                    storedSessionId = nil
+                    storedResumeToken = nil
+                    self.logger.info("Registering new session, deviceId=\(deviceIdCopy)")
                 }
             }
-        }
 
-        if let resumeMeta {
-            storedSessionId = resumeMeta.sessionId
-            storedResumeToken = resumeMeta.resumeToken
-            logger.info("Attempting to register with resume credentials, deviceId=\(self.deviceId)")
-        } else {
-            storedSessionId = nil
-            storedResumeToken = nil
-            logger.info("Registering new session, deviceId=\(self.deviceId)")
+            // Dispatch back to main thread for WebSocket send and UI-related work
+            await MainActor.run {
+                self.completeRegistrationSend(
+                    storedSessionId: storedSessionId,
+                    storedResumeToken: storedResumeToken,
+                    capturedEpoch: capturedEpoch
+                )
+            }
         }
+    }
 
+    private func completeRegistrationSend(storedSessionId: String?, storedResumeToken: String?, capturedEpoch: UInt64) {
         var payload: [String: Any] = [
             "deviceId": self.deviceId,
             "deviceName": UIDevice.current.name
@@ -763,16 +894,67 @@ public class ServerRelayClient: NSObject, ObservableObject {
             let jsonString = try encodeForWebSocket(envelope)
 
             webSocketTask?.send(.string(jsonString)) { [weak self] error in
+                guard let self = self else { return }
+                self.registrationLock.lock()
+                self.isRegistrationInFlight = false
+                self.registrationLock.unlock()
+
                 if let error = error {
-                    self?.registrationPromise?(.failure(.networkError(error)))
-                    self?.registrationPromise = nil
+                    if self.shouldRetryRegistrationSend(error) {
+                        self.scheduleRegistrationRetry()
+                        return
+                    }
+                    self.registrationPromise?(.failure(.networkError(error)))
+                    self.registrationPromise = nil
                 } else {
-                    self?.logger.info("Registration/resume message sent")
+                    self.logger.info("Registration/resume message sent")
                 }
             }
         } catch {
+            registrationLock.lock()
+            isRegistrationInFlight = false
+            registrationLock.unlock()
             registrationPromise?(.failure(.encodingError(error)))
             registrationPromise = nil
+        }
+    }
+
+    private func shouldRetryRegistrationSend(_ error: Error) -> Bool {
+        guard registrationSendAttempts < maxRegistrationSendAttempts else { return false }
+        if let isOnline = isNetworkOnline, !isOnline() {
+            return false
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet,
+                 .networkConnectionLost,
+                 .cannotFindHost,
+                 .cannotConnectToHost,
+                 .timedOut:
+                return true
+            default:
+                break
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSPOSIXErrorDomain && nsError.code == 57 {
+            return true
+        }
+
+        return false
+    }
+
+    private func scheduleRegistrationRetry() {
+        registrationSendAttempts += 1
+        let delay = min(0.25 * Double(registrationSendAttempts), 1.5)
+
+        registrationRetryTask?.cancel()
+        registrationRetryTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard let self = self, !Task.isCancelled else { return }
+            self.sendRegistration()
         }
     }
 
@@ -963,9 +1145,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func handleRegisteredMessage(_ json: [String: Any]) {
-        // Cancel registration timeout timer
         registrationTimer?.invalidate()
         registrationTimer = nil
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+        registrationSendAttempts = 0
+
+        consecutiveInvalidResumeCount = 0
+        firstInvalidResumeAt = nil
 
         logger.info("Device registered with relay server")
 
@@ -978,7 +1165,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         if let resumeToken = json["resumeToken"] as? String {
             self.resumeToken = resumeToken
 
-            // Persist to keychain if we have both sessionId and resumeToken
+            // Persist to keychain asynchronously to avoid blocking message handling
             if let sessionId = self.sessionId {
                 let expiresAt = json["expiresAt"] as? String
                 let resumeMeta = RelaySessionMeta(
@@ -986,10 +1173,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
                     resumeToken: resumeToken,
                     expiresAtISO: expiresAt
                 )
-                try? KeychainManager.shared.store(
-                    object: resumeMeta,
-                    for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId)
-                )
+                let deviceIdCopy = self.deviceId
+                Task.detached(priority: .utility) {
+                    try? KeychainManager.shared.store(
+                        object: resumeMeta,
+                        for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceIdCopy)
+                    )
+                }
             }
         }
 
@@ -1017,9 +1207,14 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     private func handleResumedMessage(_ json: [String: Any]) {
-        // Cancel registration timeout timer
         registrationTimer?.invalidate()
         registrationTimer = nil
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+        registrationSendAttempts = 0
+
+        consecutiveInvalidResumeCount = 0
+        firstInvalidResumeAt = nil
 
         logger.info("Relay session resumed successfully")
 
@@ -1035,21 +1230,24 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         let expiresAt = json["expiresAt"] as? String
 
-        // Update expiresAt in keychain if we have the resume token
-        if let existingMeta = try? KeychainManager.shared.retrieve(
-            type: RelaySessionMeta.self,
-            for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId),
-            prompt: nil
-        ) {
-            let updatedMeta = RelaySessionMeta(
-                sessionId: sessionId,
-                resumeToken: existingMeta.resumeToken,
-                expiresAtISO: expiresAt
-            )
-            try? KeychainManager.shared.store(
-                object: updatedMeta,
-                for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId)
-            )
+        // Update expiresAt in keychain asynchronously to avoid blocking message handling
+        let deviceIdCopy = self.deviceId
+        Task.detached(priority: .utility) {
+            if let existingMeta = try? KeychainManager.shared.retrieve(
+                type: RelaySessionMeta.self,
+                for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceIdCopy),
+                prompt: nil
+            ) {
+                let updatedMeta = RelaySessionMeta(
+                    sessionId: sessionId,
+                    resumeToken: existingMeta.resumeToken,
+                    expiresAtISO: expiresAt
+                )
+                try? KeychainManager.shared.store(
+                    object: updatedMeta,
+                    for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceIdCopy)
+                )
+            }
         }
 
         // Store sessionId in instance var
@@ -1088,6 +1286,7 @@ public class ServerRelayClient: NSObject, ObservableObject {
         if let resumeToken = json["resumeToken"] as? String {
             self.resumeToken = resumeToken
 
+            // Persist to keychain asynchronously to avoid blocking message handling
             if let sessionId = self.sessionId {
                 let expiresAt = json["expiresAt"] as? String
                 let resumeMeta = RelaySessionMeta(
@@ -1095,10 +1294,13 @@ public class ServerRelayClient: NSObject, ObservableObject {
                     resumeToken: resumeToken,
                     expiresAtISO: expiresAt
                 )
-                try? KeychainManager.shared.store(
-                    object: resumeMeta,
-                    for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId)
-                )
+                let deviceIdCopy = self.deviceId
+                Task.detached(priority: .utility) {
+                    try? KeychainManager.shared.store(
+                        object: resumeMeta,
+                        for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceIdCopy)
+                    )
+                }
             }
         }
     }
@@ -1118,7 +1320,8 @@ public class ServerRelayClient: NSObject, ObservableObject {
 
         rpcQueue.async {
             guard let responseSubject = self.pendingRPCCalls[correlationId] else {
-                self.logger.warning("Received rpc.response for unknown call: \(correlationId)")
+                // Late responses during reconnection are expected - log at debug level
+                self.logger.debug("Ignoring late rpc.response for call: \(correlationId)")
                 return
             }
 
@@ -1310,21 +1513,35 @@ public class ServerRelayClient: NSObject, ObservableObject {
             return
         }
 
-        // Check if this is an invalidResume error
         if errorCode == "invalidResume" {
-            logger.warning("resume_failed_retrying_register")
+            consecutiveInvalidResumeCount += 1
+            if firstInvalidResumeAt == nil {
+                firstInvalidResumeAt = Date()
+            }
 
-            // Clear stored resume token
+            if consecutiveInvalidResumeCount >= 3,
+               let firstAt = firstInvalidResumeAt,
+               Date().timeIntervalSince(firstAt) < 30 {
+                logger.error("invalidResume loop detected")
+                publishOnMain {
+                    self.connectionState = .failed(ServerRelayError.serverError("invalidResumeLoop", "Repeated session resume failures"))
+                }
+                disconnect(isUserInitiated: true)
+                onInvalidResumeLoop?()
+                return
+            }
+
             try? KeychainManager.shared.delete(
                 for: KeychainManager.KeychainItem.relayResumeToken(deviceId: deviceId)
             )
 
-            // Clear instance state
-            self.sessionId = nil
-            self.resumeToken = nil
+            markForceNewSession()
 
-            // Immediately retry with registration
-            sendRegistration()
+            if registrationPromise != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+                    self?.sendRegistration()
+                }
+            }
             return
         }
 
@@ -1336,25 +1553,85 @@ public class ServerRelayClient: NSObject, ObservableObject {
     private func handleConnectionError(_ error: Error) {
         logger.error("Connection error: \(error)")
 
+        let isTransient = isTransientConnectionError(error)
+        let relayError = ServerRelayError.networkError(error)
         publishOnMain {
-            self.connectionState = .failed(ServerRelayError.networkError(error))
+            self.connectionState = isTransient ? .reconnecting : .failed(relayError)
             self.isConnected = false
-            self.lastError = .networkError(error)
+            self.lastError = relayError
         }
 
         stopHeartbeat()
         stopWatchdog()
+        registrationRetryTask?.cancel()
+        registrationRetryTask = nil
+        registrationSendAttempts = 0
+        registrationTimer?.invalidate()
+        registrationTimer = nil
 
-        // Fail all pending RPCs
-        executeSafelyOnRpcQueue {
-            let pendingIds = Array(self.pendingRPCCalls.keys)
-            let subjects = Array(self.pendingRPCCalls.values)
+        if registrationPromise != nil {
+            registrationPromise?(.failure(relayError))
+            registrationPromise = nil
+        }
 
-            for (id, subject) in zip(pendingIds, subjects) {
-                subject.send(completion: .failure(.networkError(error)))
-                self.removePendingCall(id: id)
+        webSocketTask?.cancel(with: .goingAway, reason: nil)
+        webSocketTask = nil
+
+        if !isTransient {
+            // Fail all pending RPCs on non-transient failures only
+            executeSafelyOnRpcQueue {
+                let pendingIds = Array(self.pendingRPCCalls.keys)
+                let subjects = Array(self.pendingRPCCalls.values)
+
+                for (id, subject) in zip(pendingIds, subjects) {
+                    subject.send(completion: .failure(relayError))
+                    self.removePendingCall(id: id)
+                }
             }
         }
+    }
+
+    private func isTransientConnectionError(_ error: Error) -> Bool {
+        if let relayError = error as? ServerRelayError {
+            switch relayError {
+            case .timeout, .networkError, .notConnected, .disconnected:
+                return true
+            default:
+                return false
+            }
+        }
+
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .notConnectedToInternet,
+                 .networkConnectionLost,
+                 .timedOut,
+                 .cannotFindHost,
+                 .cannotConnectToHost,
+                 .dnsLookupFailed,
+                 .dataNotAllowed:
+                return true
+            default:
+                break
+            }
+        }
+
+        if let posixError = error as? POSIXError {
+            switch posixError.code {
+            case .ENOTCONN,
+                 .ECONNRESET,
+                 .EPIPE,
+                 .ETIMEDOUT,
+                 .ENETDOWN,
+                 .ENETUNREACH,
+                 .EHOSTUNREACH:
+                return true
+            default:
+                break
+            }
+        }
+
+        return false
     }
 
     // MARK: - Heartbeat

@@ -131,7 +131,7 @@ pub async fn create_path_finder_job_service(
         max_files_with_content: None, // Default will be used by processor
         priority_file_types: None,    // Default will be used by processor
         included_files: args.included_files,
-        excluded_files: args.excluded_files,
+        force_excluded_files: args.force_excluded_files,
     };
 
     // Create regex file filter payload (the format expected by the processor)

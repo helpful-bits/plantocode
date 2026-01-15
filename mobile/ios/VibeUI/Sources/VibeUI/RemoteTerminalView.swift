@@ -703,8 +703,8 @@ class SwiftTermController: NSObject, ObservableObject {
     private var framesSinceLastData: Int = 0
     private static let burstThreshold: TimeInterval = 0.1
     private static let burstCooldown: TimeInterval = 0.5
-    private static let minFlushIntervalIdle: TimeInterval = 0.12
-    private static let minFlushIntervalBurst: TimeInterval = 0.25
+    private static let minFlushIntervalIdle: TimeInterval = 0.35
+    private static let minFlushIntervalBurst: TimeInterval = 0.6
     private var lastFlushAt: Date = .distantPast
 
     private var effectiveMinFlushInterval: TimeInterval {
@@ -800,9 +800,8 @@ class SwiftTermController: NSObject, ObservableObject {
     private func setupDisplayLinkIfNeeded() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(displayLinkFired))
-        // High frame rate to minimize delay between SwiftTerm scroll calculations and display updates
-        // This reduces scroll jumping when processing rapid sub-agent output
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        // Lower frame rate reduces network/CPU pressure; terminal does not need high FPS.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 2, maximum: 10, preferred: 6)
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         displayLink = link

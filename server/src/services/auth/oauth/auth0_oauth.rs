@@ -331,8 +331,10 @@ impl Auth0OAuthService {
 
         info!("Authenticated user {} (ID: {}) via Auth0", email, user.id);
 
+        let normalized_device_id = device_id.as_ref().map(|id| id.to_lowercase());
+
         // Use device_id for token binding if available
-        let token = if let Some(device_id_value) = device_id.as_deref() {
+        let token = if let Some(device_id_value) = normalized_device_id.as_deref() {
             debug!(
                 "Creating token with device binding and token binding hash for device_id: {}",
                 device_id_value

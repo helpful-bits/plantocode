@@ -169,7 +169,10 @@ pub async fn finalize_auth0_login(
         .process_auth0_login(
             user_info,
             token_request.auth0_refresh_token.clone(),
-            token_request.device_id.clone(),
+            token_request
+                .device_id
+                .as_ref()
+                .map(|id| id.to_lowercase()),
         )
         .await?;
 
@@ -269,7 +272,7 @@ pub async fn refresh_app_token_auth0(
         .headers()
         .get("x-device-id")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+        .map(|s| s.to_lowercase());
 
     let auth_response = auth_service
         .process_auth0_login(user_info, new_tokens.refresh_token, device_id_from_header)

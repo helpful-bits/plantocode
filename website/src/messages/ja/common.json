@@ -18,7 +18,8 @@
   },
   "cta": {
     "download": "ダウンロード",
-    "talkToArchitect": "エキスパートと話す"
+    "talkToArchitect": "エキスパートと話す",
+    "viewSource": "ソースコードを見る"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +80,10 @@
     "support": "サポート",
     "tagline": "コード変更の計画と実装 - ファイルを見つけ、AIプランを生成・マージし、永続的なターミナルで実行します。",
     "talkToArchitect": "エキスパートと話す",
-    "terms": "利用規約"
+    "terms": "利用規約",
+    "evolution": "進化",
+    "runtimeWalkthrough": "ランタイムウォークスルー",
+    "sourceCode": "ソースコード"
   },
   "label": {
     "english": "英語",
@@ -101,7 +105,18 @@
     "docs": "ドキュメント",
     "downloads": "ダウンロード",
     "features": "機能",
-    "solutions": "ソリューション"
+    "solutions": "ソリューション",
+    "architecture": "アーキテクチャ",
+    "runtimeWalkthrough": "ランタイムウォークスルー",
+    "more": "その他",
+    "evolution": "進化",
+    "source": "ソースコード",
+    "evolutionDescription": "アーキテクチャの時間経過による進化",
+    "downloadsDescription": "最新ビルドを取得",
+    "supportDescription": "コミュニティサポートとリソース",
+    "changelogDescription": "最近の更新とリリース",
+    "aboutDescription": "プロジェクトとチームについて",
+    "sourceDescription": "GitHubで完全なソースコードを閲覧"
   },
   "solution": {
     "hardBugs": {
@@ -120,5 +135,12 @@
       "description": "技術的負債のクリーンアップ",
       "label": "メンテナンス"
     }
+  },
+  "videoButton": {
+    "label": "ウォークスルービデオを見る"
+  },
+  "videoModal": {
+    "closeLabel": "ビデオを閉じる",
+    "unsupported": "お使いのブラウザはビデオタグをサポートしていません。"
   }
 }

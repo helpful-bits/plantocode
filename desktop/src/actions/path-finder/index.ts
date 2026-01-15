@@ -53,7 +53,7 @@ export async function findRelevantFilesAction({
       maxFilesWithContent: currentOptions.maxFilesWithContent,
       priorityFileTypes: currentOptions.priorityFileTypes,
       includedFiles: currentOptions.includedFiles?.length ? currentOptions.includedFiles : null,
-      excludedFiles: currentOptions.forceExcludedFiles?.length ? currentOptions.forceExcludedFiles : null,
+      forceExcludedFiles: currentOptions.forceExcludedFiles?.length ? currentOptions.forceExcludedFiles : null,
     };
 
     // Check if all fields in pathFinderOptionsArg are null or undefined to pass null for the whole struct

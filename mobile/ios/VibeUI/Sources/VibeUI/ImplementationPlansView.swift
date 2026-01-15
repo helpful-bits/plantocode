@@ -18,6 +18,8 @@ public struct ImplementationPlansView: View {
     @State private var showingPromptPreview = false
     @State private var deletingPlans = Set<String>()
     @State private var cancellables = Set<AnyCancellable>()
+    @State private var plansSnapshot: [BackgroundJob] = []
+    @State private var plansSnapshotClearTask: Task<Void, Never>?
     @State private var derivedPlans: [PlanSummary] = []
 
     // Track previous session state for token re-estimation
@@ -55,7 +57,7 @@ public struct ImplementationPlansView: View {
     }
 
     private var shouldSuppressConnectionAlerts: Bool {
-        !multiConnectionManager.activeDeviceIsConnectedOrReconnecting
+        multiConnectionManager.workspaceConnectivityState(forOfflineMode: false) != .healthy
     }
 
     private func shouldShowErrorMessage(_ message: String) -> Bool {
@@ -70,6 +72,9 @@ public struct ImplementationPlansView: View {
         return normalized.contains("connection")
             || normalized.contains("not connected")
             || normalized.contains("offline")
+            || normalized.contains("desktop offline")
+            || normalized.contains("desktop is offline")
+            || normalized.contains("resume failed")
             || normalized.contains("relay")
             || normalized.contains("network")
             || normalized.contains("timeout")
@@ -491,14 +496,24 @@ public struct ImplementationPlansView: View {
             }
 
             // Initial computation of plans
+            if plansSnapshot.isEmpty {
+                plansSnapshot = jobsService.jobs
+            }
             recomputePlans()
         }
         .onDisappear {
             container.setJobsViewActive(false)
         }
-        .onReceive(jobsService.objectWillChange) { _ in
-            // Use objectWillChange instead of $jobs because jobs array is mutated in-place
-            // (via mutateJobs), which doesn't trigger @Published property publisher
+        .onReceive(jobsService.$jobsVersion) { _ in
+            let isBusy = jobsService.isLoading || jobsService.isRefreshing
+            if jobsService.jobs.isEmpty {
+                if jobsService.hasLoadedOnce && !isBusy {
+                    schedulePlansSnapshotClear()
+                }
+            } else {
+                plansSnapshotClearTask?.cancel()
+                plansSnapshot = jobsService.jobs
+            }
             recomputePlans()
         }
         .onReceive(container.sessionService.currentSessionPublisher) { session in
@@ -518,6 +533,18 @@ public struct ImplementationPlansView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             planCreatorViewModel.invalidateModelCache()
             planCreatorViewModel.loadModelSettings()
+        }
+    }
+
+    private func schedulePlansSnapshotClear() {
+        plansSnapshotClearTask?.cancel()
+        plansSnapshotClearTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            let isBusy = jobsService.isLoading || jobsService.isRefreshing
+            if jobsService.hasLoadedOnce && !isBusy && jobsService.jobs.isEmpty {
+                plansSnapshot = []
+                recomputePlans()
+            }
         }
     }
 
@@ -595,7 +622,9 @@ public struct ImplementationPlansView: View {
         let shouldFilterBySession = !activeSessionId.starts(with: "mobile-session-")
 
         // Filter jobs
-        let filteredJobs = jobsService.jobs.filter { job in
+        let sourceJobs = plansSnapshot.isEmpty ? jobsService.jobs : plansSnapshot
+
+        let filteredJobs = sourceJobs.filter { job in
             // Must be implementation_plan or implementation_plan_merge
             guard job.taskType == "implementation_plan" || job.taskType == "implementation_plan_merge" else {
                 return false

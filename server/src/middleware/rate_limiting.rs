@@ -768,7 +768,7 @@ impl RateLimitMiddleware {
         req.headers()
             .get("x-device-id")
             .and_then(|h| h.to_str().ok())
-            .map(|s| s.to_string())
+            .map(|s| s.to_lowercase())
     }
 
     /// Get client ID from request headers

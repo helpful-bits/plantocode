@@ -1,317 +1,96 @@
 {
-  "copyButtons": {
+  "hub": {
     "meta": {
-      "title": "Kopier-Buttons - Verwandeln Sie Prompts in Workflows",
-      "description": "Verwandeln Sie Prompts in wiederverwendbare Workflows mit konfigurierbaren Kopier-Buttons."
+      "title": "PlanToCode Funktionen - KI-Entwicklungsplanungswerkzeuge",
+      "description": "Entdecken Sie leistungsstarke Funktionen: Dateisuche, Multi-Modell-Planung, Sprachtranskription, Videoanalyse, Merge-Anweisungen und integrierte Terminal-Ausführung."
     },
-    "comparison": {
-      "plantocode": {
-        "items": [
-          "Ein-Klick-Automatisierung",
-          "Dynamische Inhalts-Substitution",
-          "Intelligentes Platzhalter-System",
-          "Kontextbewusste Verarbeitung",
-          "Persistente, wiederverwendbare Workflows"
-        ],
-        "title": "PlanToCode Kopierschaltflächen"
-      },
-      "title": "Was dies anders macht",
-      "traditional": {
-        "items": [
-          "Manuelle Copy-Paste-Workflows",
-          "Statische, unveränderliche Vorlagen",
-          "Kein Kontextbewusstsein",
-          "Fehleranfällige manuelle Bearbeitungen",
-          "Im Laufe der Zeit verlorene Workflows"
-        ],
-        "title": "Traditionelles Copy-Paste"
-      }
-    },
-    "concept": {
-      "dragDrop": {
-        "description": "Visuelles Workflow-Management mit @dnd-kit-Integration. Ordnen Sie Schaltflächen neu, um Ihrem Prozess zu entsprechen.",
-        "title": "Drag-and-Drop-Neuordnung"
-      },
-      "serverConfigured": {
-        "description": "Dynamische Schaltflächen mit Platzhalter-Substitution. Projektspezifische Overrides mit einheitlicher Prompt-Verarbeitung.",
-        "title": "Serverkonfigurierte Vorlagen"
-      },
-      "terminal": {
-        "description": "Ein-Klick-Ausführung in persistenten Terminal-Sitzungen. Chunked-Sending für große Inhalte.",
-        "title": "Terminal-Integration"
-      }
-    },
-    "configuration": {
-      "projectSettings": {
-        "description": "Kopierschaltflächen in Aufgabeneinstellungen gespeichert mit Projekt-Level-Overrides und serverseitigen Standards.",
-        "features": [
-          "SQLite-Datenbank-Persistenz",
-          "Serververwaltete Standardkonfigurationen",
-          "Projektverzeichnis-Scoping",
-          "Echtzeit-Konfigurations-Updates"
-        ],
-        "title": "Projektspezifische Einstellungen"
-      },
-      "title": "Konfiguration & Verwaltung",
-      "visualUI": {
-        "description": "Intuitive Bearbeitung mit Drag-and-Drop-Neuordnung, Debounced-Input-Handling und Echtzeit-Vorschau.",
-        "features": [
-          "Drag-Handles für visuelle Neuordnung",
-          "300ms Debounced-Input-Verarbeitung",
-          "Nur-Lesen-Modus für System-Schaltflächen",
-          "Anpassungs-Workflow-Unterstützung"
-        ],
-        "title": "Visuelle Konfigurations-UI"
-      }
-    },
+    "badge": "Component docs",
     "cta": {
-      "description": "Jeder Prompt wird zur Schaltfläche. Intelligente Vorlagen mit Platzhaltern. Komplexe Workflows, sofortiger Start. Ihre besten Tricks, immer bereit.",
+      "description": "Use these component docs to trace each subsystem to the processors, prompts, and UI surfaces that implement it.",
+      "title": "Trace the implementation",
       "links": {
-        "planMode": "Implementierungspläne ansehen",
-        "terminal": "Terminal-Integration erkunden"
-      },
-      "title": "Verwandeln Sie Prompts in Workflows"
+        "docs": "Open docs",
+        "architecture": "Architecture overview"
+      }
     },
-    "hero": {
-      "badge": "Konfigurierbares Workflow-Automatisierungssystem",
-      "description": "Speichern Sie Ihre besten Prompts als Schaltflächen. Ersetzen Sie Planinhalte und führen Sie sie im Terminal aus.",
-      "title": "Workflows. Ein Klick."
-    },
-    "technical": {
-      "architecture": {
-        "execution": "Schaltflächen-Klick löst Vorlagenverarbeitung aus → Platzhalter-Substitution mit Planinhalt → Terminal-Sitzungs-Validierung → Chunked-Inhalts-Übertragung",
-        "processing": "Regex-basiertes Platzhalter-Matching → Dynamische Inhalts-Substitution → Kontextbewusste Datenextraktion → Fehlerbehandlung für undefined-Werte",
-        "storage": "CopyButtonConfig[] in Aufgabeneinstellungen → Projektspezifische Datenbankspeicherung → Serverseitige Standardkonfigurationen → Echtzeit-Synchronisation",
-        "ui": "Implementierungsplan-Karten → Inhaltsansichts-Modals → Terminal-Oberflächen-Header → Drag-Drop-Konfigurations-Editor"
-      },
-      "title": "Technische Implementierung"
-    },
-    "templateSystem": {
-      "placeholders": {
-        "description": "Dynamischer Inhaltsersat mit {{PLACEHOLDER}}-Syntax. Kontextbewusste Verarbeitung mit Implementierungsplänen.",
-        "examples": [
-          "{{IMPLEMENTATION_PLAN}} - Vollständiger Planinhalt",
-          "{{STEP_CONTENT}} - Ausgewählter Schrittinhalt",
-          "{{PROJECT_CONTEXT}} - Projektspezifischer Kontext",
-          "Benutzerdefinierte Platzhalter für Erweiterbarkeit"
-        ],
-        "title": "Platzhalter-Substitution"
-      },
-      "processor": {
-        "description": "Fortgeschrittene Vorlagen-Engine mit bedingten Abschnitten, XML-Formatierung und intelligenter Bereinigung.",
-        "features": [
-          "Regex-basiertes Platzhalter-Matching",
-          "Escape-Zeichen-Behandlung",
-          "Multi-Zeilen-Inhalts-Unterstützung",
-          "Gnädige undefined-Behandlung"
-        ],
-        "title": "Einheitliche Prompt-Verarbeitung"
-      },
-      "title": "Intelligentes Vorlagensystem"
-    },
-    "terminalIntegration": {
-      "oneClick": {
-        "description": "Kopierschaltflächen integrieren sich direkt mit Terminal-Sitzungen für sofortige Ausführung. Intelligente Inhaltsbehandlung verhindert Terminal-Überlauf.",
-        "features": [
-          "Automatisches Einfügen in aktives Terminal",
-          "Chunked-Sending für große Inhalte",
-          "Sitzungs-Zustandsüberwachung",
-          "Clipboard-Fallback für Sicherheit"
-        ],
-        "title": "Ein-Klick-Automatisierung"
-      },
-      "title": "Nahtlose Terminal-Ausführung"
-    },
-    "useCases": {
-      "customTeam": {
-        "description": "Teamspezifische Prozesse mit Projektkontext und Coding-Standards.",
-        "title": "Benutzerdefinierte Team-Workflows"
-      },
-      "investigation": {
-        "description": "Standardisierte Review-Prozesse für Implementierungsplan-Ergebnisse.",
-        "title": "Untersuchung & Review"
-      },
-      "parallel": {
-        "description": "Starten Sie mehrere Claude-Coding-Agents gleichzeitig mit vorkonfigurierten Anweisungen.",
-        "title": "Parallele Agent-Workflows"
-      },
-      "stepByStep": {
-        "description": "Extrahieren und führen Sie einzelne Implementierungsschritte mit Kontext aus.",
-        "title": "Schritt-für-Schritt-Ausführung"
-      },
-      "title": "Reale Anwendungsfälle"
-    }
+    "description": "Component-level documentation for each subsystem, with pointers to the job processors, storage tables, and UI surfaces that drive behavior. Most stages rely on external LLM providers configured with your API keys.",
+    "learnMore": "Open component",
+    "title": "Component Documentation"
   },
-  "deepResearch": {
+  "meetings": {
     "meta": {
-      "title": "Tiefenrecherche - KI-gestützte Recherche-Intelligenz",
-      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse. KI-gestützte Recherche mit ausgefeilten Abfragen und parallelen Rechercheaufgaben."
+      "title": "Meeting & Recording Ingestion - System Walkthrough",
+      "description": "How PlanToCode captures meetings and recordings, extracts requirements, and feeds them into planning workflows."
     },
-    "advanced": {
-      "features": [
-        {
-          "title": "Intelligentes Abfrage-Design",
-          "description": "KI erstellt ausgefeilte Rechercheabfragen, die mehrere Winkel und Perspektiven für umfassende Abdeckung erkunden."
-        },
-        {
-          "title": "Kontextbewusste Analyse",
-          "description": "Recherche ist auf Ihren spezifischen Projektkontext, Technologie-Stack und Entwicklungsanforderungen zugeschnitten."
-        },
-        {
-          "title": "Hintergrundverarbeitung",
-          "description": "Langläufige Rechercheaufgaben werden im Hintergrund mit Echtzeit-Fortschritts-Updates und Benachrichtigungen ausgeführt."
-        },
-        {
-          "title": "Ergebnis-Integration",
-          "description": "Rechercheergebnisse werden automatisch formatiert und zur sofortigen Verwendung in Ihre Aufgabenbeschreibungen integriert."
-        },
-        {
-          "title": "Kostenoptimierung",
-          "description": "Intelligente Modellauswahl und Abfrageoptimierung zum Ausbalancieren von Recherchequalität und Kosteneffizienz."
-        },
-        {
-          "title": "Fortschrittsüberwachung",
-          "description": "Echtzeit-Verfolgung des Recherchefortschritts mit detaillierten Status-Updates und Abschlussbenachrichtigungen."
-        }
-      ],
-      "title": "Erweiterte Recherchefähigkeiten"
-    },
-    "aiCapabilities": {
-      "multiModel": {
-        "description": "Nutzt mehrere KI-Modelle zur Ausführung von Rechercheaufgaben mit unterschiedlichen Perspektiven und Fachgebieten.",
-        "models": [
-          "OpenAI GPT Modelle",
-          "Anthropic Claude",
-          "Google Gemini",
-          "Spezialisierte Recherchemodelle"
-        ],
-        "title": "Multi-Modell-Recherche"
+    "badge": "Specification capture",
+    "title": "Meeting & Recording Ingestion",
+    "subtitle": "Multimodal pipeline that turns recorded discussions into structured requirements for planning. Analysis runs through the configured transcription and vision providers.",
+    "ariaLabel": "Meeting and recording ingestion features",
+    "cards": {
+      "multimodal": {
+        "title": "Multimodal extraction pipeline",
+        "description": "Audio and key frames are processed to produce transcripts, UI context, and requirement notes for task refinement.",
+        "link": "See video analysis"
       },
-      "parallel": {
-        "description": "Führen Sie mehrere Rechercheaufgaben gleichzeitig mit intelligenter Ergebnisaggregation und -synthese aus.",
-        "features": [
-          "Gleichzeitige Ausführung",
-          "Fortschrittsverfolgung",
-          "Fehlerwiederherstellung",
-          "Ergebnissynthese"
-        ],
-        "title": "Parallele Verarbeitung"
-      },
-      "projectContext": {
-        "description": "KI analysiert Ihre Projektstruktur, Technologie-Stack und Codebasis zur Generierung hochrelevanter Recherche.",
-        "features": [
-          "Dateistruktur-Analyse",
-          "Technologie-Stack-Erkennung",
-          "Abhängigkeits-Mapping",
-          "Kontextbewusste Erkenntnisse"
-        ],
-        "title": "Projekt-Kontext-Analyse"
-      },
-      "title": "KI-Recherchefähigkeiten"
-    },
-    "cta": {
-      "description": "Von intelligenten Abfragen zu synthetisierten Erkenntnissen, integriert mit Ihrem Entwicklungs-Workflow. So sollte Recherche funktionieren – umfassend, intelligent, umsetzbar.",
-      "links": {
-        "planMode": "Implementierungsplanung ansehen",
-        "textImprovement": "Textverbesserung erkunden"
-      },
-      "title": "Transformieren Sie Ihren Recherche-Workflow"
-    },
-    "developmentFocus": {
-      "contextFiltering": {
-        "description": "Rechercheumfang automatisch angepasst basierend auf Ihrem Projektkontext und Entwicklungs-Stack.",
-        "features": [
-          "Technologie-Stack-Bewusstsein",
-          "Versionskompatibilitätsprüfung",
-          "Projektanforderungs-Filterung",
-          "Skalierbarkeits-Überlegungs-Priorität"
-        ],
-        "title": "Kontextbewusste Filterung"
-      },
-      "implementationReady": {
-        "description": "Rechercheergebnisse optimiert für Entwicklungs-Workflows. Code-Beispiele, API-Dokumentation und Best Practices.",
-        "features": [
-          "Code-Snippet-Extraktion",
-          "API-Referenz-Zusammenstellung",
-          "Architekturmuster-Analyse",
-          "Performance-Überlegungshinweise"
-        ],
-        "title": "Implementierungsbereite Erkenntnisse"
-      },
-      "title": "Entwicklungsfokussierte Recherche"
-    },
-    "features": {
-      "parallelExecution": {
-        "description": "Führen Sie mehrere ausgefeilte Rechercheaufgaben gleichzeitig aus. KI synthetisiert Erkenntnisse zu umsetzbaren Entwicklungs-Insights.",
-        "title": "Parallele Rechercheausführung"
-      },
-      "projectIntegration": {
-        "description": "Recherche ist auf Ihre spezifische Projektstruktur, Technologie-Stack und Entwicklungskontext zugeschnitten für maximale Relevanz.",
-        "title": "Projekt-Kontext-Integration"
-      },
-      "queryGeneration": {
-        "description": "KI erweitert Ihre Rechercheabfragen mit kontextbewussten Variationen. Multi-Winkel-Exploration für umfassende Abdeckung.",
-        "title": "Intelligente Abfragegenerierung"
+      "insights": {
+        "title": "Curated insights for planning",
+        "description": "Decisions, constraints, and action items are surfaced as selectable notes that feed the plan.",
+        "link": "See text improvement"
       }
     },
-    "hero": {
-      "badge": "KI-gestützte Recherche-Intelligenz",
-      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse in Ihre Aufgabe – ohne Ballast.",
-      "title": "Tiefenrecherche – von der Abfrage zur Erkenntnis"
+    "benefits": {
+      "title": "What the system outputs",
+      "collaboration": {
+        "title": "Decision log",
+        "description": "Captures decisions and action items with timestamps for traceable planning."
+      },
+      "transcription": {
+        "title": "Speaker-aware transcript",
+        "description": "Transcribes audio with speaker segmentation so requirements keep attribution."
+      },
+      "visual": {
+        "title": "Visual context frames",
+        "description": "Summarizes screens and diagrams into notes used during task refinement."
+      }
     },
-    "intelligence": {
-      "contextIntegration": {
-        "description": "Rechercheergebnisse werden automatisch mit Ihrer Aufgabenbeschreibung integriert und bereichern sie mit relevanten Erkenntnissen und Empfehlungen.",
-        "features": [
-          "Automatische Aufgaben-Verbesserung",
-          "Strukturierte Ergebnisformatierung",
-          "Implementierungsplan-Integration",
-          "Entwicklungs-Workflow-Ausrichtung"
-        ],
-        "title": "Kontext-Integration"
+    "howItWorks": {
+      "title": "Pipeline steps",
+      "step1": {
+        "title": "Ingest recording",
+        "description": "Upload a Teams or Zoom recording or a screen capture; the system normalizes formats and indexes the media."
       },
-      "execution": {
-        "description": "Hochentwickelte KI-Modelle führen Rechercheaufgaben parallel aus und liefern umfassende Analysen und Erkenntnisse.",
-        "features": [
-          "Parallele Rechercheaufgaben-Ausführung",
-          "Streaming-Ergebnisse mit Fortschrittsverfolgung",
-          "Kontextbewusste Analyse und Synthese",
-          "Entwicklungsfokussierte Erkenntnisse"
-        ],
-        "title": "KI-Rechercheausführung"
+      "step2": {
+        "title": "Multimodal analysis",
+        "description": "Audio transcript and key frames are analyzed to extract requirements, constraints, and UI state."
       },
-      "queryExpansion": {
-        "description": "KI analysiert Ihre initiale Abfrage und generiert strategische Variationen für umfassende Rechercheabdeckung.",
-        "features": [
-          "Kontextbewusste Abfragevariationen",
-          "Semantische Synonym-Erweiterung",
-          "Domänenspezifische Terminologie",
-          "Multi-Perspektiven-Recherchewinkel"
-        ],
-        "title": "Intelligente Abfrage-Erweiterung"
-      },
-      "synthesis": {
-        "description": "Fortgeschrittene KI-Modelle analysieren Ihren Projektkontext und generieren zielgerichtete Recherche-Insights, die auf Ihre Entwicklungsbedürfnisse zugeschnitten sind.",
-        "features": [
-          "Projektbewusste Recherchegenerierung",
-          "Kontextsensitive Analyse",
-          "Entwicklungsfokussierte Erkenntnisse",
-          "Implementierungsbereite Empfehlungen"
-        ],
-        "title": "KI-Recherchesynthese"
-      },
-      "title": "Recherche-Intelligenz-Engine"
+      "step3": {
+        "title": "Attach to task",
+        "description": "Outputs are attached to the task as structured notes before planning and file discovery."
+      }
     },
-    "process": {
-      "stage1": {
-        "description": "KI analysiert Ihre Aufgabenbeschreibung und Projektkontext zur Generierung ausgefeilter Rechercheabfragen. Erstellt mehrere strategische Recherchewinkel für umfassende Abdeckung.",
-        "title": "Rechercheabfrage-Generierung"
+    "relatedFeatures": {
+      "title": "Related components",
+      "videoAnalysis": {
+        "title": "Video Analysis",
+        "description": "Analyze screen recordings and capture UI context for planning."
       },
-      "stage2": {
-        "description": "Mehrere KI-Modelle führen Rechercheaufgaben gleichzeitig aus, jedes fokussiert auf unterschiedliche Aspekte Ihrer Anforderungen. Ergebnisse werden zu umsetzbaren Entwicklungs-Insights synthetisiert.",
-        "title": "Parallele Rechercheausführung"
+      "voiceTranscription": {
+        "title": "Voice Transcription",
+        "description": "Capture spoken requirements directly into the task input."
       },
-      "title": "Zweistufiger KI-Rechercheprozess"
+      "textImprovement": {
+        "title": "Text Improvement",
+        "description": "Normalize raw notes into structured task descriptions."
+      },
+      "learnMore": "Learn more"
+    },
+    "cta": {
+      "title": "Continue the pipeline",
+      "description": "Follow the video analysis docs and the architecture overview to see how these notes flow into planning and execution.",
+      "links": {
+        "docs": "Video analysis docs",
+        "architecture": "Architecture overview"
+      }
     }
   },
   "fileDiscovery": {
@@ -376,6 +155,7 @@
       "description": "Lassen Sie KI intelligent durch Ihre Codebasis navigieren. Von Repository-Analyse bis zu implementierungsbereitem Kontext – so sollte Datei-Discovery funktionieren: intelligent, effizient, kosteneffektiv.",
       "links": {
         "docs": "Technische Dokumentation lesen",
+        "buildYourOwn": "Build your own pipeline",
         "planMode": "Implementierungsplanung ansehen"
       },
       "title": "Erleben Sie intelligente Datei-Discovery"
@@ -384,6 +164,24 @@
       "badge": "KI-gestützte Repository-Navigation",
       "description": "PlanToCode kartiert betroffene Dateien, bevor Sie etwas ausführen. Sie erhalten einen fokussierten Kontext, dem Sie vertrauen können.",
       "title": "Finden Sie automatisch, was in Ihrer Codebasis wichtig ist"
+    },
+    "pipeline": {
+      "title": "How the File Discovery Pipeline Works",
+      "description": "Before any LLM call, the system builds a candidate index, applies deterministic filters, then uses relevance scoring to minimize tokens and noise.",
+      "cards": {
+        "index": {
+          "title": "Index",
+          "description": "Scan Git-tracked paths and build a local candidate set with directory hierarchy context."
+        },
+        "filter": {
+          "title": "Filter",
+          "description": "Apply regex patterns, ignore rules, and file-type heuristics to reduce the candidate pool."
+        },
+        "score": {
+          "title": "Score",
+          "description": "Run LLM-assisted relevance scoring and persist ranked results for later plan generation."
+        }
+      }
     },
     "performance": {
       "accuracy": {
@@ -443,46 +241,6 @@
       "title": "Der 5-stufige Discovery-Prozess"
     }
   },
-  "hub": {
-    "meta": {
-      "title": "PlanToCode Funktionen - KI-Entwicklungsplanungswerkzeuge",
-      "description": "Entdecken Sie leistungsstarke Funktionen: Dateisuche, Multi-Modell-Planung, Sprachtranskription, Videoanalyse, Merge-Anweisungen und integrierte Terminal-Ausführung."
-    }
-  },
-  "integratedTerminal": {
-    "meta": {
-      "title": "Integriertes Terminal - Persistente PTY-Sitzungen",
-      "description": "Persistente Terminal-Sitzungen mit Zustandsüberwachung und Befehlsüberprüfung. Führen Sie Implementierungspläne direkt mit Sprachtranskriptionsunterstützung aus."
-    },
-    "cta": {
-      "description": "Ein Terminal für Planung und Ausführung gebaut – integriert, persistent und schnell.",
-      "links": {
-        "docs": "Technische Dokumentation lesen",
-        "voice": "Sprachbefehle erkunden"
-      },
-      "title": "Erleben Sie das Terminal, das nie Kontext verliert"
-    },
-    "features": {
-      "integratedPlanning": {
-        "description": "Führen Sie Implementierungspläne aus und kopieren Sie Schritte direkt ins Terminal, ohne die Anwendung zu verlassen.",
-        "title": "Mit Planung integriert"
-      },
-      "persistent": {
-        "description": "Ihre Terminal-Sitzungen bleiben bei Ihrer Arbeit und bewahren Kontext zwischen Aufgaben und Neustarts.",
-        "title": "Persistente Sitzungen"
-      },
-      "title": "Ein Terminal für Ihren Workflow gebaut",
-      "voiceSupport": {
-        "description": "Nutzen Sie Ein-Klick-Copy-Paste für Befehle oder diktieren Sie sie direkt per Spracheingabe für mehr Geschwindigkeit.",
-        "title": "Sprach- und Kopier-Unterstützung"
-      }
-    },
-    "hero": {
-      "badge": "Integriertes PTY-Terminal",
-      "description": "Führen Sie Ihren Plan in einem persistenten Terminal aus. Gebaut für schnelle, fokussierte Ausführung.",
-      "title": "Job-zentriertes Terminal, das Kontext behält"
-    }
-  },
   "mergeInstructions": {
     "capabilities": {
       "instructionControl": {
@@ -535,8 +293,9 @@
     "cta": {
       "description": "Jenseits von Zusammenführung – intelligente architektonische Analyse mit SOLID-Prinzipien. So sollte Plansynthese funktionieren – intelligent, nachverfolgbar, emergent.",
       "links": {
-        "demo": "In Aktion sehen",
-        "planMode": "Plangenerierung erkunden"
+        "docs": "Implementation plan docs",
+        "planMode": "Plangenerierung erkunden",
+        "demo": "In Aktion sehen"
       },
       "title": "Erleben Sie echte architektonische Synthese"
     },
@@ -558,6 +317,16 @@
       "badge": "Architektonische Synthese mit Quellen-Nachverfolgbarkeit",
       "description": "KI führt tiefgehende architektonische Analyse mehrerer Pläne durch, löst Konflikte mit SOLID-Prinzipien und synthetisiert emergente Lösungen. Jede Entscheidung enthält Quellenattribution [src:P1 step 2] für vollständige Nachverfolgbarkeit.",
       "title": "Jenseits einfacher Zusammenführung: Architektonische Synthese"
+    },
+    "example": {
+      "heading": "Example merged output with source traceability:",
+      "steps": [
+        "Step 1: Set up database schema [src:P1 step 3]",
+        "Step 2: Implement authentication [src:P2 step 1, P3 step 2]",
+        "Step 3: Create API endpoints [src:P3 step 4 - cleaner approach]",
+        "Step 4: Add error handling [src:EMERGENT - combining P1, P2 patterns]",
+        "Step 5: Implement caching [src:P1 step 7, optimized with P2 insights]"
+      ]
     },
     "implementation": {
       "aiPrompt": {
@@ -667,6 +436,18 @@
   },
   "planMode": {
     "copyButtons": {
+      "examples": {
+        "serverConfigured": {
+          "button": "Button: \"Parallel agent workflows\"",
+          "hint": "+ Custom instructions...",
+          "template": "Template: \"{{IMPLEMENTATION_PLAN}}\""
+        },
+        "stepExtraction": {
+          "copyAll": "Copy All Steps",
+          "copyStep": "Copy Step 3",
+          "copyWithInstructions": "Copy with Instructions"
+        }
+      },
       "serverConfigured": {
         "description": "Dynamische Kopierschaltflächen serverseitig konfiguriert mit Template-Platzhaltern.",
         "title": "Serverkonfigurierte Schaltflächen"
@@ -860,6 +641,22 @@
         }
       ],
       "title": "Der vollständige Planungs-Workflow"
+    },
+    "references": {
+      "architecture": {
+        "description": "System boundaries, IPC, and background jobs.",
+        "title": "Architecture overview"
+      },
+      "buildYourOwn": {
+        "description": "Design the pipeline stages in your own project.",
+        "title": "Build your own pipeline"
+      },
+      "implementationPlans": {
+        "description": "Plan format, storage, and review flow.",
+        "title": "Implementation plan format"
+      },
+      "link": "Open docs",
+      "title": "Related references"
     }
   },
   "textImprovement": {
@@ -885,6 +682,8 @@
     "cta": {
       "description": "Schluss mit vagen Anforderungen. Erfassen Sie Ideen mit Sprache, verfeinern Sie sie mit KI-Prompts und erstellen Sie Spezifikationen, die Entwicklungsteams selbstbewusst umsetzen können.",
       "links": {
+        "docs": "Text improvement docs",
+        "architecture": "Architecture overview",
         "demo": "Demo ansehen",
         "voice": "Sprachfunktionen ansehen"
       },
@@ -990,6 +789,184 @@
         "title": "Aufgabenbeschreibungen für Team-Ausrichtung verfeinern"
       },
       "title": "Häufige Anwendungsfälle"
+    }
+  },
+  "voiceTranscription": {
+    "accuracy": {
+      "bottomLine": "Fazit: Weniger Fehler bedeuten weniger mehrdeutige Tickets und weniger Nacharbeit. gpt-4o-transcribe hilft Teams, präzise, implementierungsbereite Spezifikationen beim ersten Versuch zu erfassen.",
+      "about": "About the evaluation context",
+      "models": {
+        "aws": "AWS Transcribe — verwaltete Spracherkennung von Amazon Web Services.",
+        "google": "Google Speech-to-Text v2 — Cloud-Spracherkennung von Google.",
+        "gpt": "OpenAI gpt-4o-transcribe — fortgeschrittenes mehrsprachiges Sprachmodell optimiert für Genauigkeit und Latenz.",
+        "whisper": "Whisper large-v2 — Open-Source-Large-Model-Baseline zum Vergleich."
+      },
+      "title": "Genauigkeits-Benchmarks"
+    },
+    "capabilities": {
+      "multiLanguage": {
+        "description": "OpenAI-Transkription unterstützt mehrere Sprachen.",
+        "title": "Mehrsprachige Unterstützung"
+      },
+      "perProject": {
+        "description": "Setzen Sie Projektstandards. Ihr Team teilt sinnvolle Standards.",
+        "title": "Pro-Projekt-Konfiguration"
+      },
+      "terminalDictation": {
+        "description": "Diktieren Sie Befehle direkt in Ihre Terminal-Sitzung.",
+        "title": "Terminal-Diktat"
+      },
+      "title": "Hauptfähigkeiten"
+    },
+    "cta": {
+      "description": "Von Sprache zu verfeinerten Spezifikationen, nahtlos. Erfassen Sie Anforderungen freihändig, verfeinern Sie dann mit KI-Prompts. So sollten Unternehmensteams Anforderungen erfassen und klären.",
+      "links": {
+        "docs": "Voice transcription docs",
+        "textImprovement": "Textverbesserung erkunden",
+        "terminal": "Terminal-Integration ansehen"
+      },
+      "title": "Beginnen Sie, Spezifikationen mit Sprache zu erfassen"
+    },
+    "example": {
+      "competitor": {
+        "label": "Konkurrenzmodell",
+        "text": "Erstellen Sie ein Postgres-Replica in us-east mit 2 CPUs, 8GB RAM und aktivieren Sie Replikation; setzen Sie wal level logical und max senders gleich zehn."
+      },
+      "comparisonTitle": "Token-level comparison",
+      "errorSummary": "Errors — Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
+      "impact": "Impact: Mishearing \"read-replica\" as \"replica\", dropping region suffix \"-1\", or changing \"wal_level=logical\" can lead to incorrect deployments or data flows.",
+      "primaryBadge": "reference-aligned",
+      "primaryLabel": "Primary transcription model",
+      "gpt": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8 GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
+      "reference": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
+      "title": "Anschauliches Beispiel: Spezifikationserfassung"
+    },
+    "faq": {
+      "customize": {
+        "answer": "Ja. Sie können Sprach- und Modelleinstellungen für jedes Projekt konfigurieren. Einstellungen werden in der Projektkonfiguration gespeichert und über Teammitglieder hinweg geteilt.",
+        "question": "Kann ich Transkriptionseinstellungen pro Projekt anpassen?"
+      },
+      "languages": {
+        "answer": "OpenAI-Transkription unterstützt mehrere Sprachen. Sie können eine Standardsprache pro Projekt festlegen.",
+        "question": "Welche Sprachen werden für Sprachtranskription unterstützt?"
+      },
+      "model": {
+        "answer": "Wir verwenden OpenAI-Transkription für genaue Ergebnisse.",
+        "question": "Welches KI-Modell wird für Transkription verwendet?"
+      },
+      "offline": {
+        "answer": "Nein, Sprachtranskription erfordert eine Internetverbindung, um Audio an OpenAI gpt-4o-transcribe API zu senden. Die Transkription erfolgt in Echtzeit mit minimaler Latenz.",
+        "question": "Funktioniert Sprachtranskription offline?"
+      },
+      "whereToUse": {
+        "answer": "Sprachtranskription funktioniert an zwei Stellen: (1) Aufgabenbeschreibungs-Panel - diktieren Sie Implementierungsanforderungen, und (2) Terminal-Modal - diktieren Sie Befehle, die an Ihre aktive Shell-Sitzung angehängt werden.",
+        "question": "Wo kann ich Sprachtranskription in der App verwenden?"
+      }
+    },
+    "hero": {
+      "badge": "Sprachtranskription für Entwickler",
+      "description": "Sprechen Sie Ihre Anforderungen und Ideen natürlich. Dies ist der erste Schritt in Ihrem Spezifikations-Workflow: Erfassen Sie Ideen schnell mit Sprache, verfeinern Sie sie dann manuell mit KI-gestützten Prompts. Der schnellste Weg zur Erfassung initialer Spezifikationen vor Verfeinerung.",
+      "title": "Schnelle Spezifikationserfassung mit Sprache"
+    },
+    "workflow": {
+      "stage1": {
+        "description": "Dictate tasks to capture constraints, context, and intent; transcripts become inputs for refinement jobs.",
+        "title": "Stage 1: Dictating Tasks"
+      },
+      "stage5": {
+        "description": "Dictate terminal commands while reviewing output or diffs; the command is inserted into the PTY input.",
+        "title": "Stage 5: Terminal Voice Control"
+      },
+      "integration": {
+        "description": "Voice respects per-project language and temperature settings. Transcripts feed into text_improvement for grammar polish and task_refinement for completeness expansion.",
+        "title": "Integration with Text Enhancement Prompts"
+      },
+      "title": "Voice Transcription Across Stages"
+    },
+    "nextSteps": {
+      "description": "Sprachtranskription ist der erste Schritt in unserem Spezifikationserfassungs-Workflow. Sobald Sie Ihre Anforderungen erfasst haben, verwenden Sie KI-gestützte Prompts, um rohe Transkripte in klare, implementierungsbereite Spezifikationen zu verwandeln.",
+      "link": "Erfahren Sie mehr über Spezifikationserfassungsmodus",
+      "taskRefinement": {
+        "description": "Erweitern Sie Beschreibungen mit impliziten Anforderungen, Randfällen und technischen Überlegungen.",
+        "title": "Aufgabenverfeinerung"
+      },
+      "textEnhancement": {
+        "description": "Polieren Sie Grammatik, verbessern Sie Klarheit und erhöhen Sie Lesbarkeit unter Beibehaltung Ihrer ursprünglichen Absicht.",
+        "title": "Textverbesserung"
+      },
+      "title": "Verfeinern Sie Ihre erfassten Spezifikationen"
+    },
+    "painPoints": {
+      "captureIdeas": {
+        "description": "Stakeholder denken schneller als sie tippen. Anforderungen und Kontext gehen verloren, während Finger aufholen. Sprache lässt Sie die vollständige Spezifikation erfassen, bevor kritische Details verblassen.",
+        "title": "Erfassen Sie Ideen, bevor sie verblassen"
+      },
+      "contextSwitching": {
+        "description": "Stoppen Sie, was Sie tun, um eine Notiz-App zu öffnen, zu tippen, dann zurückzukehren. Jeder Wechsel unterbricht die Konzentration. Sprache bleibt im selben Workspace.",
+        "title": "Kontextwechsel tötet Momentum"
+      },
+      "handsBusy": {
+        "description": "Code reviewen? Debuggen? Architekturdiagramme zeichnen? Ihre Hände sind beschäftigt, aber Sie müssen die Aufgabe protokollieren. Sprachtranskription hält Sie im Flow.",
+        "title": "Schwer zu beschreiben, während Hände beschäftigt sind"
+      },
+      "title": "Warum Sprache die Spezifikationserfassung beschleunigt"
+    },
+    "useCases": {
+      "codeReview": {
+        "outcome": "Aufgabe mit vollem Kontext erstellt, null Tippen, kein Kontextwechsel.",
+        "scenario": "Code-Review enthüllt Refactoring-Möglichkeit. Ihre Hände sind am Diff, Augen am Bildschirm. Sprache erfasst die Aufgabenbeschreibung.",
+        "title": "Während Code-Review diktieren"
+      },
+      "fasterEntry": {
+        "outcome": "10x schnellere Aufgabenerfassung. QA-Feedback in Minuten statt Stunden verarbeitet.",
+        "scenario": "Sie haben 10 ähnliche Bugs nach QA-Tests zu protokollieren. Jedes zu tippen dauert 2 Minuten. Sprachtranskription dauert 20 Sekunden.",
+        "title": "Schnellere Aufgabenerfassung für repetitive Arbeit"
+      },
+      "handsFree": {
+        "outcome": "Ideen sofort protokolliert. Zurück zum Debuggen ohne Flow-Unterbrechung.",
+        "scenario": "Sie sind tief in einer Debugging-Sitzung. Sie entdecken drei verwandte Probleme, die behoben werden müssen. Sprechen Sie sie ins Sprachaufzeichnungsgerät, ohne Ihr Terminal zu verlassen.",
+        "title": "Ideen freihändig erfassen"
+      },
+      "terminalCommands": {
+        "outcome": "Befehle korrekt eingegeben, schneller als Dokumentation nachzuschlagen.",
+        "scenario": "Benötigen Sie einen komplexen Git-Befehl mit Flags, die Sie immer vergessen. Diktieren Sie ihn natürlich, lassen Sie Transkription die Syntax handhaben.",
+        "title": "Terminal-Befehle ohne Syntax-Auswendiglernen"
+      },
+      "title": "Reale Anwendungsfälle"
+    }
+  },
+  "integratedTerminal": {
+    "cta": {
+      "description": "Ein Terminal für Planung und Ausführung gebaut – integriert, persistent und schnell.",
+      "links": {
+        "docs": "Technische Dokumentation lesen",
+        "voice": "Sprachbefehle erkunden"
+      },
+      "title": "Erleben Sie das Terminal, das nie Kontext verliert"
+    },
+    "features": {
+      "integratedPlanning": {
+        "description": "Führen Sie Implementierungspläne aus und kopieren Sie Schritte direkt ins Terminal, ohne die Anwendung zu verlassen.",
+        "title": "Mit Planung integriert"
+      },
+      "persistent": {
+        "description": "Ihre Terminal-Sitzungen bleiben bei Ihrer Arbeit und bewahren Kontext zwischen Aufgaben und Neustarts.",
+        "title": "Persistente Sitzungen"
+      },
+      "title": "Ein Terminal für Ihren Workflow gebaut",
+      "voiceSupport": {
+        "description": "Nutzen Sie Ein-Klick-Copy-Paste für Befehle oder diktieren Sie sie direkt per Spracheingabe für mehr Geschwindigkeit.",
+        "title": "Sprach- und Kopier-Unterstützung"
+      }
+    },
+    "hero": {
+      "badge": "Integriertes PTY-Terminal",
+      "description": "Führen Sie Ihren Plan in einem persistenten Terminal aus. Gebaut für schnelle, fokussierte Ausführung.",
+      "title": "Job-zentriertes Terminal, das Kontext behält"
+    },
+    "meta": {
+      "title": "Integriertes Terminal - Persistente PTY-Sitzungen",
+      "description": "Persistente Terminal-Sitzungen mit Zustandsüberwachung und Befehlsüberprüfung. Führen Sie Implementierungspläne direkt mit Sprachtranskriptionsunterstützung aus."
     }
   },
   "videoAnalysis": {
@@ -1177,154 +1154,413 @@
       }
     }
   },
-  "voiceTranscription": {
-    "accuracy": {
-      "bottomLine": "Fazit: Weniger Fehler bedeuten weniger mehrdeutige Tickets und weniger Nacharbeit. gpt-4o-transcribe hilft Teams, präzise, implementierungsbereite Spezifikationen beim ersten Versuch zu erfassen.",
-      "models": {
-        "aws": "AWS Transcribe — verwaltete Spracherkennung von Amazon Web Services.",
-        "google": "Google Speech-to-Text v2 — Cloud-Spracherkennung von Google.",
-        "gpt": "OpenAI gpt-4o-transcribe — fortgeschrittenes mehrsprachiges Sprachmodell optimiert für Genauigkeit und Latenz.",
-        "whisper": "Whisper large-v2 — Open-Source-Large-Model-Baseline zum Vergleich."
-      },
-      "title": "Genauigkeits-Benchmarks"
+  "copyButtons": {
+    "meta": {
+      "title": "Kopier-Buttons - Verwandeln Sie Prompts in Workflows",
+      "description": "Verwandeln Sie Prompts in wiederverwendbare Workflows mit konfigurierbaren Kopier-Buttons."
     },
-    "capabilities": {
-      "multiLanguage": {
-        "description": "OpenAI-Transkription unterstützt mehrere Sprachen.",
-        "title": "Mehrsprachige Unterstützung"
+    "concept": {
+      "dragDrop": {
+        "description": "Visuelles Workflow-Management mit @dnd-kit-Integration. Ordnen Sie Schaltflächen neu, um Ihrem Prozess zu entsprechen.",
+        "title": "Drag-and-Drop-Neuordnung"
       },
-      "perProject": {
-        "description": "Setzen Sie Projektstandards. Ihr Team teilt sinnvolle Standards.",
-        "title": "Pro-Projekt-Konfiguration"
+      "serverConfigured": {
+        "description": "Dynamische Schaltflächen mit Platzhalter-Substitution. Projektspezifische Overrides mit einheitlicher Prompt-Verarbeitung.",
+        "title": "Serverkonfigurierte Vorlagen"
       },
-      "terminalDictation": {
-        "description": "Diktieren Sie Befehle direkt in Ihre Terminal-Sitzung.",
-        "title": "Terminal-Diktat"
+      "terminal": {
+        "description": "Ein-Klick-Ausführung in persistenten Terminal-Sitzungen. Chunked-Sending für große Inhalte.",
+        "title": "Terminal-Integration"
+      }
+    },
+    "configuration": {
+      "projectSettings": {
+        "description": "Kopierschaltflächen in Aufgabeneinstellungen gespeichert mit Projekt-Level-Overrides und serverseitigen Standards.",
+        "features": [
+          "SQLite-Datenbank-Persistenz",
+          "Serververwaltete Standardkonfigurationen",
+          "Projektverzeichnis-Scoping",
+          "Echtzeit-Konfigurations-Updates"
+        ],
+        "title": "Projektspezifische Einstellungen"
       },
-      "title": "Hauptfähigkeiten"
+      "title": "Konfiguration & Verwaltung",
+      "visualUI": {
+        "description": "Intuitive Bearbeitung mit Drag-and-Drop-Neuordnung, Debounced-Input-Handling und Echtzeit-Vorschau.",
+        "features": [
+          "Drag-Handles für visuelle Neuordnung",
+          "300ms Debounced-Input-Verarbeitung",
+          "Nur-Lesen-Modus für System-Schaltflächen",
+          "Anpassungs-Workflow-Unterstützung"
+        ],
+        "title": "Visuelle Konfigurations-UI"
+      }
     },
     "cta": {
-      "description": "Von Sprache zu verfeinerten Spezifikationen, nahtlos. Erfassen Sie Anforderungen freihändig, verfeinern Sie dann mit KI-Prompts. So sollten Unternehmensteams Anforderungen erfassen und klären.",
+      "description": "Jeder Prompt wird zur Schaltfläche. Intelligente Vorlagen mit Platzhaltern. Komplexe Workflows, sofortiger Start. Ihre besten Tricks, immer bereit.",
       "links": {
-        "terminal": "Terminal-Integration ansehen",
+        "planMode": "Implementierungspläne ansehen",
+        "terminal": "Terminal-Integration erkunden"
+      },
+      "title": "Verwandeln Sie Prompts in Workflows"
+    },
+    "exampleConfig": {
+      "title": "Example button configuration:",
+      "footer": "→ Button runs the configured template",
+      "templateBody": "{{IMPLEMENTATION_PLAN}}\n\nReview the plan. Read the files mentioned, understand them and launch parallel coding agents that run at the same time..."
+    },
+    "exampleLabels": {
+      "button": "Button:",
+      "dynamic": "Dynamic:",
+      "label": "Label:",
+      "purpose": "Purpose:",
+      "result": "Result:",
+      "template": "Template:"
+    },
+    "exampleValues": {
+      "investigationButton": "\"Investigate Results\"",
+      "investigationPurpose": "Thorough validation workflows",
+      "parallelButton": "\"Parallel agent template\"",
+      "parallelPurpose": "Complex multi-agent setup instructions",
+      "projectContextTemplate": "{{PROJECT_CONTEXT}}",
+      "projectDynamic": "Project-aware instructions",
+      "stepResult": "Focused step execution",
+      "stepTemplate": "{{STEP_CONTENT}}"
+    },
+    "hero": {
+      "badge": "Konfigurierbares Workflow-Automatisierungssystem",
+      "description": "Speichern Sie Ihre besten Prompts als Schaltflächen. Ersetzen Sie Planinhalte und führen Sie sie im Terminal aus.",
+      "title": "Workflows. Ein Klick."
+    },
+    "technical": {
+      "architecture": {
+        "heading": "# Copy button system architecture",
+        "note": "[Extend with new placeholders and templates as needed]",
+        "sections": {
+          "execution": "## 4. Execution flow",
+          "processing": "## 2. Template processing",
+          "storage": "## 1. Configuration storage",
+          "ui": "## 3. UI integration"
+        },
+        "execution": "Schaltflächen-Klick löst Vorlagenverarbeitung aus → Platzhalter-Substitution mit Planinhalt → Terminal-Sitzungs-Validierung → Chunked-Inhalts-Übertragung",
+        "processing": "Regex-basiertes Platzhalter-Matching → Dynamische Inhalts-Substitution → Kontextbewusste Datenextraktion → Fehlerbehandlung für undefined-Werte",
+        "storage": "CopyButtonConfig[] in Aufgabeneinstellungen → Projektspezifische Datenbankspeicherung → Serverseitige Standardkonfigurationen → Echtzeit-Synchronisation",
+        "ui": "Implementierungsplan-Karten → Inhaltsansichts-Modals → Terminal-Oberflächen-Header → Drag-Drop-Konfigurations-Editor"
+      },
+      "title": "Technische Implementierung"
+    },
+    "templateSystem": {
+      "placeholders": {
+        "description": "Dynamischer Inhaltsersat mit {{PLACEHOLDER}}-Syntax. Kontextbewusste Verarbeitung mit Implementierungsplänen.",
+        "examples": [
+          "{{IMPLEMENTATION_PLAN}} - Vollständiger Planinhalt",
+          "{{STEP_CONTENT}} - Ausgewählter Schrittinhalt",
+          "{{PROJECT_CONTEXT}} - Projektspezifischer Kontext",
+          "Benutzerdefinierte Platzhalter für Erweiterbarkeit"
+        ],
+        "title": "Platzhalter-Substitution"
+      },
+      "processor": {
+        "description": "Fortgeschrittene Vorlagen-Engine mit bedingten Abschnitten, XML-Formatierung und intelligenter Bereinigung.",
+        "features": [
+          "Regex-basiertes Platzhalter-Matching",
+          "Escape-Zeichen-Behandlung",
+          "Multi-Zeilen-Inhalts-Unterstützung",
+          "Gnädige undefined-Behandlung"
+        ],
+        "title": "Einheitliche Prompt-Verarbeitung"
+      },
+      "title": "Intelligentes Vorlagensystem"
+    },
+    "terminalIntegration": {
+      "oneClick": {
+        "description": "Kopierschaltflächen integrieren sich direkt mit Terminal-Sitzungen für sofortige Ausführung. Intelligente Inhaltsbehandlung verhindert Terminal-Überlauf.",
+        "features": [
+          "Automatisches Einfügen in aktives Terminal",
+          "Chunked-Sending für große Inhalte",
+          "Sitzungs-Zustandsüberwachung",
+          "Clipboard-Fallback für Sicherheit"
+        ],
+        "title": "Ein-Klick-Automatisierung"
+      },
+      "title": "Nahtlose Terminal-Ausführung"
+    },
+    "useCases": {
+      "customTeam": {
+        "description": "Teamspezifische Prozesse mit Projektkontext und Coding-Standards.",
+        "title": "Benutzerdefinierte Team-Workflows"
+      },
+      "investigation": {
+        "description": "Standardisierte Review-Prozesse für Implementierungsplan-Ergebnisse.",
+        "title": "Untersuchung & Review"
+      },
+      "parallel": {
+        "description": "Starten Sie mehrere Claude-Coding-Agents gleichzeitig mit vorkonfigurierten Anweisungen.",
+        "title": "Parallele Agent-Workflows"
+      },
+      "stepByStep": {
+        "description": "Extrahieren und führen Sie einzelne Implementierungsschritte mit Kontext aus.",
+        "title": "Schritt-für-Schritt-Ausführung"
+      },
+      "title": "Reale Anwendungsfälle"
+    },
+    "comparison": {
+      "plantocode": {
+        "items": [
+          "Ein-Klick-Automatisierung",
+          "Dynamische Inhalts-Substitution",
+          "Intelligentes Platzhalter-System",
+          "Kontextbewusste Verarbeitung",
+          "Persistente, wiederverwendbare Workflows"
+        ],
+        "title": "PlanToCode Kopierschaltflächen"
+      },
+      "title": "Was dies anders macht",
+      "traditional": {
+        "items": [
+          "Manuelle Copy-Paste-Workflows",
+          "Statische, unveränderliche Vorlagen",
+          "Kein Kontextbewusstsein",
+          "Fehleranfällige manuelle Bearbeitungen",
+          "Im Laufe der Zeit verlorene Workflows"
+        ],
+        "title": "Traditionelles Copy-Paste"
+      }
+    }
+  },
+  "deepResearch": {
+    "meta": {
+      "title": "Tiefenrecherche - KI-gestützte Recherche-Intelligenz",
+      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse. KI-gestützte Recherche mit ausgefeilten Abfragen und parallelen Rechercheaufgaben."
+    },
+    "advanced": {
+      "features": [
+        {
+          "title": "Intelligentes Abfrage-Design",
+          "description": "KI erstellt ausgefeilte Rechercheabfragen, die mehrere Winkel und Perspektiven für umfassende Abdeckung erkunden."
+        },
+        {
+          "title": "Kontextbewusste Analyse",
+          "description": "Recherche ist auf Ihren spezifischen Projektkontext, Technologie-Stack und Entwicklungsanforderungen zugeschnitten."
+        },
+        {
+          "title": "Hintergrundverarbeitung",
+          "description": "Langläufige Rechercheaufgaben werden im Hintergrund mit Echtzeit-Fortschritts-Updates und Benachrichtigungen ausgeführt."
+        },
+        {
+          "title": "Ergebnis-Integration",
+          "description": "Rechercheergebnisse werden automatisch formatiert und zur sofortigen Verwendung in Ihre Aufgabenbeschreibungen integriert."
+        },
+        {
+          "title": "Kostenoptimierung",
+          "description": "Intelligente Modellauswahl und Abfrageoptimierung zum Ausbalancieren von Recherchequalität und Kosteneffizienz."
+        },
+        {
+          "title": "Fortschrittsüberwachung",
+          "description": "Echtzeit-Verfolgung des Recherchefortschritts mit detaillierten Status-Updates und Abschlussbenachrichtigungen."
+        }
+      ],
+      "title": "Erweiterte Recherchefähigkeiten"
+    },
+    "aiCapabilities": {
+      "multiModel": {
+        "description": "Nutzt mehrere KI-Modelle zur Ausführung von Rechercheaufgaben mit unterschiedlichen Perspektiven und Fachgebieten.",
+        "models": [
+          "OpenAI GPT Modelle",
+          "Anthropic Claude",
+          "Google Gemini",
+          "Spezialisierte Recherchemodelle"
+        ],
+        "title": "Multi-Modell-Recherche"
+      },
+      "parallel": {
+        "description": "Führen Sie mehrere Rechercheaufgaben gleichzeitig mit intelligenter Ergebnisaggregation und -synthese aus.",
+        "features": [
+          "Gleichzeitige Ausführung",
+          "Fortschrittsverfolgung",
+          "Fehlerwiederherstellung",
+          "Ergebnissynthese"
+        ],
+        "title": "Parallele Verarbeitung"
+      },
+      "projectContext": {
+        "description": "KI analysiert Ihre Projektstruktur, Technologie-Stack und Codebasis zur Generierung hochrelevanter Recherche.",
+        "features": [
+          "Dateistruktur-Analyse",
+          "Technologie-Stack-Erkennung",
+          "Abhängigkeits-Mapping",
+          "Kontextbewusste Erkenntnisse"
+        ],
+        "title": "Projekt-Kontext-Analyse"
+      },
+      "title": "KI-Recherchefähigkeiten"
+    },
+    "cta": {
+      "description": "Von intelligenten Abfragen zu synthetisierten Erkenntnissen, integriert mit Ihrem Entwicklungs-Workflow. So sollte Recherche funktionieren – umfassend, intelligent, umsetzbar.",
+      "links": {
+        "planMode": "Implementierungsplanung ansehen",
         "textImprovement": "Textverbesserung erkunden"
       },
-      "title": "Beginnen Sie, Spezifikationen mit Sprache zu erfassen"
+      "title": "Transformieren Sie Ihren Recherche-Workflow"
     },
-    "example": {
-      "competitor": {
-        "label": "Konkurrenzmodell",
-        "text": "Erstellen Sie ein Postgres-Replica in us-east mit 2 CPUs, 8GB RAM und aktivieren Sie Replikation; setzen Sie wal level logical und max senders gleich zehn."
+    "developmentFocus": {
+      "contextFiltering": {
+        "description": "Rechercheumfang automatisch angepasst basierend auf Ihrem Projektkontext und Entwicklungs-Stack.",
+        "features": [
+          "Technologie-Stack-Bewusstsein",
+          "Versionskompatibilitätsprüfung",
+          "Projektanforderungs-Filterung",
+          "Skalierbarkeits-Überlegungs-Priorität"
+        ],
+        "title": "Kontextbewusste Filterung"
       },
-      "gpt": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8 GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
-      "reference": "Erstellen Sie ein Postgres-Read-Replica in us-east-1 mit 2 vCPU, 8GB RAM und aktivieren Sie logische Replikation; setzen Sie wal_level=logical und max_wal_senders=10.",
-      "title": "Anschauliches Beispiel: Spezifikationserfassung"
+      "implementationReady": {
+        "description": "Rechercheergebnisse optimiert für Entwicklungs-Workflows. Code-Beispiele, API-Dokumentation und Best Practices.",
+        "features": [
+          "Code-Snippet-Extraktion",
+          "API-Referenz-Zusammenstellung",
+          "Architekturmuster-Analyse",
+          "Performance-Überlegungshinweise"
+        ],
+        "title": "Implementierungsbereite Erkenntnisse"
+      },
+      "title": "Entwicklungsfokussierte Recherche"
     },
-    "faq": {
-      "customize": {
-        "answer": "Ja. Sie können Sprach- und Modelleinstellungen für jedes Projekt konfigurieren. Einstellungen werden in der Projektkonfiguration gespeichert und über Teammitglieder hinweg geteilt.",
-        "question": "Kann ich Transkriptionseinstellungen pro Projekt anpassen?"
+    "features": {
+      "parallelExecution": {
+        "description": "Führen Sie mehrere ausgefeilte Rechercheaufgaben gleichzeitig aus. KI synthetisiert Erkenntnisse zu umsetzbaren Entwicklungs-Insights.",
+        "title": "Parallele Rechercheausführung"
       },
-      "languages": {
-        "answer": "OpenAI-Transkription unterstützt mehrere Sprachen. Sie können eine Standardsprache pro Projekt festlegen.",
-        "question": "Welche Sprachen werden für Sprachtranskription unterstützt?"
+      "projectIntegration": {
+        "description": "Recherche ist auf Ihre spezifische Projektstruktur, Technologie-Stack und Entwicklungskontext zugeschnitten für maximale Relevanz.",
+        "title": "Projekt-Kontext-Integration"
       },
-      "model": {
-        "answer": "Wir verwenden OpenAI-Transkription für genaue Ergebnisse.",
-        "question": "Welches KI-Modell wird für Transkription verwendet?"
-      },
-      "offline": {
-        "answer": "Nein, Sprachtranskription erfordert eine Internetverbindung, um Audio an OpenAI gpt-4o-transcribe API zu senden. Die Transkription erfolgt in Echtzeit mit minimaler Latenz.",
-        "question": "Funktioniert Sprachtranskription offline?"
-      },
-      "whereToUse": {
-        "answer": "Sprachtranskription funktioniert an zwei Stellen: (1) Aufgabenbeschreibungs-Panel - diktieren Sie Implementierungsanforderungen, und (2) Terminal-Modal - diktieren Sie Befehle, die an Ihre aktive Shell-Sitzung angehängt werden.",
-        "question": "Wo kann ich Sprachtranskription in der App verwenden?"
+      "queryGeneration": {
+        "description": "KI erweitert Ihre Rechercheabfragen mit kontextbewussten Variationen. Multi-Winkel-Exploration für umfassende Abdeckung.",
+        "title": "Intelligente Abfragegenerierung"
       }
     },
     "hero": {
-      "badge": "Sprachtranskription für Entwickler",
-      "description": "Sprechen Sie Ihre Anforderungen und Ideen natürlich. Dies ist der erste Schritt in Ihrem Spezifikations-Workflow: Erfassen Sie Ideen schnell mit Sprache, verfeinern Sie sie dann manuell mit KI-gestützten Prompts. Der schnellste Weg zur Erfassung initialer Spezifikationen vor Verfeinerung.",
-      "title": "Schnelle Spezifikationserfassung mit Sprache"
+      "badge": "KI-gestützte Recherche-Intelligenz",
+      "description": "Generieren Sie intelligente Abfragen, führen Sie Suchen durch und integrieren Sie relevante Erkenntnisse in Ihre Aufgabe – ohne Ballast.",
+      "title": "Tiefenrecherche – von der Abfrage zur Erkenntnis"
     },
-    "nextSteps": {
-      "description": "Sprachtranskription ist der erste Schritt in unserem Spezifikationserfassungs-Workflow. Sobald Sie Ihre Anforderungen erfasst haben, verwenden Sie KI-gestützte Prompts, um rohe Transkripte in klare, implementierungsbereite Spezifikationen zu verwandeln.",
-      "link": "Erfahren Sie mehr über Spezifikationserfassungsmodus",
-      "taskRefinement": {
-        "description": "Erweitern Sie Beschreibungen mit impliziten Anforderungen, Randfällen und technischen Überlegungen.",
-        "title": "Aufgabenverfeinerung"
+    "intelligence": {
+      "contextIntegration": {
+        "description": "Rechercheergebnisse werden automatisch mit Ihrer Aufgabenbeschreibung integriert und bereichern sie mit relevanten Erkenntnissen und Empfehlungen.",
+        "features": [
+          "Automatische Aufgaben-Verbesserung",
+          "Strukturierte Ergebnisformatierung",
+          "Implementierungsplan-Integration",
+          "Entwicklungs-Workflow-Ausrichtung"
+        ],
+        "title": "Kontext-Integration"
       },
-      "textEnhancement": {
-        "description": "Polieren Sie Grammatik, verbessern Sie Klarheit und erhöhen Sie Lesbarkeit unter Beibehaltung Ihrer ursprünglichen Absicht.",
-        "title": "Textverbesserung"
+      "execution": {
+        "description": "Hochentwickelte KI-Modelle führen Rechercheaufgaben parallel aus und liefern umfassende Analysen und Erkenntnisse.",
+        "features": [
+          "Parallele Rechercheaufgaben-Ausführung",
+          "Streaming-Ergebnisse mit Fortschrittsverfolgung",
+          "Kontextbewusste Analyse und Synthese",
+          "Entwicklungsfokussierte Erkenntnisse"
+        ],
+        "title": "KI-Rechercheausführung"
       },
-      "title": "Verfeinern Sie Ihre erfassten Spezifikationen"
+      "queryExpansion": {
+        "description": "KI analysiert Ihre initiale Abfrage und generiert strategische Variationen für umfassende Rechercheabdeckung.",
+        "features": [
+          "Kontextbewusste Abfragevariationen",
+          "Semantische Synonym-Erweiterung",
+          "Domänenspezifische Terminologie",
+          "Multi-Perspektiven-Recherchewinkel"
+        ],
+        "title": "Intelligente Abfrage-Erweiterung"
+      },
+      "synthesis": {
+        "description": "Fortgeschrittene KI-Modelle analysieren Ihren Projektkontext und generieren zielgerichtete Recherche-Insights, die auf Ihre Entwicklungsbedürfnisse zugeschnitten sind.",
+        "features": [
+          "Projektbewusste Recherchegenerierung",
+          "Kontextsensitive Analyse",
+          "Entwicklungsfokussierte Erkenntnisse",
+          "Implementierungsbereite Empfehlungen"
+        ],
+        "title": "KI-Recherchesynthese"
+      },
+      "title": "Recherche-Intelligenz-Engine"
     },
-    "painPoints": {
-      "captureIdeas": {
-        "description": "Stakeholder denken schneller als sie tippen. Anforderungen und Kontext gehen verloren, während Finger aufholen. Sprache lässt Sie die vollständige Spezifikation erfassen, bevor kritische Details verblassen.",
-        "title": "Erfassen Sie Ideen, bevor sie verblassen"
+    "process": {
+      "stage1": {
+        "description": "KI analysiert Ihre Aufgabenbeschreibung und Projektkontext zur Generierung ausgefeilter Rechercheabfragen. Erstellt mehrere strategische Recherchewinkel für umfassende Abdeckung.",
+        "title": "Rechercheabfrage-Generierung"
       },
-      "contextSwitching": {
-        "description": "Stoppen Sie, was Sie tun, um eine Notiz-App zu öffnen, zu tippen, dann zurückzukehren. Jeder Wechsel unterbricht die Konzentration. Sprache bleibt im selben Workspace.",
-        "title": "Kontextwechsel tötet Momentum"
+      "stage2": {
+        "description": "Mehrere KI-Modelle führen Rechercheaufgaben gleichzeitig aus, jedes fokussiert auf unterschiedliche Aspekte Ihrer Anforderungen. Ergebnisse werden zu umsetzbaren Entwicklungs-Insights synthetisiert.",
+        "title": "Parallele Rechercheausführung"
       },
-      "handsBusy": {
-        "description": "Code reviewen? Debuggen? Architekturdiagramme zeichnen? Ihre Hände sind beschäftigt, aber Sie müssen die Aufgabe protokollieren. Sprachtranskription hält Sie im Flow.",
-        "title": "Schwer zu beschreiben, während Hände beschäftigt sind"
-      },
-      "title": "Warum Sprache die Spezifikationserfassung beschleunigt"
-    },
-    "useCases": {
-      "codeReview": {
-        "outcome": "Aufgabe mit vollem Kontext erstellt, null Tippen, kein Kontextwechsel.",
-        "scenario": "Code-Review enthüllt Refactoring-Möglichkeit. Ihre Hände sind am Diff, Augen am Bildschirm. Sprache erfasst die Aufgabenbeschreibung.",
-        "title": "Während Code-Review diktieren"
-      },
-      "fasterEntry": {
-        "outcome": "10x schnellere Aufgabenerfassung. QA-Feedback in Minuten statt Stunden verarbeitet.",
-        "scenario": "Sie haben 10 ähnliche Bugs nach QA-Tests zu protokollieren. Jedes zu tippen dauert 2 Minuten. Sprachtranskription dauert 20 Sekunden.",
-        "title": "Schnellere Aufgabenerfassung für repetitive Arbeit"
-      },
-      "handsFree": {
-        "outcome": "Ideen sofort protokolliert. Zurück zum Debuggen ohne Flow-Unterbrechung.",
-        "scenario": "Sie sind tief in einer Debugging-Sitzung. Sie entdecken drei verwandte Probleme, die behoben werden müssen. Sprechen Sie sie ins Sprachaufzeichnungsgerät, ohne Ihr Terminal zu verlassen.",
-        "title": "Ideen freihändig erfassen"
-      },
-      "terminalCommands": {
-        "outcome": "Befehle korrekt eingegeben, schneller als Dokumentation nachzuschlagen.",
-        "scenario": "Benötigen Sie einen komplexen Git-Befehl mit Flags, die Sie immer vergessen. Diktieren Sie ihn natürlich, lassen Sie Transkription die Syntax handhaben.",
-        "title": "Terminal-Befehle ohne Syntax-Auswendiglernen"
-      },
-      "title": "Reale Anwendungsfälle"
+      "title": "Zweistufiger KI-Rechercheprozess"
     }
   },
   "features": {
+    "copyButtons": {
+      "description": "Template-based prompt buttons that inject plan snippets, file lists, and task inputs.",
+      "slug": "/docs/copy-buttons",
+      "title": "Copy Buttons"
+    },
+    "deepResearch": {
+      "description": "Parallel research stages that gather external context and attach notes before planning.",
+      "slug": "/docs/deep-research",
+      "title": "Deep Research"
+    },
     "fileDiscovery": {
+      "description": "Multi-stage file discovery pipeline that scores and persists relevant files before planning.",
+      "slug": "/docs/file-discovery",
+      "title": "File Discovery",
       "meta": {
         "title": "KI-Dateisuche – betroffene Dateien finden",
         "description": "Mehrstufiger KI-Workflow zur Identifizierung und Auswahl relevanter Dateien. Kosteneffektiv mit $0,10–0,15 pro Workflow und Fortschrittsanzeige in Echtzeit."
       }
     },
+    "integratedTerminal": {
+      "description": "PTY-backed terminal sessions with persistent logs and job binding.",
+      "slug": "/docs/terminal-sessions",
+      "title": "Integrated Terminal"
+    },
     "mergeInstructions": {
+      "description": "Plan merge processor that reconciles multiple plan drafts into one structured sequence.",
+      "slug": "/docs/merge-instructions",
+      "title": "Plan Merge Instructions",
       "meta": {
         "title": "Plansynthese – Multi‑Modell‑Zusammenführung",
         "description": "Architektonische Synthese über einfaches Mergen hinaus. KI analysiert Pläne, löst Konflikte nach SOLID und erzeugt nachvollziehbare, emergente Lösungen."
       }
     },
     "planMode": {
+      "description": "Structured implementation plans with reviewable steps and links back to jobs.",
+      "slug": "/docs/implementation-plans",
+      "title": "Implementation Plans",
       "meta": {
         "title": "KI‑Implementierungspläne – Mensch im Loop",
         "description": "Dateiweise KI‑Pläne generieren. Jede Änderung vor der Ausführung prüfen. Regressionen in Legacy‑Code vermeiden. Sichere KI‑Entwicklung."
       }
     },
     "textImprovement": {
+      "description": "Text improvement and task refinement prompts that normalize requirements.",
+      "slug": "/docs/text-improvement",
+      "title": "Task Refinement & Text Improvement",
       "meta": {
         "title": "Spezifikationserfassung – KI‑Textverbesserung",
         "description": "Spezifikationen mit zwei KI‑Prompts verfeinern: Textverbesserung für Klarheit, Aufgabenverfeinerung für Vollständigkeit. Umsetzbare Specs für Teams."
       }
     },
+    "videoAnalysis": {
+      "description": "Multimodal ingestion of recordings with frame extraction, transcripts, and structured task artifacts.",
+      "slug": "/docs/video-analysis",
+      "title": "Video Analysis Pipeline"
+    },
     "voiceTranscription": {
+      "description": "Speech-to-text capture for requirements and terminal commands.",
+      "slug": "/docs/voice-transcription",
+      "title": "Voice to Text",
       "meta": {
         "title": "Sprache‑zu‑Text für schnelle Spezifikationserfassung",
         "description": "Freihändige Erfassung per Sprache. Exakte Transkription fügt Text dort ein, wo Sie arbeiten. Pro Projekt konfigurierbar, mehrere Sprachen unterstützt."

@@ -947,51 +947,100 @@
   },
   "textImprovement": {
     "meta": {
-      "title": "텍스트 개선 - PlanToCode",
-      "description": "데스크톱 워크스페이스가 강조된 텍스트를 다시 작성하고, 서식을 유지하며, 음성 및 비디오 입력에 기능을 연결하는 방법."
+      "title": "Text improvement - PlanToCode",
+      "description": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs."
     },
-    "category": "제품 가이드",
+    "category": "Product Guide",
     "cta": {
-      "description": "구현 계획을 생성하기 전에 음성 캡처, 비디오 컨텍스트, 인라인 재작성을 결합하려면 PlanToCode를 다운로드하세요.",
-      "heading": "데스크톱 앱에서 텍스트 개선 사용해 보기"
+      "description": "Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate implementation plans.",
+      "heading": "Try text improvement in the desktop app",
+      "links": {
+        "architecture": "Architecture overview",
+        "buildYourOwn": "Build your own"
+      }
     },
     "date": "2025-09-21",
-    "description": "PlanToCode가 서식을 변경하지 않고 강조된 텍스트를 다시 작성하고 결과를 워크스페이스에 다시 연결하는 방법.",
-    "intro": "AI 컨텍스트로 텍스트를 정제하세요. 모든 편집기에서 텍스트를 선택하고 백그라운드 작업을 트리거하면 서식이 그대로 유지된 개선된 콘텐츠를 얻을 수 있습니다.",
-    "metaDescription": "데스크톱 워크스페이스가 강조된 텍스트를 다시 작성하고, 서식을 유지하며, 음성 및 비디오 입력에 기능을 연결하는 방법.",
-    "metaTitle": "텍스트 개선 - PlanToCode",
-    "ogDescription": "텍스트 개선을 구동하는 선택 팝오버, 작업 큐, 모델 구성, 통합을 이해하세요.",
-    "ogTitle": "텍스트 개선 - PlanToCode",
-    "readTime": "7분",
+    "description": "How PlanToCode rewrites highlighted text without changing formatting and links the result back to your workspace.",
+    "intro": "Refine text with AI context. Select text in any editor, trigger a background job, and get improved content that keeps your formatting intact.",
+    "metaDescription": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs.",
+    "metaTitle": "Text improvement - PlanToCode",
+    "ogDescription": "Understand the selection popover, job queue, model configuration, and integrations that power text improvement.",
+    "ogTitle": "Text improvement - PlanToCode",
+    "readTime": "7 min",
     "selectionPopover": {
-      "component": "팝오버 자체는 {code}로 렌더링되는 최소 컴포넌트로, 단순히 프로바이더 훅을 트리거하고 재작성이 실행되는 동안 로딩 표시기를 보여줍니다. 프로바이더가 전역 리스너를 등록하기 때문에 팝오버는 추가 연결 없이 Monaco 계획 뷰어, 계획 터미널 받아쓰기 필드, 모든 작업 설명 입력에 나타납니다.",
-      "heading": "선택 팝오버 동작",
-      "provider": "{code}는 표준 입력 및 Monaco 편집기에서 선택 이벤트를 수신합니다. 비어 있지 않은 텍스트를 강조하면 커서 근처에 팝오버를 배치하고, 선택된 범위를 저장하며, 팝오버가 표시되어야 하는지 추적합니다. 버튼을 클릭하면 작업이 시작되고 결과가 반환될 때까지 컨트롤이 비활성화됩니다. 작업이 완료되면 프로바이더는 개선된 텍스트를 동일한 선택에 다시 적용하고 세션 상태를 동기화하기 위해 보류 중인 저장을 플러시합니다."
+      "component": "The popover itself is a minimal component rendered by {code}, which simply triggers the provider hook and shows a loading indicator while a rewrite is running. Because the provider registers global listeners, the popover appears in Monaco plan viewers, the plan terminal dictation field, and any task description inputs without extra wiring.",
+      "heading": "Selection popover behaviour",
+      "provider": "The {code} listens for selection events on standard inputs and Monaco editors. When you highlight non-empty text it positions a popover near the cursor, stores the selected range, and tracks whether the popover should be visible. Clicking the button kicks off the job and disables the control until the result returns. When the job completes the provider applies the improved text back into the same selection and flushes any pending saves to keep session state in sync."
     },
-    "title": "텍스트 개선",
+    "title": "Text Improvement",
     "triggerImprovement": {
-      "action": "팝오버 버튼을 누르면 {code}가 호출됩니다. 작업은 선택을 검증하고, 세션 식별자가 존재하는지 확인하며, Tauri를 통해 Rust 명령 {code}를 호출합니다. 명령은 원본 텍스트를 포함하는 {code}를 빌드하고 활성 세션에 대해 백그라운드 작업을 큐에 넣습니다.",
-      "backend": "백엔드에서 {code}는 {code} 작업에 대해 구성된 모델을 확인하고, 선택을 XML 태그로 래핑하며, 스트리밍 없이 {code}를 통해 요청을 실행합니다. 모델 응답이 반환되면 토큰 사용량, 비용, 시스템 프롬프트 템플릿을 기록한 후 개선된 텍스트를 UI로 다시 전송합니다. 기본 구성은 Claude Sonnet 4.5 및 Gemini 3 Pro를 승인된 모델로 제공하며, 온도 0.7로 4,096 토큰으로 제한됩니다.",
-      "heading": "개선을 트리거할 때 발생하는 일",
-      "metadata": "백그라운드 작업 사이드바는 작업 메타데이터에 원본 텍스트를 기록하므로 재작성된 사본과 함께 무엇이 전송되었는지 검토할 수 있습니다. 작업이 실행되는 동안 선택이 변경되면 프로바이더는 수동 편집을 덮어쓰지 않도록 텍스트 교체를 건너뜁니다."
+      "action": "Pressing the popover button calls {code}. The action validates the selection, ensures a session identifier exists, and invokes the Rust command {code} via Tauri. The command builds a {code} containing the original text and queues a background job against the active session.",
+      "backend": "On the backend, the {code} resolves the configured model for the {code} task, wraps the selection in XML tags, and runs the request through the {code} without streaming. When the model response returns it records token usage, cost, and the system prompt template before emitting the improved text back to the UI. The default configuration ships with Claude Sonnet 4.5 and Gemini 3 Pro as the approved models, capped at 4,096 tokens with a temperature of 0.7.",
+      "heading": "What happens when you trigger an improvement",
+      "metadata": "The background jobs sidebar records the original text in job metadata, so you can review what was sent alongside the rewritten copy. If the selection changes while a job is running, the provider skips replacing the text to avoid clobbering manual edits."
     },
     "videoCapture": {
-      "dialog": "화면 녹화는 비디오 분석 대화 상자를 통과하며, Gemini 비디오 분석 작업에 요청을 보내기 전에 현재 작업 설명을 시맨틱 XML 태그로 래핑된 선택적 프롬프트 블록과 결합합니다. 녹화 중에 받아쓴 모든 메모는 분석이 완료되면 텍스트로 사용할 수 있으므로 계획 전에 지침을 조이기 위해 결과 요약을 개선 팝오버를 통해 다시 공급할 수 있습니다.",
-      "features": "비디오 작업에는 프레임 속도 컨트롤, 오디오 캡처 토글, 비용 보고가 포함됩니다. 결과는 텍스트 개선과 동일한 백그라운드 작업 사이드바에 나타나 모든 프롬프트 준비 아티팩트를 한 곳에 유지합니다.",
-      "heading": "비디오 캡처 및 프롬프트 스캐폴딩"
+      "dialog": "Screen recordings pass through the video analysis dialog, which combines your current task description with an optional prompt block wrapped in semantic XML tags before sending the request to the Gemini video analysis job. Any notes you dictate during the recording are available as text once analysis completes, so you can feed the resulting summary back through the improvement popover to tighten the instructions before planning.",
+      "features": "Video jobs include frame-rate controls, audio capture toggles, and cost reporting. Results appear in the same background jobs sidebar as text improvements, keeping all prompt preparation artefacts in one place.",
+      "heading": "Video capture and prompt scaffolding"
     },
     "voiceIntegration": {
-      "heading": "음성 전사 통합",
-      "hook": "음성 녹음은 {code} 훅을 사용합니다. 프로젝트별 전사 기본값을 로드하고, 마이크 액세스를 요청하며, 작업 설명 또는 터미널 받아쓰기 버퍼 내의 커서에 전사를 삽입합니다. 삽입된 텍스트는 즉시 강조하여 동일한 개선 팝오버를 통해 전달할 수 있으며, 원래 전사 작업 식별자는 감사를 위해 개선 페이로드와 함께 저장됩니다.",
-      "preferences": "언어, 모델, 온도 기본 설정은 프로젝트 수준에서 유지되므로 팀은 사본을 정제하기 전에 일관된 전사 품질을 얻습니다. 무음 감지는 나쁜 오디오 레벨에 대해 경고하고, 10분 제한은 대용량 페이로드로 개선 작업을 차단하는 과대한 녹음을 방지합니다."
+      "heading": "Voice transcription integration",
+      "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcripts at the cursor inside the task description or terminal dictation buffer. The inserted text can immediately be highlighted and passed through the same improvement popover, and the original transcription job identifier is stored with the improvement payload for auditing.",
+      "preferences": "Language, model, and temperature preferences persist at the project level, so teams get consistent transcription quality before refining the copy. Silence detection warns about bad audio levels, and a ten-minute cap prevents oversized recordings from blocking improvement jobs with large payloads."
     },
     "visuals": {
       "popoverFlow": {
-        "title": "텍스트 개선 흐름",
-        "description": "선택 팝오버가 개선 작업을 트리거하고 향상된 텍스트를 반환합니다.",
+        "title": "Text improvement flow",
+        "description": "Selection popover triggers improvement job and returns enhanced text.",
         "imageSrc": "/images/docs/text-improvement/flow.svg",
-        "imageAlt": "텍스트 개선 흐름 다이어그램"
+        "imageAlt": "Text improvement flow diagram"
       }
+    },
+    "processorDetails": {
+      "heading": "Processor implementation details",
+      "processor": "The {code} handles the text rewriting workflow on the Rust backend.",
+      "stepsHeading": "Processing steps",
+      "steps": [
+        "Parse the incoming payload with original text and selection metadata",
+        "Build the system prompt from the configured text_improvement template",
+        "Submit the request to the LLM task runner without streaming",
+        "Extract the improved text from the model response",
+        "Record token usage, cost, and prompt template for billing",
+        "Emit the result back to the UI via Tauri events"
+      ]
+    },
+    "inlineRewriting": {
+      "heading": "Inline rewriting behaviour",
+      "description": "When the improved text returns, the provider automatically replaces the original selection. The rewriting preserves whitespace, line breaks, and any inline formatting present in the source. If the editor is Monaco-based, the change is applied as a single undo-able edit operation.",
+      "contextsHeading": "Supported contexts",
+      "contexts": [
+        "Task description input fields",
+        "Plan terminal dictation area",
+        "Monaco plan viewers and editors",
+        "Any standard HTML input or textarea"
+      ]
+    },
+    "modelConfiguration": {
+      "heading": "Model configuration",
+      "description": "Text improvement uses the text_improvement task configuration from the desktop runtime config. You can override the default model and parameters in the settings panel.",
+      "settingsHeading": "Configurable settings",
+      "settings": [
+        "Allowed models list (default: Claude Sonnet 4.5, Gemini 3 Pro)",
+        "Maximum token limit (default: 4096)",
+        "Temperature setting (default: 0.7)",
+        "System prompt template override"
+      ]
+    },
+    "keyFiles": {
+      "heading": "Key implementation files",
+      "items": [
+        "desktop/src/contexts/TextImprovementProvider.tsx",
+        "desktop/src/components/TextImprovementPopover.tsx",
+        "desktop/src/actions/text-improvement/index.ts",
+        "desktop/src-tauri/src/jobs/processors/text_improvement.rs",
+        "server/src/config/task_model_config.rs"
+      ]
     }
   },
   "voiceTranscription": {

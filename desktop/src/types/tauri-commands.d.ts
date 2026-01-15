@@ -354,7 +354,7 @@ export interface PathFinderOptions {
   maxFilesWithContent?: number | null;
   priorityFileTypes?: string[] | null;
   includedFiles?: string[] | null;
-  excludedFiles?: string[] | null;
+  forceExcludedFiles?: string[] | null;
 }
 
 // Commands from path_finding_commands
@@ -655,6 +655,7 @@ export interface ConsentVerificationResponse {
 // Tauri invoke function type
 export type TauriInvoke = {
   "get_database_info_command": () => Promise<DatabaseInfo>;
+  "get_database_path_command": () => Promise<string>;
   "trigger_initial_keychain_access": () => Promise<void>;
   "get_storage_mode": () => Promise<boolean>;
   "start_auth0_login_flow": (args: StartAuth0LoginFlowArgs) => Promise<Auth0LoginResult>;

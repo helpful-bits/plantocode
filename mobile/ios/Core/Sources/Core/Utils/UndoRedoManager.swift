@@ -18,6 +18,8 @@ public class UndoRedoManager: ObservableObject {
     private var version: Int64 = 0
     private var deviceId: String?
     private var nextSequenceNumber: Int64 = 0
+    private var cachedChecksum: String?
+    private var checksumNeedsRecalc: Bool = true
 
     // MARK: - Initialization
     public init(maxHistorySize: Int = 200, deviceId: String? = nil) {
@@ -70,7 +72,14 @@ public class UndoRedoManager: ObservableObject {
             currentIndex -= removeCount
         }
 
+        // Invalidate checksum cache since state changed
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
+
         updateUndoRedoState()
+
+        // Pre-compute checksum in background so it's ready for next sync
+        precomputeChecksum()
     }
 
     /// Initialize history with an existing array of entries
@@ -97,6 +106,10 @@ public class UndoRedoManager: ObservableObject {
             self.currentIndex = self.history.count - 1
         }
 
+        // Invalidate checksum cache
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
+
         updateUndoRedoState()
     }
 
@@ -119,6 +132,8 @@ public class UndoRedoManager: ObservableObject {
         }
 
         currentIndex -= 1
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
         updateUndoRedoState()
 
         return history[currentIndex].value
@@ -137,6 +152,8 @@ public class UndoRedoManager: ObservableObject {
         }
 
         currentIndex += 1
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
         updateUndoRedoState()
 
         return history[currentIndex].value
@@ -147,6 +164,8 @@ public class UndoRedoManager: ObservableObject {
         history.removeAll()
         currentIndex = -1
         nextSequenceNumber = 0
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
         updateUndoRedoState()
     }
 
@@ -164,6 +183,8 @@ public class UndoRedoManager: ObservableObject {
         currentIndex = 0
         isNavigating = false
         nextSequenceNumber = 1
+        checksumNeedsRecalc = true
+        cachedChecksum = nil
         updateUndoRedoState()
     }
 
@@ -203,6 +224,10 @@ public class UndoRedoManager: ObservableObject {
         if suppressRecording {
             isNavigating = wasNavigating
         }
+
+        // Use the checksum from remote state since we're applying it directly
+        cachedChecksum = state.checksum
+        checksumNeedsRecalc = false
 
         updateUndoRedoState()
     }
@@ -257,7 +282,7 @@ public class UndoRedoManager: ObservableObject {
         let newVersion = max(version, remote.version) + 1
 
         // Calculate checksum (match desktop: JSON of {currentIndex, entries, version})
-        let checksum = calculateChecksum(entries: deduplicated, currentIndex: clampedIndex, version: newVersion)
+        let checksum = Self.calculateChecksum(entries: deduplicated, currentIndex: clampedIndex, version: newVersion)
 
         return HistoryState(
             entries: deduplicated,
@@ -268,11 +293,22 @@ public class UndoRedoManager: ObservableObject {
     }
 
     /// Export current state as HistoryState
+    /// Note: Uses cached checksum when available to avoid expensive recalculation on main thread
     @MainActor
     public func exportState() -> HistoryState {
         let entries = history
 
-        let checksum = calculateChecksum(entries: entries, currentIndex: Int64(currentIndex), version: version)
+        // Use cached checksum if available, otherwise calculate (this should be rare on main thread)
+        let checksum: String
+        if let cached = cachedChecksum, !checksumNeedsRecalc {
+            checksum = cached
+        } else {
+            // Calculate synchronously only if we must (e.g., after local changes without sync)
+            // This is a fallback - ideally checksums are computed off main thread via exportStateSnapshot
+            checksum = Self.calculateChecksum(entries: entries, currentIndex: Int64(currentIndex), version: version)
+            cachedChecksum = checksum
+            checksumNeedsRecalc = false
+        }
 
         return HistoryState(
             entries: entries,
@@ -282,8 +318,40 @@ public class UndoRedoManager: ObservableObject {
         )
     }
 
+    /// Pre-compute and cache the checksum asynchronously.
+    /// Call this after state changes to warm the cache before exportState() is needed.
+    @MainActor
+    public func precomputeChecksum() {
+        guard checksumNeedsRecalc else { return }
+
+        let entries = history
+        let idx = Int64(currentIndex)
+        let ver = version
+
+        Task.detached(priority: .utility) { [weak self] in
+            let checksum = UndoRedoManager.calculateChecksum(entries: entries, currentIndex: idx, version: ver)
+            await MainActor.run {
+                // Only update if state hasn't changed since we started computing
+                if self?.checksumNeedsRecalc == true {
+                    self?.cachedChecksum = checksum
+                    self?.checksumNeedsRecalc = false
+                }
+            }
+        }
+    }
+
+    /// Export a lightweight snapshot for off-main checksum computation
+    @MainActor
+    public func exportStateSnapshot() -> HistoryStateSnapshot {
+        HistoryStateSnapshot(
+            entries: history,
+            currentIndex: Int64(currentIndex),
+            version: version
+        )
+    }
+
     /// Calculate SHA-256 checksum matching desktop: JSON of {currentIndex, entries, version}
-    private func calculateChecksum(entries: [HistoryEntry], currentIndex: Int64, version: Int64) -> String {
+    public nonisolated static func calculateChecksum(entries: [HistoryEntry], currentIndex: Int64, version: Int64) -> String {
         struct ChecksumEntry: Encodable {
             let value: String
             let timestampMs: Int64
@@ -338,7 +406,7 @@ public class UndoRedoManager: ObservableObject {
 
 // MARK: - HistoryState Types
 
-public struct HistoryEntry: Codable, Equatable {
+public struct HistoryEntry: Codable, Equatable, Sendable {
     public let value: String
     public let createdAt: Int64  // Unix milliseconds
     public let deviceId: String?
@@ -385,7 +453,7 @@ public struct HistoryEntry: Codable, Equatable {
     }
 }
 
-public struct HistoryState: Codable {
+public struct HistoryState: Codable, Sendable {
     public let entries: [HistoryEntry]
     public let currentIndex: Int64
     public let version: Int64
@@ -396,5 +464,17 @@ public struct HistoryState: Codable {
         self.currentIndex = currentIndex
         self.version = version
         self.checksum = checksum
+    }
+}
+
+public struct HistoryStateSnapshot: Sendable {
+    public let entries: [HistoryEntry]
+    public let currentIndex: Int64
+    public let version: Int64
+
+    public init(entries: [HistoryEntry], currentIndex: Int64, version: Int64) {
+        self.entries = entries
+        self.currentIndex = currentIndex
+        self.version = version
     }
 }

@@ -18,7 +18,8 @@
   },
   "cta": {
     "download": "Herunterladen",
-    "talkToArchitect": "Experten kontaktieren"
+    "talkToArchitect": "Experten kontaktieren",
+    "viewSource": "Quellcode ansehen"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +80,10 @@
     "support": "Support",
     "tagline": "Planen und versenden Sie Code-Änderungen - finden Sie Dateien, generieren und mergen Sie KI-Pläne und führen Sie sie in einem persistenten Terminal aus.",
     "talkToArchitect": "Experten kontaktieren",
-    "terms": "AGB"
+    "terms": "AGB",
+    "evolution": "Evolution",
+    "runtimeWalkthrough": "Laufzeitübersicht",
+    "sourceCode": "Quellcode"
   },
   "label": {
     "english": "Englisch",
@@ -101,7 +105,18 @@
     "docs": "Dokumentation",
     "downloads": "Downloads",
     "features": "Features",
-    "solutions": "Lösungen"
+    "solutions": "Lösungen",
+    "architecture": "Architektur",
+    "runtimeWalkthrough": "Laufzeitübersicht",
+    "more": "Mehr",
+    "evolution": "Evolution",
+    "source": "Quellcode",
+    "evolutionDescription": "Wie sich die Architektur im Laufe der Zeit entwickelt hat",
+    "downloadsDescription": "Die neuesten Builds herunterladen",
+    "supportDescription": "Community-Support und Ressourcen",
+    "changelogDescription": "Aktuelle Updates und Releases",
+    "aboutDescription": "Über das Projekt und das Team",
+    "sourceDescription": "Den vollständigen Quellcode auf GitHub durchsuchen"
   },
   "solution": {
     "hardBugs": {
@@ -120,5 +135,12 @@
       "description": "Bereinigung technischer Schulden",
       "label": "Wartung"
     }
+  },
+  "videoButton": {
+    "label": "Walkthrough-Video ansehen"
+  },
+  "videoModal": {
+    "closeLabel": "Video schließen",
+    "unsupported": "Ihr Browser unterstützt das Video-Tag nicht."
   }
 }

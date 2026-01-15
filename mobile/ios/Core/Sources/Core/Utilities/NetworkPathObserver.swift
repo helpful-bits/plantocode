@@ -45,6 +45,8 @@ public final class NetworkPathObserver: ObservableObject {
     @Published public private(set) var currentPath: NWPath?
     @Published public private(set) var currentInterfaceType: NetworkInterfaceType = .none
     @Published public private(set) var lastInterfaceChange: NetworkInterfaceChange?
+    private var lastOnlineInterfaceType: NetworkInterfaceType = .none
+    private var lastInterfaceChangeEmittedAt: Date?
 
     /// Publisher that emits only when the network interface type changes (e.g., WiFi → Cellular)
     public var interfaceChangePublisher: AnyPublisher<NetworkInterfaceChange, Never> {
@@ -65,17 +67,33 @@ public final class NetworkPathObserver: ObservableObject {
 
                 let previousInterface = self.currentInterfaceType
                 let newInterface = self.determineInterfaceType(from: path)
+                let previousForChange: NetworkInterfaceType = {
+                    if newInterface != .none && previousInterface == .none {
+                        return self.lastOnlineInterfaceType
+                    }
+                    return previousInterface
+                }()
 
                 self.currentPath = path
                 self.currentInterfaceType = newInterface
+                if newInterface != .none {
+                    self.lastOnlineInterfaceType = newInterface
+                }
 
                 // Record interface change if different
-                if previousInterface != newInterface {
+                if previousForChange != newInterface {
+                    // Debounce rapid interface changes (1 second window)
+                    if let lastEmit = self.lastInterfaceChangeEmittedAt,
+                       Date().timeIntervalSince(lastEmit) < 1.0 {
+                        return
+                    }
+
                     self.lastInterfaceChange = NetworkInterfaceChange(
-                        previousInterface: previousInterface,
+                        previousInterface: previousForChange,
                         currentInterface: newInterface,
                         timestamp: Date()
                     )
+                    self.lastInterfaceChangeEmittedAt = Date()
                 }
             }
         }
@@ -88,11 +106,18 @@ public final class NetworkPathObserver: ObservableObject {
             return .none
         }
 
-        // Check interfaces in priority order
-        if path.usesInterfaceType(.wifi) {
-            return .wifi
-        } else if path.usesInterfaceType(.cellular) {
+        // Check interfaces in priority order.
+        // If both WiFi and Cellular are reported, prefer Cellular when the path is expensive
+        // to better reflect WiFi -> LTE transitions.
+        let usesWifi = path.usesInterfaceType(.wifi)
+        let usesCellular = path.usesInterfaceType(.cellular)
+
+        if usesWifi && usesCellular {
+            return path.isExpensive ? .cellular : .wifi
+        } else if usesCellular {
             return .cellular
+        } else if usesWifi {
+            return .wifi
         } else if path.usesInterfaceType(.wiredEthernet) {
             return .wiredEthernet
         } else if path.usesInterfaceType(.loopback) || path.usesInterfaceType(.other) {

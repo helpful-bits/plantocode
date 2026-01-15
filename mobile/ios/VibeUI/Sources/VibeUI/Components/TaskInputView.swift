@@ -401,7 +401,24 @@ public struct TaskInputView: View {
             }
         }
 
-        let state = await MainActor.run { undoRedoManager.exportState() }
+        func buildStateSnapshot() async -> HistoryState {
+            let snapshot = await MainActor.run { undoRedoManager.exportStateSnapshot() }
+            let checksum = await Task.detached(priority: .utility) {
+                UndoRedoManager.calculateChecksum(
+                    entries: snapshot.entries,
+                    currentIndex: snapshot.currentIndex,
+                    version: snapshot.version
+                )
+            }.value
+            return HistoryState(
+                entries: snapshot.entries,
+                currentIndex: snapshot.currentIndex,
+                version: snapshot.version,
+                checksum: checksum
+            )
+        }
+
+        let state = await buildStateSnapshot()
 
         do {
             let newState = try await container.sessionService.syncHistoryState(
@@ -433,7 +450,7 @@ public struct TaskInputView: View {
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !Task.isCancelled else { return }
 
-            let currentState = await MainActor.run { undoRedoManager.exportState() }
+            let currentState = await buildStateSnapshot()
             if currentState.checksum == state.checksum {
                 do {
                     let retryState = try await container.sessionService.syncHistoryState(

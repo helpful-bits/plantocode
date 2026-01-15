@@ -165,53 +165,9 @@
     "title": "Gobernanza con Humano en el Ciclo"
   },
   "hero": {
-    "titleLine1": "Planifica Cambios Complejos",
-    "titleLine2": "Con precisión a nivel de arquitecto",
-    "subtitle": "[b]Arquitecto de IA[/b] genera planes de implementación detallados con rutas de archivo exactas. Revisas y apruebas cada cambio antes de la ejecución. [b]Arquitectura limpia[/b].",
     "cta": {
-      "viewDemo": "Ver Demo",
-      "howItWorks": "Ver cómo funciona"
-    },
-    "panel1": {
-      "title": "Cristalizar y Delimitar",
-      "description": "Entrada de voz o texto con refinamiento de IA opcional. Aísla archivos específicamente relevantes para esta tarea.",
-      "descriptionDesktop": "Comienza con voz o texto. Usa IA para mejora de texto opcional y refinamiento de tareas. Luego delimita archivos exactos mediante descubrimiento dirigido.",
-      "link": "Ver cómo funciona",
-      "linkDesktop": "Explorar descubrimiento",
-      "features": {
-        "voice": "Dictado por voz",
-        "textImprovement": "Mejora de texto",
-        "taskRefinement": "Refinamiento de tareas",
-        "fileDiscovery": "Descubrimiento dirigido de archivos",
-        "scopedSelection": "Selección específica de tarea"
-      }
-    },
-    "panel2": {
-      "title": "Múltiples Perspectivas",
-      "description": "Misma tarea, mismos archivos, mismo contexto. Ejecuta múltiples veces - mismo modelo o mixto. Cada IA tiene un gusto arquitectónico único. Ve diferentes enfoques válidos en formato estandarizado.",
-      "link": "Explorar el flujo de trabajo",
-      "runs": {
-        "run1": "Ejecución 1 - GPT-5.2",
-        "run2": "Ejecución 2 - Gemini 3 Pro",
-        "run3": "Ejecución 3 - GPT-5.2"
-      },
-      "tags": {
-        "middlewareFirst": "Enfoque middleware",
-        "serviceLayer": "Enfoque capa de servicio",
-        "apiFirst": "Enfoque API-first"
-      }
-    },
-    "panel3": {
-      "title": "Fusión Automática",
-      "description": "El sistema evalúa y califica todos los planes para identificar los enfoques arquitectónicamente más apropiados para tu código base, luego los fusiona en una implementación superior. Las instrucciones de fusión opcionales guían la síntesis.",
-      "link": "Detalles de fusión",
-      "merge": {
-        "line1": "Entrada: 4 planes (2×GPT-5.2, 2×Gemini)",
-        "line2": "Alcance: Archivos de todos los planes",
-        "line3": "Estrategia: Aplicar instrucciones de fusión",
-        "line4": "Salida: Plan archivo por archivo",
-        "line5": "Procedencia: [src:P2], [src:P1]"
-      }
+      "viewDemo": "Ver demostración",
+      "howItWorks": "Recorrido del runtime"
     }
   },
   "integrations": {
@@ -304,5 +260,130 @@
     },
     "subtitle": "Soluciones reales para los problemas más difíciles en desarrollo de software",
     "title": "Resuelve Desafíos de Desarrollo Complejos"
+  },
+  "gallery": {
+    "heading": "Arquitectura del sistema y recorrido de implementación",
+    "intro": "Cada panel muestra la colaboración entre la aplicación de escritorio y el backend: shell Tauri, procesadores de trabajos Rust, persistencia SQLite y orquestación de modelos coordinando planificación y ejecución.",
+    "video": {
+      "title": "Video de recorrido del sistema",
+      "description": "Un recorrido corto y completo del pipeline de planificación: entrada de tarea, trabajos de descubrimiento de archivos, generación de plan, instrucciones de fusión y transferencia de ejecución.",
+      "bullets": [
+        "El shell Tauri y la interfaz React presentan el flujo de trabajo",
+        "Los trabajos Rust en segundo plano transmiten actualizaciones de progreso",
+        "SQLite almacena sesiones, trabajos y registros",
+        "Los planes LLM se generan y fusionan con estructura"
+      ]
+    },
+    "cards": {
+      "fileFinder": {
+        "title": "Pipeline de descubrimiento de archivos",
+        "description": "Un flujo de trabajo Rust de cuatro etapas: selección de raíz asistida por LLM, filtrado regex, puntuación de relevancia y búsqueda de rutas extendida para construir un conjunto de archivos enfocado.",
+        "features": [
+          "La selección de carpeta raíz usa el árbol de directorios y la descripción de la tarea",
+          "El filtro regex genera grupos de patrones y aplica git ls-files",
+          "La puntuación de relevancia divide el contenido de archivos con estimaciones de tokens",
+          "El buscador de rutas extendido amplía el contexto con datos de archivos y árbol"
+        ]
+      },
+      "fileFinderWorkflow": {
+        "title": "Contexto de archivos persistido",
+        "description": "Cada etapa del flujo de trabajo escribe resultados en background_jobs para que los conjuntos de archivos puedan reutilizarse entre sesiones e inspeccionarse después.",
+        "features": [
+          "Etapas del flujo de trabajo almacenadas como registros de trabajos",
+          "Listas de archivos seleccionados persistidas como respuestas JSON",
+          "Los included_files de sesión se reutilizan entre trabajos",
+          "El historial SQLite sobrevive a los reinicios"
+        ]
+      },
+      "videoAnalysis": {
+        "title": "Ingesta de análisis de video",
+        "description": "Las grabaciones de pantalla se envían al endpoint `/api/llm/video/analyze` con prompts y configuraciones de FPS para generar resúmenes estructurados.",
+        "features": [
+          "La carga multipart incluye duration_ms y framerate",
+          "El formato del modelo es provider/model (google/* requerido)",
+          "El uso y los costos se rastrean en los registros de facturación del servidor",
+          "El resumen se almacena como artefactos de metadatos del trabajo"
+        ]
+      },
+      "implementationPlans": {
+        "title": "Generación de planes multi-modelo",
+        "description": "ImplementationPlanProcessor transmite borradores de planes desde el contenido completo de archivos; los trabajos de fusión consolidan múltiples borradores en un solo plan.",
+        "features": [
+          "Los trabajos de plan incluyen contenido de archivos seleccionados + árbol de directorios",
+          "Metadatos de plan estructurados capturados por trabajo",
+          "El prompt de fusión usa <source_plans> y <user_instructions>",
+          "El plan final se almacena junto con los borradores fuente"
+        ]
+      },
+      "backgroundTasks": {
+        "title": "Monitoreo de trabajos en segundo plano",
+        "description": "Los procesadores de trabajos Rust transmiten progreso y transiciones de estado a la interfaz mientras persisten el historial de trabajos en SQLite.",
+        "features": [
+          "Created, queued, preparing, running, completed/failed/canceled",
+          "Actualizaciones en streaming vía eventos Tauri",
+          "Uso de tokens capturado por ejecución",
+          "Cancelar trabajos de larga duración"
+        ]
+      },
+      "settingsPrompts": {
+        "title": "Configuración de prompts y modelos",
+        "description": "La configuración de modelos en tiempo de ejecución se obtiene de `/api/config/desktop-runtime-config`; las anulaciones de prompts se almacenan en SQLite.",
+        "features": [
+          "Modelos permitidos y valores predeterminados por tarea",
+          "Prompts del sistema servidos por la API del servidor",
+          "Anulaciones de prompts a nivel de proyecto en project_system_prompts",
+          "key_value_store local para preferencias de runtime"
+        ]
+      },
+      "terminalVoiceRecording": {
+        "title": "Botones de automatización de flujo de trabajo",
+        "description": "Los botones de copiar insertan prompts basados en plantillas con contexto de tarea para transferencia a terminales o herramientas externas.",
+        "features": [
+          "Plantillas obtenidas de la configuración del modelo de tarea",
+          "Marcadores de posición resueltos contra el plan activo",
+          "Transferencia a sesiones PTY o portapapeles",
+          "Acciones vinculadas a metadatos de trabajo para auditoría"
+        ]
+      },
+      "mergeInstructionsWorkflow": {
+        "title": "Instrucciones de fusión de planes",
+        "description": "ImplementationPlanMergeProcessor fusiona múltiples borradores de planes usando planes fuente etiquetados con XML e instrucciones opcionales.",
+        "features": [
+          "Planes fuente obtenidos por ID de trabajo",
+          "Instrucciones de fusión almacenadas en metadatos",
+          "El contenido de archivos + árbol de directorios añaden contexto",
+          "El plan fusionado se almacena junto con las entradas"
+        ]
+      },
+      "billingTransactions": {
+        "title": "Registro de uso y costos",
+        "description": "Las entradas de uso del lado del servidor y los metadatos de trabajos capturan el uso de modelos a través de proveedores.",
+        "features": [
+          "Metadatos de tokens y costos por trabajo",
+          "Entradas de uso conscientes del proveedor",
+          "Los endpoints de facturación exponen resúmenes de uso",
+          "Pista de auditoría para gastos de modelo"
+        ]
+      }
+    },
+    "viewFullSize": "Ver tamaño completo",
+    "cta": {
+      "title": "Explora la arquitectura en contexto",
+      "description": "Asocia cada panel de la interfaz con los procesadores subyacentes, luego profundiza en la documentación de arquitectura y las guías de construcción.",
+      "primary": "Vista general de arquitectura",
+      "secondary": "Recorrido del runtime"
+    }
+  },
+  "technicalLanding": {
+    "title": "PlanToCode: Recorrido técnico del sistema",
+    "description": "Un recorrido técnico de cómo está construido PlanToCode para que puedas estudiar la arquitectura, reutilizar los patrones o construir un pipeline de planificación similar. La aplicación de escritorio utiliza proveedores LLM externos configurados con tus claves API.",
+    "walkthroughTitle": "Paso a paso: cómo funcionan juntos los componentes",
+    "walkthroughDescription": "Sigue un recorrido completo de cómo la aplicación de escritorio, el backend Rust/Tauri, la base de datos SQLite y el pipeline de orquestación LLM coordinan tareas y transmiten resultados a la interfaz.",
+    "tags": [
+      "Tauri",
+      "Rust",
+      "SQLite",
+      "Orquestación LLM"
+    ]
   }
 }

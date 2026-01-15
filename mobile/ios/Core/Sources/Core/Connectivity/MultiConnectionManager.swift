@@ -44,6 +44,9 @@ public final class MultiConnectionManager: ObservableObject {
     private var hasRestoredOnce = false
     private var healthGraceTask: Task<Void, Never>?
     private let healthGraceDelay: TimeInterval = 12.0
+    private var reconnectingWatchdogTask: Task<Void, Never>?
+    private var reconnectingStartedAt: [UUID: Date] = [:]
+    private let reconnectingWatchdogThreshold: TimeInterval = 60.0
 
     /// Tracks last connectivity state for rising-edge detection (disconnected -> connected)
     private var lastActiveDeviceConnected: Bool = false
@@ -127,9 +130,14 @@ public final class MultiConnectionManager: ObservableObject {
             .sink { [weak self] path in
                 guard let self = self, let path = path else { return }
                 Task { @MainActor in
+                    let previousStatus = self.lastPath?.status
                     self.lastPath = path
 
                     if path.status == .satisfied {
+                        if previousStatus != .satisfied {
+                            self.handleNetworkRestored(path)
+                        }
+
                         if let activeId = self.activeDeviceId,
                            let state = self.connectionStates[activeId],
                            state.isConnected {
@@ -144,7 +152,11 @@ public final class MultiConnectionManager: ObservableObject {
                             _ = await self.addConnection(for: deviceId)
                         }
                     } else {
-                        self.connectionHealth = .unstable
+                        if previousStatus == .satisfied {
+                            self.handleNetworkLoss()
+                        } else {
+                            self.connectionHealth = .unstable
+                        }
                     }
                 }
             }
@@ -285,7 +297,7 @@ public final class MultiConnectionManager: ObservableObject {
     }
 
     /// Performs system ping to verify desktop connection (handshaking step)
-    private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 8) async throws {
+    private func performSystemPing(deviceId: UUID, relayClient: ServerRelayClient, timeoutSeconds: Int = 3) async throws {
         guard relayClient.isConnected else {
             throw MultiConnectionError.connectionFailed("Relay not connected")
         }
@@ -324,7 +336,7 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
-    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 8) async throws {
+    private func verifyDesktopConnection(deviceId: UUID, timeoutSeconds: Int = 3) async throws {
         guard let relayClient = storage[deviceId] else {
             throw MultiConnectionError.connectionFailed("Relay client not found")
         }
@@ -381,7 +393,6 @@ public final class MultiConnectionManager: ObservableObject {
 
     /// Add connection using server relay for a specific device
     public func addConnection(for deviceId: UUID) async -> Result<UUID, Error> {
-        // Strict prerequisite validation
         if !PlanToCodeCore.shared.isInitialized {
             await MainActor.run {
                 connectionStates[deviceId] = .failed(MultiConnectionError.invalidConfiguration)
@@ -389,28 +400,23 @@ public final class MultiConnectionManager: ObservableObject {
             return .failure(MultiConnectionError.invalidConfiguration)
         }
 
+        let authSnapshot: (isAuthenticated: Bool, token: String?) = await MainActor.run {
+            (AppState.shared.isAuthenticated, nil)
+        }
         let token = await AuthService.shared.getValidAccessToken()
-        if token == nil {
+        guard authSnapshot.isAuthenticated, let validToken = token else {
             await MainActor.run {
                 connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
             }
             return .failure(MultiConnectionError.authenticationRequired)
         }
 
-        // Guard against stale sessions: if AppState indicates user is not authenticated, abort
-        let isAuthValid = await MainActor.run { AppState.shared.isAuthenticated }
-        if !isAuthValid {
-            await MainActor.run {
-                connectionStates[deviceId] = .failed(MultiConnectionError.authenticationRequired)
-            }
-            return .failure(MultiConnectionError.authenticationRequired)
-        }
+        _ = validToken
 
-        // Check if we have an existing connection that's actually connected
         if let existingClient = storage[deviceId] {
             if existingClient.isConnected {
                 do {
-                    try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 8)
+                    try await verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
                     await MainActor.run {
                         activeDeviceId = deviceId
                     }
@@ -515,13 +521,19 @@ public final class MultiConnectionManager: ObservableObject {
                     PlanToCodeCore.shared.dataServices?.jobsService.activeSessionId
                 }
 
-                // Wire up callback for relay registration/resume to trigger jobs reconciliation
                 relayClient.onRegisteredOrResumed = { [weak self] in
                     Task { @MainActor in
                         guard let jobsService = PlanToCodeCore.shared.dataServices?.jobsService else {
                             return
                         }
                         await jobsService.reconcileJobs(reason: .relayRegistered)
+                    }
+                }
+
+                relayClient.onInvalidResumeLoop = { [weak self] in
+                    Task { @MainActor in
+                        guard let self = self else { return }
+                        await self.hardReset(reason: .reconnectionExhausted, deletePersistedDevices: false)
                     }
                 }
 
@@ -554,6 +566,7 @@ public final class MultiConnectionManager: ObservableObject {
                                 switch state {
                                 case .connected(let handshake):
                                     self.relayHandshakeByDevice[deviceId] = handshake
+                                    self.cancelReconnectingWatchdog(for: deviceId)
                                     if self.verifyingDevices.contains(deviceId) {
                                         self.connectionStates[deviceId] = .handshaking
                                         self.updateConnectionHealth(for: deviceId, state: .handshaking)
@@ -561,11 +574,9 @@ public final class MultiConnectionManager: ObservableObject {
                                         self.connectionStates[deviceId] = .connected(handshake)
                                         self.updateConnectionHealth(for: deviceId, state: .connected(handshake))
                                         self.persistConnectedDevice(deviceId)
-                                        // Clear reconnection state and persist server URL on successful connection
                                         self.reconnectStates.removeValue(forKey: deviceId)
                                         self.lastConnectedServerURL = Config.serverURL
                                         UserDefaults.standard.set(self.lastConnectedServerURL, forKey: self.serverContextKey)
-                                        // Clear reconnection flag if this is the active device
                                         if deviceId == self.activeDeviceId {
                                             self.isActivelyReconnecting = false
                                         }
@@ -581,6 +592,11 @@ public final class MultiConnectionManager: ObservableObject {
                                     self.connectionStates[deviceId] = .reconnecting
                                     self.updateConnectionHealth(for: deviceId, state: .reconnecting)
                                     self.verifyingDevices.insert(deviceId)
+                                    self.startReconnectingWatchdog(for: deviceId)
+                                    self.triggerAggressiveReconnect(
+                                        reason: .connectionLoss(deviceId),
+                                        deviceIds: [deviceId]
+                                    )
                                 case .failed(let e):
                                     // Cancel stability task - connection failed before becoming stable
                                     self.reconnectStates[deviceId]?.stabilityTask?.cancel()
@@ -614,7 +630,7 @@ public final class MultiConnectionManager: ObservableObject {
                 }
 
                 do {
-                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 8)
+                    try await self.verifyDesktopConnection(deviceId: deviceId, timeoutSeconds: 3)
 
                     await MainActor.run {
                         let otherDeviceIds = self.storage.keys.filter { $0 != deviceId }
@@ -988,6 +1004,37 @@ public final class MultiConnectionManager: ObservableObject {
         }
     }
 
+    @MainActor
+    private func handleNetworkLoss() {
+        connectionHealth = .unstable
+
+        for (deviceId, relay) in storage {
+            guard let currentState = connectionStates[deviceId],
+                  currentState.isConnectedOrConnecting else {
+                continue
+            }
+
+            relay.disconnectForReconnect()
+            connectionStates[deviceId] = .reconnecting
+            updateConnectionHealth(for: deviceId, state: .reconnecting)
+            verifyingDevices.remove(deviceId)
+            relayHandshakeByDevice.removeValue(forKey: deviceId)
+            reconnectStates[deviceId]?.stabilityTask?.cancel()
+            reconnectStates[deviceId]?.stabilityTask = nil
+            reconnectStates[deviceId]?.connectionEstablishedAt = nil
+        }
+
+        if activeDeviceId != nil {
+            isActivelyReconnecting = true
+        }
+    }
+
+    @MainActor
+    private func handleNetworkRestored(_ path: NWPath) {
+        guard !storage.isEmpty else { return }
+        triggerAggressiveReconnect(reason: .networkChange(path))
+    }
+
     // MARK: - Proactive Interface Switch Handling
 
     /// Handles network interface switches (e.g., WiFi → Cellular) by proactively
@@ -1009,11 +1056,31 @@ public final class MultiConnectionManager: ObservableObject {
         // If there are no known devices, nothing to do
         guard !storage.isEmpty else { return }
 
+        // Collect tasks to await for proper cleanup
+        var tasksToAwait: [(UUID, Task<Result<UUID, Error>, Never>)] = []
+
         for (deviceId, relay) in storage {
+            // Cancel any in-flight connect attempt so we can restart cleanly
+            if let task = connectingTasks.removeValue(forKey: deviceId) {
+                task.cancel()
+                tasksToAwait.append((deviceId, task))
+            }
+
             // Cancel any pending stability task and reset reconnect saga
+            if reconnectStates[deviceId] == nil {
+                reconnectStates[deviceId] = DeviceReconnectState()
+            }
             if var state = reconnectStates[deviceId] {
                 state.stabilityTask?.cancel()
                 state.stabilityTask = nil
+                state.currentTask?.cancel()
+                state.currentTask = nil
+                state.backgroundTimer?.invalidate()
+                state.backgroundTimer = nil
+                state.isAggressiveActive = false
+                state.aggressiveWindowStart = nil
+                state.lastError = nil
+                state.connectionEstablishedAt = nil
                 // Treat interface switch as a fresh connectivity episode
                 state.backgroundCycles = 0
                 state.attempts = 0
@@ -1027,15 +1094,39 @@ public final class MultiConnectionManager: ObservableObject {
 
             // Only disconnect sockets in connected or transient connection states
             if currentState?.isConnectedOrConnecting == true {
-                // Non user initiated: preserve resume tokens
-                relay.disconnect(isUserInitiated: false)
-                connectionStates[deviceId] = .disconnected
-                updateConnectionHealth(for: deviceId, state: .disconnected)
+                // Don't force new session on interface switch - try to resume first
+                // This is faster than re-registering and preserves session state
+                relay.disconnectForReconnect(failPendingCalls: false)
+                connectionStates[deviceId] = .reconnecting
+                updateConnectionHealth(for: deviceId, state: .reconnecting)
+            } else if currentState != nil {
+                connectionStates[deviceId] = .reconnecting
+                updateConnectionHealth(for: deviceId, state: .reconnecting)
             }
+            relayHandshakeByDevice.removeValue(forKey: deviceId)
         }
 
+        if activeDeviceId != nil {
+            isActivelyReconnecting = true
+        }
+        connectionHealth = .unstable
+
+        // Wait for all cancelled tasks to complete their defer blocks (including semaphore release)
+        for (_, task) in tasksToAwait {
+            _ = await task.value
+        }
+
+        // Yield to allow semaphore release Tasks (scheduled in defer blocks) to execute
+        await Task.yield()
+        // Additional small delay to ensure cleanup Tasks complete before reconnect attempts
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+        // Safety: Force reset the connection semaphore to ensure it's available for reconnection
+        // This handles edge cases where defer-scheduled release Tasks haven't completed
+        await connectionSemaphore.forceReset(to: 1)
+
         // Small delay to allow the new interface to be ready
-        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms (reduced from 350ms since we added 50ms above)
 
         // Trigger aggressive reconnect for all known devices
         triggerAggressiveReconnect(reason: .interfaceSwitch(change))
@@ -1046,6 +1137,45 @@ public final class MultiConnectionManager: ObservableObject {
     private func clearReconnectState(for deviceId: UUID) {
         reconnectStates[deviceId]?.stabilityTask?.cancel()
         reconnectStates.removeValue(forKey: deviceId)
+    }
+
+    private func startReconnectingWatchdog(for deviceId: UUID) {
+        reconnectingStartedAt[deviceId] = Date()
+
+        reconnectingWatchdogTask?.cancel()
+        reconnectingWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(60.0 * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            guard let self = self else { return }
+            await MainActor.run {
+                guard let startedAt = self.reconnectingStartedAt[deviceId] else { return }
+                let elapsed = Date().timeIntervalSince(startedAt)
+                if elapsed >= self.reconnectingWatchdogThreshold {
+                    if let state = self.connectionStates[deviceId], state.isTransient {
+                        Task {
+                            await self.hardReset(reason: .reconnectionExhausted, deletePersistedDevices: false)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func cancelReconnectingWatchdog(for deviceId: UUID) {
+        reconnectingStartedAt.removeValue(forKey: deviceId)
+        if reconnectingStartedAt.isEmpty {
+            reconnectingWatchdogTask?.cancel()
+            reconnectingWatchdogTask = nil
+        }
+    }
+
+    private func shouldForceReconnect(for reason: ReconnectReason) -> Bool {
+        switch reason {
+        case .interfaceSwitch, .networkChange, .connectionLoss, .authRefreshed:
+            return true
+        case .appForeground:
+            return false
+        }
     }
 
     public func triggerAggressiveReconnect(reason: ReconnectReason, deviceIds: [UUID]? = nil) {
@@ -1083,8 +1213,18 @@ public final class MultiConnectionManager: ObservableObject {
 
             // Guard against redundant reconnection attempts
             if let st = connectionStates[deviceId] {
-                if st.isConnected || st == .connecting || st == .handshaking || st == .reconnecting {
+                let forceReconnect = shouldForceReconnect(for: reason)
+                switch st {
+                case .connected:
                     continue
+                case .connecting, .handshaking, .authenticating:
+                    continue
+                case .reconnecting:
+                    if !forceReconnect {
+                        continue
+                    }
+                default:
+                    break
                 }
             }
             if connectingTasks[deviceId] != nil {
@@ -1242,6 +1382,10 @@ public final class MultiConnectionManager: ObservableObject {
 
     private func canAttemptReconnect(for deviceId: UUID) -> Bool {
         guard AuthService.shared.isAuthenticated == true else {
+            return false
+        }
+
+        if let path = lastPath, path.status != .satisfied {
             return false
         }
 
@@ -1539,5 +1683,17 @@ actor AsyncSemaphore {
         } else {
             permits += 1
         }
+    }
+
+    /// Force resets the semaphore to the specified permit count.
+    /// Resumes all waiting tasks (they will need to re-acquire if needed).
+    /// Use only for emergency recovery scenarios.
+    func forceReset(to value: Int) {
+        // Resume all waiters to unblock them
+        while let waiter = waiters.first {
+            waiters.removeFirst()
+            waiter.resume()
+        }
+        permits = value
     }
 }

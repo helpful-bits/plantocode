@@ -165,53 +165,9 @@
     "title": "Human-in-the-loop Governance"
   },
   "hero": {
-    "titleLine1": "Komplexe Änderungen planen",
-    "titleLine2": "Mit Architekten-Präzision",
-    "subtitle": "[b]KI-Architekt[/b] generiert detaillierte Implementierungspläne mit exakten Dateipfaden. Sie prüfen und genehmigen jede Änderung vor der Ausführung. [b]Saubere Architektur[/b].",
     "cta": {
       "viewDemo": "Demo ansehen",
-      "howItWorks": "So funktioniert es"
-    },
-    "panel1": {
-      "title": "Kristallisieren & Abgrenzen",
-      "description": "Sprach- oder Texteingabe mit optionaler KI-Verfeinerung. Isolieren Sie Dateien, die speziell für diese Aufgabe relevant sind.",
-      "descriptionDesktop": "Beginnen Sie mit Sprache oder Text. Nutzen Sie KI für optionale Textverbesserung und Task-Verfeinerung. Dann grenzen Sie exakte Dateien über gezielte Discovery ab.",
-      "link": "So funktioniert es",
-      "linkDesktop": "Discovery erkunden",
-      "features": {
-        "voice": "Sprachdiktat",
-        "textImprovement": "Textverbesserung",
-        "taskRefinement": "Task-Verfeinerung",
-        "fileDiscovery": "Gezielte Datei-Discovery",
-        "scopedSelection": "Task-spezifische Auswahl"
-      }
-    },
-    "panel2": {
-      "title": "Mehrere Perspektiven",
-      "description": "Gleiche Aufgabe, gleiche Dateien, gleicher Kontext. Mehrfach ausführen - gleiches Modell oder gemischt. Jede KI hat einen einzigartigen architektonischen Geschmack. Sehen Sie verschiedene gültige Ansätze in standardisiertem Format.",
-      "link": "Workflow erkunden",
-      "runs": {
-        "run1": "Durchlauf 1 - GPT-5.2",
-        "run2": "Durchlauf 2 - Gemini 3 Pro",
-        "run3": "Durchlauf 3 - GPT-5.2"
-      },
-      "tags": {
-        "middlewareFirst": "Middleware-Ansatz",
-        "serviceLayer": "Service-Layer-Ansatz",
-        "apiFirst": "API-First-Ansatz"
-      }
-    },
-    "panel3": {
-      "title": "Automatisches Mergen",
-      "description": "System bewertet und ratet alle Pläne, um die architektonisch am besten geeigneten Ansätze für Ihre Codebasis zu identifizieren, und führt sie dann zu einer überlegenen Implementierung zusammen. Optionale Merge-Anweisungen leiten die Synthese.",
-      "link": "Merge-Details",
-      "merge": {
-        "line1": "Input: 4 Pläne (2×GPT-5.2, 2×Gemini)",
-        "line2": "Scope: Dateien aus allen Plänen",
-        "line3": "Strategie: Merge-Anweisungen anwenden",
-        "line4": "Output: Datei-für-Datei-Plan",
-        "line5": "Provenienz: [src:P2], [src:P1]"
-      }
+      "howItWorks": "Laufzeitübersicht"
     }
   },
   "integrations": {
@@ -304,5 +260,130 @@
     },
     "subtitle": "Echte Lösungen für die schwierigsten Probleme in der Software-Entwicklung",
     "title": "Komplexe Entwicklungs-Herausforderungen lösen"
+  },
+  "gallery": {
+    "heading": "Systemarchitektur und Implementierungsübersicht",
+    "intro": "Jedes Panel zeigt die Zusammenarbeit zwischen Desktop-App und Backend: Tauri-Shell, Rust-Job-Prozessoren, SQLite-Persistenz und Modell-Orchestrierung für Planung und Ausführung.",
+    "video": {
+      "title": "System-Walkthrough-Video",
+      "description": "Ein kurzer, durchgehender Walkthrough der Planungspipeline: Aufgabeneingabe, Dateierkennungs-Jobs, Plangenerierung, Merge-Anweisungen und Ausführungsübergabe.",
+      "bullets": [
+        "Tauri-Shell und React-UI präsentieren den Workflow",
+        "Rust-Hintergrundjobs streamen Fortschrittsaktualisierungen",
+        "SQLite speichert Sitzungen, Jobs und Protokolle",
+        "LLM-Pläne werden generiert und strukturiert zusammengeführt"
+      ]
+    },
+    "cards": {
+      "fileFinder": {
+        "title": "Dateierkennungs-Pipeline",
+        "description": "Ein vierstufiger Rust-Workflow: LLM-unterstützte Stammverzeichnisauswahl, Regex-Filterung, Relevanzbewertung und erweiterte Pfadsuche zur Erstellung eines fokussierten Dateisatzes.",
+        "features": [
+          "Stammordnerauswahl verwendet den Verzeichnisbaum und die Aufgabenbeschreibung",
+          "Regex-Filter generiert Mustergruppen und wendet git ls-files an",
+          "Relevanzbewertung teilt Dateiinhalte mit Token-Schätzungen",
+          "Erweiterter Pfadfinder erweitert den Kontext mit Datei- und Baumdaten"
+        ]
+      },
+      "fileFinderWorkflow": {
+        "title": "Persistierter Dateikontext",
+        "description": "Jede Workflow-Phase schreibt Ergebnisse in background_jobs, sodass Dateisätze sitzungsübergreifend wiederverwendet und später überprüft werden können.",
+        "features": [
+          "Workflow-Phasen als Job-Einträge gespeichert",
+          "Ausgewählte Dateilisten als JSON-Antworten persistiert",
+          "Sitzungs-included_files werden über Jobs hinweg wiederverwendet",
+          "SQLite-Verlauf überlebt Neustarts"
+        ]
+      },
+      "videoAnalysis": {
+        "title": "Video-Analyse-Erfassung",
+        "description": "Bildschirmaufnahmen werden an den Endpunkt `/api/llm/video/analyze` mit Prompts und FPS-Einstellungen gesendet, um strukturierte Zusammenfassungen zu generieren.",
+        "features": [
+          "Multipart-Upload enthält duration_ms und framerate",
+          "Modellformat ist provider/model (google/* erforderlich)",
+          "Nutzung und Kosten werden in Server-Abrechnungsprotokollen erfasst",
+          "Zusammenfassung als Job-Metadaten-Artefakte gespeichert"
+        ]
+      },
+      "implementationPlans": {
+        "title": "Multi-Modell-Plangenerierung",
+        "description": "ImplementationPlanProcessor streamt Planentwürfe aus vollständigen Dateiinhalten; Merge-Jobs konsolidieren mehrere Entwürfe zu einem Plan.",
+        "features": [
+          "Plan-Jobs enthalten ausgewählte Dateiinhalte + Verzeichnisbaum",
+          "Strukturierte Plan-Metadaten pro Job erfasst",
+          "Merge-Prompt verwendet <source_plans> und <user_instructions>",
+          "Endgültiger Plan zusammen mit Quellentwürfen gespeichert"
+        ]
+      },
+      "backgroundTasks": {
+        "title": "Hintergrund-Job-Überwachung",
+        "description": "Rust-Job-Prozessoren streamen Fortschritt und Statusübergänge an die UI, während die Job-Historie in SQLite persistiert wird.",
+        "features": [
+          "Created, queued, preparing, running, completed/failed/canceled",
+          "Streaming-Updates über Tauri-Events",
+          "Token-Nutzung pro Durchlauf erfasst",
+          "Lang laufende Jobs abbrechen"
+        ]
+      },
+      "settingsPrompts": {
+        "title": "Prompt- und Modellkonfiguration",
+        "description": "Laufzeit-Modelleinstellungen werden von `/api/config/desktop-runtime-config` abgerufen; Prompt-Überschreibungen werden in SQLite gespeichert.",
+        "features": [
+          "Pro-Aufgabe erlaubte Modelle und Standardwerte",
+          "System-Prompts von der Server-API bereitgestellt",
+          "Projektebene Prompt-Überschreibungen in project_system_prompts",
+          "Lokaler key_value_store für Laufzeiteinstellungen"
+        ]
+      },
+      "terminalVoiceRecording": {
+        "title": "Workflow-Automatisierungs-Buttons",
+        "description": "Kopier-Buttons fügen vorlagenbasierte Prompts mit Aufgabenkontext für die Übergabe an Terminals oder externe Tools ein.",
+        "features": [
+          "Vorlagen aus der Aufgaben-Modell-Konfiguration bezogen",
+          "Platzhalter gegen den aktiven Plan aufgelöst",
+          "Übergabe an PTY-Sitzungen oder Zwischenablage",
+          "Aktionen mit Job-Metadaten für Audit verknüpft"
+        ]
+      },
+      "mergeInstructionsWorkflow": {
+        "title": "Plan-Merge-Anweisungen",
+        "description": "ImplementationPlanMergeProcessor führt mehrere Planentwürfe mit XML-getaggten Quellplänen und optionalen Anweisungen zusammen.",
+        "features": [
+          "Quellpläne per Job-ID abgerufen",
+          "Merge-Anweisungen in Metadaten gespeichert",
+          "Dateiinhalte + Verzeichnisbaum fügen Kontext hinzu",
+          "Zusammengeführter Plan zusammen mit Eingaben gespeichert"
+        ]
+      },
+      "billingTransactions": {
+        "title": "Nutzungs- und Kostenprotokoll",
+        "description": "Serverseitige Nutzungseinträge und Job-Metadaten erfassen die Modellnutzung über Anbieter hinweg.",
+        "features": [
+          "Pro-Job Token- und Kosten-Metadaten",
+          "Anbieterabhängige Nutzungseinträge",
+          "Abrechnungsendpunkte zeigen Nutzungszusammenfassungen",
+          "Prüfpfad für Modellausgaben"
+        ]
+      }
+    },
+    "viewFullSize": "Vollbild anzeigen",
+    "cta": {
+      "title": "Entdecken Sie die Architektur im Kontext",
+      "description": "Ordnen Sie jedes UI-Panel den zugrunde liegenden Prozessoren zu und tauchen Sie dann tiefer in die Architekturdokumentation und Build-Anleitungen ein.",
+      "primary": "Architekturübersicht",
+      "secondary": "Laufzeitübersicht"
+    }
+  },
+  "technicalLanding": {
+    "title": "PlanToCode: Technischer Systemüberblick",
+    "description": "Ein technischer Überblick über den Aufbau von PlanToCode, damit Sie die Architektur studieren, die Muster wiederverwenden oder eine ähnliche Planungspipeline entwickeln können. Die Desktop-App verwendet externe LLM-Anbieter, die mit Ihren API-Schlüsseln konfiguriert werden.",
+    "walkthroughTitle": "Schritt für Schritt: Wie die Komponenten zusammenarbeiten",
+    "walkthroughDescription": "Folgen Sie einer durchgehenden Anleitung, wie die Desktop-App, das Rust/Tauri-Backend, die SQLite-Datenbank und die LLM-Orchestrierungspipeline Aufgaben koordinieren und Ergebnisse an die Benutzeroberfläche zurückstreamen.",
+    "tags": [
+      "Tauri",
+      "Rust",
+      "SQLite",
+      "LLM-Orchestrierung"
+    ]
   }
 }

@@ -4,6 +4,7 @@ use actix_web::web;
 use futures_util::StreamExt;
 use std::io::Write;
 use tempfile::NamedTempFile;
+use tracing::warn;
 
 pub struct TranscriptionMultipartData {
     pub audio_data: Vec<u8>,
@@ -14,6 +15,112 @@ pub struct TranscriptionMultipartData {
     pub prompt: Option<String>,
     pub temperature: Option<f32>,
     pub mime_type: String,
+}
+
+fn read_u16_le(data: &[u8], offset: usize) -> Option<u16> {
+    if offset + 2 <= data.len() {
+        Some(u16::from_le_bytes([data[offset], data[offset + 1]]))
+    } else {
+        None
+    }
+}
+
+fn read_u32_le(data: &[u8], offset: usize) -> Option<u32> {
+    if offset + 4 <= data.len() {
+        Some(u32::from_le_bytes([
+            data[offset],
+            data[offset + 1],
+            data[offset + 2],
+            data[offset + 3],
+        ]))
+    } else {
+        None
+    }
+}
+
+fn estimate_wav_duration_ms(data: &[u8]) -> Option<i64> {
+    if data.len() < 12 {
+        return None;
+    }
+    if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+        return None;
+    }
+
+    let mut offset = 12;
+    let mut data_size: Option<u32> = None;
+    let mut byte_rate: Option<u32> = None;
+    let mut sample_rate: Option<u32> = None;
+    let mut channels: Option<u16> = None;
+    let mut bits_per_sample: Option<u16> = None;
+
+    while offset + 8 <= data.len() {
+        let chunk_id = &data[offset..offset + 4];
+        let chunk_size = match read_u32_le(data, offset + 4) {
+            Some(size) => size as usize,
+            None => break,
+        };
+        let chunk_start = offset + 8;
+        if chunk_start + chunk_size > data.len() {
+            break;
+        }
+
+        if chunk_id == b"fmt " && chunk_size >= 16 {
+            channels = read_u16_le(data, chunk_start + 2);
+            sample_rate = read_u32_le(data, chunk_start + 4);
+            byte_rate = read_u32_le(data, chunk_start + 8);
+            bits_per_sample = read_u16_le(data, chunk_start + 14);
+        } else if chunk_id == b"data" {
+            data_size = Some(chunk_size as u32);
+            break;
+        }
+
+        offset = chunk_start + chunk_size;
+        if chunk_size % 2 == 1 {
+            offset += 1;
+        }
+    }
+
+    let data_size = data_size?;
+
+    let bytes_per_second = if let Some(rate) = byte_rate {
+        rate as u64
+    } else {
+        let sample_rate = sample_rate? as u64;
+        let channels = channels.unwrap_or(1) as u64;
+        let bits_per_sample = bits_per_sample.unwrap_or(16) as u64;
+        let bytes_per_sample = (bits_per_sample / 8).max(1);
+        sample_rate * channels * bytes_per_sample
+    };
+
+    if bytes_per_second == 0 {
+        return None;
+    }
+
+    let duration_ms = (data_size as u64)
+        .saturating_mul(1000)
+        .saturating_div(bytes_per_second);
+    if duration_ms == 0 {
+        return None;
+    }
+    Some(duration_ms as i64)
+}
+
+fn estimate_duration_ms(audio_data: &[u8]) -> Option<i64> {
+    if let Some(wav_ms) = estimate_wav_duration_ms(audio_data) {
+        return Some(wav_ms);
+    }
+
+    const DEFAULT_BYTES_PER_SECOND: u64 = 32_000; // 16kHz mono 16-bit PCM
+    if audio_data.is_empty() {
+        return None;
+    }
+    let duration_ms = (audio_data.len() as u64)
+        .saturating_mul(1000)
+        .saturating_div(DEFAULT_BYTES_PER_SECOND);
+    if duration_ms == 0 {
+        return None;
+    }
+    Some(duration_ms as i64)
 }
 
 pub async fn process_transcription_multipart(
@@ -68,17 +175,10 @@ pub async fn process_transcription_multipart(
                     AppError::InvalidArgument("Invalid durationMs encoding".to_string())
                 })?;
                 let trimmed = duration_str.trim();
-                duration_ms = trimmed.parse::<i64>().or_else(|_| {
-                    trimmed
-                        .parse::<f64>()
-                        .map(|value| value.round() as i64)
-                }).map_err(|e| {
-                    AppError::InvalidArgument(format!(
-                        "Invalid durationMs value '{}': {}",
-                        trimmed,
-                        e
-                    ))
-                })?;
+                duration_ms = trimmed
+                    .parse::<i64>()
+                    .or_else(|_| trimmed.parse::<f64>().map(|value| value.round() as i64))
+                    .unwrap_or(0);
             }
             "language" => {
                 let mut language_data = Vec::new();
@@ -126,6 +226,16 @@ pub async fn process_transcription_multipart(
         return Err(AppError::InvalidArgument(
             "No audio data provided in 'file' field".to_string(),
         ));
+    }
+
+    if duration_ms <= 0 {
+        if let Some(estimated) = estimate_duration_ms(&audio_data) {
+            warn!(
+                "Missing or invalid durationMs; estimated {}ms from audio payload",
+                estimated
+            );
+            duration_ms = estimated;
+        }
     }
 
     if duration_ms <= 0 {

@@ -567,73 +567,13 @@ public final class FilesDataService: ObservableObject {
     }
 
     public func undoFileSelection(sessionId: String) async throws {
-        try await updateFileHistoryIndex(sessionId: sessionId, delta: -1)
+        guard let sessionService = PlanToCodeCore.shared.dataServices?.sessionService else { return }
+        try await sessionService.updateFileHistoryIndex(sessionId: sessionId, delta: -1)
     }
 
     public func redoFileSelection(sessionId: String) async throws {
-        try await updateFileHistoryIndex(sessionId: sessionId, delta: 1)
-    }
-
-    private func updateFileHistoryIndex(sessionId: String, delta: Int) async throws {
-        func applyDelta(state: FileHistoryStatePayload, delta: Int) -> FileHistoryStatePayload? {
-            guard !state.entries.isEmpty else { return nil }
-            let clampedCurrent = max(0, min(Int(state.currentIndex), state.entries.count - 1))
-            let nextIndex = clampedCurrent + delta
-            guard nextIndex >= 0, nextIndex < state.entries.count else { return nil }
-            var updated = state
-            updated.currentIndex = Int64(nextIndex)
-            updated.checksum = FileHistoryStateCodec.computeChecksum(
-                entries: updated.entries,
-                currentIndex: updated.currentIndex,
-                version: updated.version
-            )
-            return updated
-        }
-
-        let rawState = try await getFileHistoryState(sessionId: sessionId)
-        let initialState = try FileHistoryStateCodec.decodeState(from: rawState)
-        guard let updated = applyDelta(state: initialState, delta: delta) else { return }
-
-        do {
-            let encodedState = try FileHistoryStateCodec.encodeState(updated)
-            let syncKey = "file-history-index:\(sessionId):\(updated.checksum)"
-            _ = try await CommandRouter.sessionSyncHistoryStateRaw(
-                sessionId: sessionId,
-                kind: "files",
-                state: encodedState,
-                expectedVersion: updated.version,
-                idempotencyKey: syncKey
-            )
-        } catch {
-            guard isHistoryConflict(error) else { throw error }
-
-            let latestRaw = try await getFileHistoryState(sessionId: sessionId)
-            let latestState = try FileHistoryStateCodec.decodeState(from: latestRaw)
-            guard let retryState = applyDelta(state: latestState, delta: delta) else { return }
-            let encodedRetry = try FileHistoryStateCodec.encodeState(retryState)
-            let syncKey = "file-history-index:\(sessionId):\(retryState.checksum)"
-            _ = try await CommandRouter.sessionSyncHistoryStateRaw(
-                sessionId: sessionId,
-                kind: "files",
-                state: encodedRetry,
-                expectedVersion: retryState.version,
-                idempotencyKey: syncKey
-            )
-        }
-    }
-
-    private func isHistoryConflict(_ error: Error) -> Bool {
-        guard let relayError = error as? ServerRelayError else { return false }
-        switch relayError {
-        case .serverError(let code, let message):
-            if code == "-32003" || code.lowercased() == "conflict" {
-                return true
-            }
-            let lower = message.lowercased()
-            return lower.contains("version mismatch") || lower.contains("conflict")
-        default:
-            return false
-        }
+        guard let sessionService = PlanToCodeCore.shared.dataServices?.sessionService else { return }
+        try await sessionService.updateFileHistoryIndex(sessionId: sessionId, delta: 1)
     }
 }
 

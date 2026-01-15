@@ -163,6 +163,13 @@ public class KeychainManager {
         for item: KeychainItem,
         updateIfExists: Bool = true
     ) throws {
+        // Check if item exists first to avoid generating errSecDuplicateItem error
+        // This prevents the -25299 error from appearing in logs
+        if updateIfExists && exists(for: item) {
+            try update(data: data, for: item)
+            return
+        }
+
         var query = baseQuery(for: item)
         query[kSecValueData] = data
 
@@ -175,6 +182,7 @@ public class KeychainManager {
         let status = SecItemAdd(query as CFDictionary, nil)
 
         if status == errSecDuplicateItem {
+            // Race condition: item was added between exists() check and SecItemAdd
             if updateIfExists {
                 try update(data: data, for: item)
             } else {

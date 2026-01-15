@@ -7,34 +7,54 @@ class PlanToCodeAppDelegate: NSObject, UIApplicationDelegate {
   private var backgroundDisconnectTimer: Timer?
 
   func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-    // Configure TabBar appearance
+    // Configure TabBar appearance (lightweight, safe on main thread)
     configureTabBarAppearance()
 
-    // Initialize PlanToCodeCore early
-    let deviceId = DeviceManager.shared.getOrCreateDeviceID()
-    guard let serverURL = URL(string: Config.serverURL) else {
+    // Defer heavy initialization to after first frame to prevent launch hangs
+    // This moves Keychain access and Core initialization off the critical launch path
+    DispatchQueue.main.async { [weak self] in
+      self?.initializeCoreServices()
+    }
+
+    return true
+  }
+
+  private func initializeCoreServices() {
+    // Perform Keychain and Core initialization on a background thread
+    // to prevent blocking the main thread during app launch
+    Task.detached(priority: .userInitiated) {
+      // DeviceManager.getOrCreateDeviceID() accesses Keychain which can block
+      let deviceId = DeviceManager.shared.getOrCreateDeviceID()
+
+      guard let serverURL = URL(string: Config.serverURL) else {
         print("Invalid serverURL")
-        return true
-    }
-    let config = CoreConfiguration(desktopAPIURL: serverURL, deviceId: deviceId)
-    if !PlanToCodeCore.shared.isInitialized {
-        PlanToCodeCore.shared.initialize(with: config)
-    }
-    print("Core initialized: \(PlanToCodeCore.shared.isInitialized)")
+        return
+      }
 
-    // Initialize notification managers early to ensure delegate and subscriptions are active
-    _ = PushNotificationManager.shared
-    _ = WorkflowNotificationCoordinator.shared
+      let config = CoreConfiguration(desktopAPIURL: serverURL, deviceId: deviceId)
 
-    let center = UNUserNotificationCenter.current()
-    center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
-      if granted {
-        DispatchQueue.main.async {
-          UIApplication.shared.registerForRemoteNotifications()
+      // Switch to MainActor for initialization that requires main thread
+      await MainActor.run {
+        if !PlanToCodeCore.shared.isInitialized {
+          PlanToCodeCore.shared.initialize(with: config)
+        }
+        print("Core initialized: \(PlanToCodeCore.shared.isInitialized)")
+
+        // Initialize notification managers (these may set up observers on main thread)
+        _ = PushNotificationManager.shared
+        _ = WorkflowNotificationCoordinator.shared
+
+        // Request notification authorization
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .badge, .sound]) { granted, error in
+          if granted {
+            DispatchQueue.main.async {
+              UIApplication.shared.registerForRemoteNotifications()
+            }
+          }
         }
       }
     }
-    return true
   }
 
   private func configureTabBarAppearance() {

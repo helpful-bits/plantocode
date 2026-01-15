@@ -9,7 +9,6 @@ use crate::constants::DEFAULT_JOB_TIMEOUT_SECONDS;
 use crate::db_utils::background_job_repository::BackgroundJobRepository;
 use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
-use crate::events::session_events;
 use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait;
 use crate::jobs::queue::{JobPriority, get_job_queue};
@@ -409,7 +408,7 @@ async fn handle_job_success(
                     .inner()
                     .clone();
                 let session_repo = SessionRepository::new(pool.clone());
-                if let Ok(Some(_outcome)) = auto_apply_files_for_job(
+                if let Ok(Some(outcome)) = auto_apply_files_for_job(
                     &pool,
                     &session_repo,
                     app_handle,
@@ -420,27 +419,14 @@ async fn handle_job_success(
                 )
                 .await
                 {
-                    // Always emit session-files-updated after successful auto-apply
-                    // Even if no new files were applied, normalization/dedup may have changed the state
-                    // Fetch fresh session state from DB after auto-apply commit
-                    if let Ok(Some(updated_session)) = session_repo.get_session_by_id(&completed_job.session_id).await {
-                        let payload = json!({
-                            "sessionId": completed_job.session_id,
-                            "jobId": job_id,
-                            "taskType": completed_job.task_type,
-                            "files": updated_session.included_files,
-                        });
+                    let payload = json!({
+                        "sessionId": completed_job.session_id,
+                        "jobId": job_id,
+                        "taskType": completed_job.task_type,
+                        "files": outcome.applied_files,
+                    });
 
-                        let _ = app_handle.emit("session:auto-files-applied", payload.clone());
-
-                        // Emit unified session-files-updated event with fresh state
-                        let _ = session_events::emit_session_files_updated(
-                            app_handle,
-                            &completed_job.session_id,
-                            &updated_session.included_files,
-                            &updated_session.force_excluded_files,
-                        );
-                    }
+                    let _ = app_handle.emit("session:auto-files-applied", payload.clone());
                 }
             }
 

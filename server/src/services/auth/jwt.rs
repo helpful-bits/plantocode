@@ -193,6 +193,8 @@ pub fn create_token(
     let iat = iat_dt.timestamp() as usize;
     let exp = exp_dt.timestamp() as usize;
 
+    let normalized_device_id = device_id.map(|value| value.to_lowercase());
+
     // Create claims
     let claims = Claims {
         sub: user_id.to_string(),
@@ -203,11 +205,11 @@ pub fn create_token(
         iss: Some(JWT_ISSUER.to_string()),
         auth0_sub: auth0_sub.map(|s| s.to_string()),
         // Add token binding hash if device_id is provided
-        tbh: device_id.map(hash_token_binding_value),
+        tbh: normalized_device_id.as_deref().map(hash_token_binding_value),
         jti: Uuid::new_v4().to_string(),
         aud: Some("plantocode-api".to_string()),
         // device_id is used for device binding (compared to request header x-device-id in middleware). tbh is kept for potential future token-binding enforcement.
-        device_id: device_id.map(|v| v.to_string()),
+        device_id: normalized_device_id,
         scope: Some("read write rpc".to_string()),
         session_id: None,
         ip_binding: None,

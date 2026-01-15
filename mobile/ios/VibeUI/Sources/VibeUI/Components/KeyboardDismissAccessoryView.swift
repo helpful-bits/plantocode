@@ -59,6 +59,10 @@ public final class KeyboardDismissAccessoryView: UIInputView {
         let initialFrame = CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: height)
         super.init(frame: initialFrame, inputViewStyle: .keyboard)
 
+        // Enable self-sizing to let the system determine the optimal height
+        // and prevent constraint conflicts with the keyboard layout
+        allowsSelfSizing = true
+
         setupViews()
         setupConstraints()
         setupAccessibility()
@@ -74,6 +78,9 @@ public final class KeyboardDismissAccessoryView: UIInputView {
         self.dismissButton = UIButton(type: .system)
 
         super.init(coder: coder)
+
+        // Enable self-sizing to let the system determine the optimal height
+        allowsSelfSizing = true
 
         setupViews()
         setupConstraints()
@@ -168,5 +175,21 @@ public final class KeyboardDismissAccessoryView: UIInputView {
     /// Returns the natural size for the receiving view.
     public override var intrinsicContentSize: CGSize {
         return CGSize(width: UIView.noIntrinsicMetric, height: baseHeight)
+    }
+
+    public override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+
+        // Lower the priority of vertical content hugging and compression resistance
+        // to allow the system's keyboard layout constraints to take precedence.
+        // This prevents "Unable to simultaneously satisfy constraints" errors.
+        setContentHuggingPriority(.defaultLow, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+
+        // Also ensure our height doesn't conflict with system keyboard constraints
+        // by not enforcing a strict height requirement
+        if let heightConstraint = constraints.first(where: { $0.firstAttribute == .height && $0.secondItem == nil }) {
+            heightConstraint.priority = .defaultLow
+        }
     }
 }

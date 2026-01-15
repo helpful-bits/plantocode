@@ -509,10 +509,11 @@ impl Actor for DeviceLinkWs {
         }
 
         // Clean up connection from manager
+        // Pass connection_id to prevent race condition where new connection gets removed
         if let (Some(user_id), Some(device_id), Some(connection_manager)) =
             (self.user_id, &self.device_id, &self.connection_manager)
         {
-            connection_manager.remove_connection(&user_id, device_id);
+            connection_manager.remove_connection(&self.connection_id, &user_id, device_id);
         }
     }
 }
@@ -1128,6 +1129,7 @@ impl Handler<HandleRegisterMessage> for DeviceLinkWs {
                 None => crate::services::device_connection_manager::ClientType::Other("unknown".into()),
             };
             connection_manager.register_connection(
+                self.connection_id,
                 user_id,
                 normalized_device_id.clone(),
                 device_name.clone(),

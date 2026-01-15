@@ -534,7 +534,7 @@ public struct FileManagementView: View {
     }
 
     private var shouldSuppressConnectionAlerts: Bool {
-        !multiConnectionManager.activeDeviceIsConnectedOrReconnecting
+        multiConnectionManager.workspaceConnectivityState(forOfflineMode: false) != .healthy
     }
 
     private func shouldShowErrorMessage(_ message: String) -> Bool {
@@ -549,6 +549,9 @@ public struct FileManagementView: View {
         return normalized.contains("connection")
             || normalized.contains("not connected")
             || normalized.contains("offline")
+            || normalized.contains("desktop offline")
+            || normalized.contains("desktop is offline")
+            || normalized.contains("resume failed")
             || normalized.contains("relay")
             || normalized.contains("network")
             || normalized.contains("timeout")
@@ -556,14 +559,10 @@ public struct FileManagementView: View {
 
     private func refreshUndoRedoState() async {
         guard let session = sessionService.currentSession else { return }
-        do {
-            let stateDict = try await container.filesService.getFileHistoryState(sessionId: session.id)
-            let decoded = try FileHistoryStateCodec.decodeState(from: stateDict)
+        func applyState(_ decoded: FileHistoryStatePayload) {
             guard !decoded.entries.isEmpty else {
-                await MainActor.run {
-                    canUndoFiles = false
-                    canRedoFiles = false
-                }
+                canUndoFiles = false
+                canRedoFiles = false
                 return
             }
 
@@ -573,15 +572,28 @@ public struct FileManagementView: View {
             let includedFiles = FileHistoryStateCodec.parseFileList(from: entry.includedFiles)
             let forceExcludedFiles = FileHistoryStateCodec.parseFileList(from: entry.forceExcludedFiles)
 
+            canUndoFiles = clampedIndex > 0
+            canRedoFiles = clampedIndex < max(0, decoded.entries.count - 1)
+            sessionService.updateSessionFilesInMemory(
+                sessionId: session.id,
+                includedFiles: includedFiles,
+                forceExcludedFiles: forceExcludedFiles
+            )
+            updateFileCounts()
+        }
+
+        if let cached = sessionService.cachedFileHistoryState(sessionId: session.id) {
             await MainActor.run {
-                canUndoFiles = clampedIndex > 0
-                canRedoFiles = clampedIndex < max(0, decoded.entries.count - 1)
-                sessionService.updateSessionFilesInMemory(
-                    sessionId: session.id,
-                    includedFiles: includedFiles,
-                    forceExcludedFiles: forceExcludedFiles
-                )
-                updateFileCounts()
+                applyState(cached)
+            }
+            return
+        }
+
+        do {
+            let stateDict = try await container.filesService.getFileHistoryState(sessionId: session.id)
+            let decoded = try FileHistoryStateCodec.decodeState(from: stateDict)
+            await MainActor.run {
+                applyState(decoded)
             }
         } catch {
         }
@@ -768,6 +780,7 @@ public struct FileManagementView: View {
                     addExcluded: nil,
                     removeExcluded: paths
                 )
+                await refreshUndoRedoState()
             }
         }
     }
@@ -795,6 +808,7 @@ public struct FileManagementView: View {
                     addExcluded: nil,
                     removeExcluded: nil
                 )
+                await refreshUndoRedoState()
             }
         }
     }
@@ -822,6 +836,7 @@ public struct FileManagementView: View {
                     addExcluded: paths,
                     removeExcluded: nil
                 )
+                await refreshUndoRedoState()
             }
         }
     }
@@ -849,6 +864,7 @@ public struct FileManagementView: View {
                     addExcluded: nil,
                     removeExcluded: paths
                 )
+                await refreshUndoRedoState()
             }
         }
     }

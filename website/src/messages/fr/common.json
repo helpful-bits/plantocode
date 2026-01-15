@@ -18,7 +18,8 @@
   },
   "cta": {
     "download": "Télécharger",
-    "talkToArchitect": "Parler à un expert"
+    "talkToArchitect": "Parler à un expert",
+    "viewSource": "Voir le code source"
   },
   "feature": {
     "copyButtons": {
@@ -79,7 +80,10 @@
     "support": "Support",
     "tagline": "Planifiez et livrez des modifications de code - trouvez des fichiers, générez et fusionnez des plans IA, exécutez-les dans un terminal persistant.",
     "talkToArchitect": "Parler à un expert",
-    "terms": "Conditions"
+    "terms": "Conditions",
+    "evolution": "Évolution",
+    "runtimeWalkthrough": "Présentation du runtime",
+    "sourceCode": "Code source"
   },
   "label": {
     "english": "Anglais",
@@ -101,7 +105,18 @@
     "docs": "Documentation",
     "downloads": "Téléchargements",
     "features": "Fonctionnalités",
-    "solutions": "Solutions"
+    "solutions": "Solutions",
+    "architecture": "Architecture",
+    "runtimeWalkthrough": "Présentation du runtime",
+    "more": "Plus",
+    "evolution": "Évolution",
+    "source": "Code source",
+    "evolutionDescription": "Comment l'architecture a évolué au fil du temps",
+    "downloadsDescription": "Obtenez les dernières versions",
+    "supportDescription": "Support communautaire et ressources",
+    "changelogDescription": "Mises à jour et versions récentes",
+    "aboutDescription": "À propos du projet et de l'équipe",
+    "sourceDescription": "Parcourir le code source complet sur GitHub"
   },
   "solution": {
     "hardBugs": {
@@ -120,5 +135,12 @@
       "description": "Nettoyage de dette technique",
       "label": "Maintenance"
     }
+  },
+  "videoButton": {
+    "label": "Voir la vidéo de présentation"
+  },
+  "videoModal": {
+    "closeLabel": "Fermer la vidéo",
+    "unsupported": "Votre navigateur ne supporte pas la balise vidéo."
   }
 }

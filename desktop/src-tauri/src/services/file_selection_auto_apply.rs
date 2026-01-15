@@ -1,11 +1,12 @@
 use serde_json::Value;
 use sqlx::SqlitePool;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::Arc;
 use tauri::Manager;
 
 use crate::db_utils::session_repository::SessionRepository;
 use crate::error::{AppError, AppResult};
+use crate::services::{HistoryStateSequencer, SessionCache};
 
 /// Auto-apply discovered files service
 /// - Backend auto-apply is additive-only and respects user force_excluded_files;
@@ -89,8 +90,29 @@ fn extract_files_from_response(response: &Value) -> Vec<String> {
     }
 }
 
+fn parse_file_list(raw: &str) -> Vec<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    if let Ok(values) = serde_json::from_str::<Vec<String>>(trimmed) {
+        return values
+            .into_iter()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+    }
+
+    trimmed
+        .lines()
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
 pub async fn auto_apply_files_for_job(
-    pool: &Arc<SqlitePool>,
+    _pool: &Arc<SqlitePool>,
     session_repo: &SessionRepository,
     app_handle: &tauri::AppHandle,
     session_id: &str,
@@ -129,16 +151,114 @@ pub async fn auto_apply_files_for_job(
         files_to_add.len()
     );
 
-    // Use cache to merge files respecting exclusions
-    let cache = app_handle.state::<std::sync::Arc<crate::services::SessionCache>>().inner().clone();
-    let actually_applied = cache
-        .merge_included_respecting_exclusions(app_handle, session_id, &files_to_add)
-        .await?;
+    let current_state = session_repo.get_file_history_state(session_id).await?;
+    let (current_included, current_excluded) = if let Some(entry) = current_state
+        .entries
+        .get(current_state.current_index as usize)
+    {
+        (
+            parse_file_list(&entry.included_files),
+            parse_file_list(&entry.force_excluded_files),
+        )
+    } else {
+        let cache = app_handle.state::<Arc<SessionCache>>().inner().clone();
+        if let Ok(existing) = cache.get_session(app_handle, session_id).await {
+            (existing.included_files, existing.force_excluded_files)
+        } else if let Ok(Some(existing)) = session_repo.get_session_by_id(session_id).await {
+            (existing.included_files, existing.force_excluded_files)
+        } else {
+            (Vec::new(), Vec::new())
+        }
+    };
 
-    // Only return outcome if we actually applied new files
+    let excluded_set: HashSet<String> = current_excluded.iter().cloned().collect();
+    let mut included_set: HashSet<String> = current_included.iter().cloned().collect();
+    let mut actually_applied = Vec::new();
+
+    for file in files_to_add {
+        let trimmed = file.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if excluded_set.contains(trimmed) {
+            continue;
+        }
+        if included_set.insert(trimmed.to_string()) {
+            actually_applied.push(trimmed.to_string());
+        }
+    }
+
     if actually_applied.is_empty() {
         return Ok(None);
     }
+
+    let now = crate::utils::date_utils::get_timestamp();
+    let device_id = crate::auth::device_id_manager::get_or_create(app_handle).ok();
+
+    let next_sequence = current_state
+        .entries
+        .iter()
+        .map(|entry| entry.sequence_number)
+        .max()
+        .unwrap_or(-1)
+        + 1;
+
+    let mut included_vec: Vec<String> = included_set.into_iter().collect();
+    let mut excluded_vec: Vec<String> = excluded_set.into_iter().collect();
+    included_vec.sort();
+    excluded_vec.sort();
+
+    let included_json = serde_json::to_string(&included_vec)
+        .unwrap_or_else(|_| "[]".to_string());
+    let excluded_json = serde_json::to_string(&excluded_vec)
+        .unwrap_or_else(|_| "[]".to_string());
+
+    let new_entry = crate::db_utils::session_repository::FileSelectionHistoryEntry {
+        included_files: included_json,
+        force_excluded_files: excluded_json,
+        created_at: now,
+        device_id,
+        op_type: Some("auto-apply".to_string()),
+        sequence_number: next_sequence,
+        version: current_state.version,
+    };
+
+    let current_index = if current_state.entries.is_empty() {
+        0
+    } else {
+        current_state.current_index as usize
+    };
+
+    let mut updated_entries: Vec<_> = if current_state.entries.is_empty() {
+        Vec::new()
+    } else {
+        current_state.entries[..=current_index].to_vec()
+    };
+    updated_entries.push(new_entry);
+
+    if updated_entries.len() > 50 {
+        let trim_start = updated_entries.len() - 50;
+        updated_entries = updated_entries.split_off(trim_start);
+    }
+
+    let new_index = if updated_entries.is_empty() {
+        0
+    } else {
+        (updated_entries.len() - 1) as i64
+    };
+
+    let new_state = crate::db_utils::session_repository::FileHistoryState {
+        entries: updated_entries,
+        current_index: new_index,
+        version: current_state.version,
+        checksum: String::new(),
+    };
+
+    let sequencer = app_handle.state::<Arc<HistoryStateSequencer>>();
+    let _ = sequencer
+        .enqueue_sync_files(session_id.to_string(), new_state, current_state.version)
+        .await
+        .map_err(|e| AppError::InternalError(format!("auto-apply history sync failed: {}", e)))?;
 
     Ok(Some(AutoApplyOutcome {
         session_id: session_id.to_string(),

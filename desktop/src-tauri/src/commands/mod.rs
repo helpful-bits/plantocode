@@ -40,6 +40,7 @@ pub mod screen_recording_commands {
 }
 pub mod image_commands;
 pub mod logging_commands;
+pub mod project_directory_commands;
 pub mod terminal_commands;
 pub mod video_analysis_commands;
 pub mod video_utils_commands;
@@ -224,6 +225,9 @@ pub use terminal_commands::{
 
 // Re-exports from image commands module
 pub use image_commands::save_pasted_image_command;
+
+// Re-exports from project directory commands module
+pub use project_directory_commands::broadcast_project_directory_changed_command;
 
 // Re-exports from disk commands module
 pub use disk_commands::get_disk_space_command;

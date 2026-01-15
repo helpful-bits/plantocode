@@ -36,7 +36,7 @@ pub struct PathFinderOptions {
     pub max_files_with_content: Option<usize>,
     pub priority_file_types: Option<Vec<String>>,
     pub included_files: Option<Vec<String>>,
-    pub excluded_files: Option<Vec<String>>,
+    pub force_excluded_files: Option<Vec<String>>,
 }
 
 impl Default for PathFinderOptions {
@@ -46,7 +46,7 @@ impl Default for PathFinderOptions {
             max_files_with_content: None, // No defaults - configuration comes from server
             priority_file_types: None,
             included_files: None,
-            excluded_files: None,
+            force_excluded_files: None,
         }
     }
 }

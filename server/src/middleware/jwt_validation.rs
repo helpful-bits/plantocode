@@ -125,7 +125,9 @@ pub fn validate_device_binding(
 
     match (&claims.device_id, device_id_header) {
         (Some(jwt_device_id), Some(header_device_id)) => {
-            if jwt_device_id != header_device_id {
+            let jwt_normalized = jwt_device_id.to_lowercase();
+            let header_normalized = header_device_id.to_lowercase();
+            if jwt_normalized != header_normalized {
                 error!(
                     "Device ID mismatch for request_id: {}",
                     request_id

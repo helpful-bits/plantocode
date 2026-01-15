@@ -553,7 +553,7 @@ extension JobsDataService {
                         self.jobsById.removeValue(forKey: jobId)
                         self.jobSummariesById.removeValue(forKey: jobId)
                         self.lastAccumulatedLengths.removeValue(forKey: jobId)
-                        self.recomputeDerivedState()
+                        self.recomputeDerivedStateFromSummaries()
                         self.scheduleCoalescedListJobsForActiveSession()
                         promise(.success(true))
                     }

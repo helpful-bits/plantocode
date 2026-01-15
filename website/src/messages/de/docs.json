@@ -947,51 +947,100 @@
   },
   "textImprovement": {
     "meta": {
-      "title": "Textverbesserung - PlanToCode",
-      "description": "Wie der Desktop-Arbeitsbereich markierten Text umschreibt, Formatierung beibehält und die Funktion mit Sprach- und Videoeingaben verknüpft."
+      "title": "Text improvement - PlanToCode",
+      "description": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs."
     },
-    "category": "Produktleitfaden",
+    "category": "Product Guide",
     "cta": {
-      "description": "Laden Sie PlanToCode herunter, um Sprachaufnahme, Videokontext und Inline-Umschreibung zu kombinieren, bevor Sie Implementierungspläne generieren.",
-      "heading": "Textverbesserung in der Desktop-App ausprobieren"
+      "description": "Download PlanToCode to combine voice capture, video context, and inline rewriting before you generate implementation plans.",
+      "heading": "Try text improvement in the desktop app",
+      "links": {
+        "architecture": "Architecture overview",
+        "buildYourOwn": "Build your own"
+      }
     },
     "date": "2025-09-21",
-    "description": "Wie PlanToCode markierten Text umschreibt, ohne die Formatierung zu ändern, und das Ergebnis mit Ihrem Arbeitsbereich verknüpft.",
-    "intro": "Text mit KI-Kontext verfeinern. Wählen Sie Text in einem beliebigen Editor aus, lösen Sie einen Hintergrundjob aus und erhalten Sie verbesserten Inhalt, der Ihre Formatierung beibehält.",
-    "metaDescription": "Wie der Desktop-Arbeitsbereich markierten Text umschreibt, Formatierung beibehält und die Funktion mit Sprach- und Videoeingaben verknüpft.",
-    "metaTitle": "Textverbesserung - PlanToCode",
-    "ogDescription": "Verstehen Sie das Auswahl-Popover, die Job-Warteschlange, Modellkonfiguration und Integrationen, die Textverbesserung antreiben.",
-    "ogTitle": "Textverbesserung - PlanToCode",
-    "readTime": "7 Min.",
+    "description": "How PlanToCode rewrites highlighted text without changing formatting and links the result back to your workspace.",
+    "intro": "Refine text with AI context. Select text in any editor, trigger a background job, and get improved content that keeps your formatting intact.",
+    "metaDescription": "How the desktop workspace rewrites highlighted text, preserves formatting, and links the feature to voice and video inputs.",
+    "metaTitle": "Text improvement - PlanToCode",
+    "ogDescription": "Understand the selection popover, job queue, model configuration, and integrations that power text improvement.",
+    "ogTitle": "Text improvement - PlanToCode",
+    "readTime": "7 min",
     "selectionPopover": {
-      "component": "Das Popover selbst ist eine minimale Komponente, die von {code} gerendert wird, die einfach den Provider-Hook auslöst und einen Ladeindikator anzeigt, während ein Umschreiben läuft. Da der Provider globale Listener registriert, erscheint das Popover in Monaco-Plan-Viewern, dem Plan-Terminal-Diktierfeld und allen Aufgabenbeschreibungs-Eingaben ohne zusätzliche Verdrahtung.",
-      "heading": "Auswahl-Popover-Verhalten",
-      "provider": "Der {code} lauscht auf Auswahl-Ereignisse bei Standard-Eingaben und Monaco-Editoren. Wenn Sie nicht-leeren Text markieren, positioniert er ein Popover nahe dem Cursor, speichert den ausgewählten Bereich und verfolgt, ob das Popover sichtbar sein sollte. Das Klicken des Buttons startet den Job und deaktiviert die Steuerung, bis das Ergebnis zurückkommt. Wenn der Job abgeschlossen ist, wendet der Provider den verbesserten Text auf dieselbe Auswahl an und speichert alle ausstehenden Änderungen, um den Sitzungsstatus synchron zu halten."
+      "component": "The popover itself is a minimal component rendered by {code}, which simply triggers the provider hook and shows a loading indicator while a rewrite is running. Because the provider registers global listeners, the popover appears in Monaco plan viewers, the plan terminal dictation field, and any task description inputs without extra wiring.",
+      "heading": "Selection popover behaviour",
+      "provider": "The {code} listens for selection events on standard inputs and Monaco editors. When you highlight non-empty text it positions a popover near the cursor, stores the selected range, and tracks whether the popover should be visible. Clicking the button kicks off the job and disables the control until the result returns. When the job completes the provider applies the improved text back into the same selection and flushes any pending saves to keep session state in sync."
     },
-    "title": "Textverbesserung",
+    "title": "Text Improvement",
     "triggerImprovement": {
-      "action": "Das Drücken des Popover-Buttons ruft {code} auf. Die Aktion validiert die Auswahl, stellt sicher, dass ein Sitzungsbezeichner existiert, und ruft den Rust-Befehl {code} über Tauri auf. Der Befehl erstellt ein {code}, das den Originaltext enthält, und reiht einen Hintergrundjob für die aktive Sitzung ein.",
-      "backend": "Im Backend löst der {code} das konfigurierte Modell für die {code}-Aufgabe auf, umhüllt die Auswahl mit XML-Tags und führt die Anfrage durch den {code} ohne Streaming aus. Wenn die Modellantwort zurückkommt, zeichnet sie Token-Nutzung, Kosten und die System-Prompt-Vorlage auf, bevor sie den verbesserten Text an die UI zurückgibt. Die Standardkonfiguration wird mit Claude Sonnet 4.5 und Gemini 3 Pro als genehmigten Modellen ausgeliefert, begrenzt auf 4.096 Token mit einer Temperatur von 0,7.",
-      "heading": "Was passiert, wenn Sie eine Verbesserung auslösen",
-      "metadata": "Die Hintergrundjobs-Seitenleiste zeichnet den Originaltext in Job-Metadaten auf, sodass Sie überprüfen können, was neben der umgeschriebenen Kopie gesendet wurde. Wenn sich die Auswahl ändert, während ein Job läuft, überspringt der Provider das Ersetzen des Textes, um manuelle Bearbeitungen nicht zu überschreiben."
+      "action": "Pressing the popover button calls {code}. The action validates the selection, ensures a session identifier exists, and invokes the Rust command {code} via Tauri. The command builds a {code} containing the original text and queues a background job against the active session.",
+      "backend": "On the backend, the {code} resolves the configured model for the {code} task, wraps the selection in XML tags, and runs the request through the {code} without streaming. When the model response returns it records token usage, cost, and the system prompt template before emitting the improved text back to the UI. The default configuration ships with Claude Sonnet 4.5 and Gemini 3 Pro as the approved models, capped at 4,096 tokens with a temperature of 0.7.",
+      "heading": "What happens when you trigger an improvement",
+      "metadata": "The background jobs sidebar records the original text in job metadata, so you can review what was sent alongside the rewritten copy. If the selection changes while a job is running, the provider skips replacing the text to avoid clobbering manual edits."
     },
     "videoCapture": {
-      "dialog": "Bildschirmaufnahmen durchlaufen den Video-Analyse-Dialog, der Ihre aktuelle Aufgabenbeschreibung mit einem optionalen Prompt-Block kombiniert, der in semantische XML-Tags eingehüllt ist, bevor die Anfrage an den Gemini-Video-Analyse-Job gesendet wird. Alle Notizen, die Sie während der Aufnahme diktieren, sind als Text verfügbar, sobald die Analyse abgeschlossen ist, sodass Sie die resultierende Zusammenfassung durch das Verbesserungs-Popover führen können, um die Anweisungen vor der Planung zu straffen.",
-      "features": "Video-Jobs umfassen Bildrate-Steuerungen, Audio-Aufnahme-Schalter und Kostenberichterstattung. Ergebnisse erscheinen in derselben Hintergrundjobs-Seitenleiste wie Textverbesserungen und halten alle Prompt-Vorbereitungs-Artefakte an einem Ort.",
-      "heading": "Videoaufnahme und Prompt-Gerüstbau"
+      "dialog": "Screen recordings pass through the video analysis dialog, which combines your current task description with an optional prompt block wrapped in semantic XML tags before sending the request to the Gemini video analysis job. Any notes you dictate during the recording are available as text once analysis completes, so you can feed the resulting summary back through the improvement popover to tighten the instructions before planning.",
+      "features": "Video jobs include frame-rate controls, audio capture toggles, and cost reporting. Results appear in the same background jobs sidebar as text improvements, keeping all prompt preparation artefacts in one place.",
+      "heading": "Video capture and prompt scaffolding"
     },
     "voiceIntegration": {
-      "heading": "Sprachtranskriptions-Integration",
-      "hook": "Sprachaufnahmen verwenden den {code}-Hook. Er lädt projektbezogene Transkriptions-Standardwerte, fordert Mikrofonzugriff an und fügt Transkripte am Cursor in die Aufgabenbeschreibung oder den Terminal-Diktierpuffer ein. Der eingefügte Text kann sofort markiert und durch dasselbe Verbesserungs-Popover geführt werden, und der ursprüngliche Transkriptions-Job-Bezeichner wird mit der Verbesserungs-Payload für Auditing gespeichert.",
-      "preferences": "Sprache-, Modell- und Temperaturpräferenzen werden auf Projektebene gespeichert, sodass Teams konsistente Transkriptionsqualität erhalten, bevor sie den Text verfeinern. Stille-Erkennung warnt vor schlechten Audiopegeln, und eine Zehn-Minuten-Obergrenze verhindert, dass übergroße Aufnahmen Verbesserungsjobs mit großen Payloads blockieren."
+      "heading": "Voice transcription integration",
+      "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcripts at the cursor inside the task description or terminal dictation buffer. The inserted text can immediately be highlighted and passed through the same improvement popover, and the original transcription job identifier is stored with the improvement payload for auditing.",
+      "preferences": "Language, model, and temperature preferences persist at the project level, so teams get consistent transcription quality before refining the copy. Silence detection warns about bad audio levels, and a ten-minute cap prevents oversized recordings from blocking improvement jobs with large payloads."
     },
     "visuals": {
       "popoverFlow": {
-        "title": "Textverbesserungs-Ablauf",
-        "description": "Auswahl-Popover löst Verbesserungsjob aus und gibt verbesserten Text zurück.",
+        "title": "Text improvement flow",
+        "description": "Selection popover triggers improvement job and returns enhanced text.",
         "imageSrc": "/images/docs/text-improvement/flow.svg",
-        "imageAlt": "Textverbesserungs-Ablaufdiagramm"
+        "imageAlt": "Text improvement flow diagram"
       }
+    },
+    "processorDetails": {
+      "heading": "Processor implementation details",
+      "processor": "The {code} handles the text rewriting workflow on the Rust backend.",
+      "stepsHeading": "Processing steps",
+      "steps": [
+        "Parse the incoming payload with original text and selection metadata",
+        "Build the system prompt from the configured text_improvement template",
+        "Submit the request to the LLM task runner without streaming",
+        "Extract the improved text from the model response",
+        "Record token usage, cost, and prompt template for billing",
+        "Emit the result back to the UI via Tauri events"
+      ]
+    },
+    "inlineRewriting": {
+      "heading": "Inline rewriting behaviour",
+      "description": "When the improved text returns, the provider automatically replaces the original selection. The rewriting preserves whitespace, line breaks, and any inline formatting present in the source. If the editor is Monaco-based, the change is applied as a single undo-able edit operation.",
+      "contextsHeading": "Supported contexts",
+      "contexts": [
+        "Task description input fields",
+        "Plan terminal dictation area",
+        "Monaco plan viewers and editors",
+        "Any standard HTML input or textarea"
+      ]
+    },
+    "modelConfiguration": {
+      "heading": "Model configuration",
+      "description": "Text improvement uses the text_improvement task configuration from the desktop runtime config. You can override the default model and parameters in the settings panel.",
+      "settingsHeading": "Configurable settings",
+      "settings": [
+        "Allowed models list (default: Claude Sonnet 4.5, Gemini 3 Pro)",
+        "Maximum token limit (default: 4096)",
+        "Temperature setting (default: 0.7)",
+        "System prompt template override"
+      ]
+    },
+    "keyFiles": {
+      "heading": "Key implementation files",
+      "items": [
+        "desktop/src/contexts/TextImprovementProvider.tsx",
+        "desktop/src/components/TextImprovementPopover.tsx",
+        "desktop/src/actions/text-improvement/index.ts",
+        "desktop/src-tauri/src/jobs/processors/text_improvement.rs",
+        "server/src/config/task_model_config.rs"
+      ]
     }
   },
   "voiceTranscription": {
