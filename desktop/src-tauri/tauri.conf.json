@@ -56,10 +56,6 @@
       "icons/tray/*"
     ],
     "externalBin": [],
-    "iOS": {
-      "developmentTeam": "P2C2NH989N",
-      "bundleVersion": "100"
-    },
     "macOS": {
       "minimumSystemVersion": "10.15",
       "exceptionDomain": "localhost",

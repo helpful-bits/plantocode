@@ -91,6 +91,24 @@ pub fn convert_messages_to_responses_input(
                                         detail,
                                     }
                                 }
+                                "input_file" => {
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_file".to_string(),
+                                        text: None,
+                                        image_url: None,
+                                        file_id: part.file_id.clone(),
+                                        detail: None,
+                                    }
+                                }
+                                "document" => {
+                                    OpenAIResponsesContentPart {
+                                        part_type: "input_file".to_string(),
+                                        text: None,
+                                        image_url: None,
+                                        file_id: part.file_id.clone(),
+                                        detail: None,
+                                    }
+                                }
                                 _ => {
                                     // Fallback: treat as text if text is available
                                     if part.text.is_some() {
@@ -191,6 +209,23 @@ pub fn prepare_request_body(
     web_mode: bool,
     force_background: Option<bool>,
 ) -> Result<(String, serde_json::Value), AppError> {
+    for msg in &request.messages {
+        if let OpenAIContent::Parts(parts) = &msg.content {
+            for part in parts {
+                if part.part_type == "document" {
+                    return Err(AppError::BadRequest(
+                        "OpenAI document parts must be uploaded before request preparation".to_string(),
+                    ));
+                }
+                if part.part_type == "input_file" && part.file_id.is_none() {
+                    return Err(AppError::BadRequest(
+                        "OpenAI input_file parts must include a file_id".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
     let max_output_tokens = if web_mode {
         None // Don't set max_output_tokens for web search models
     } else {

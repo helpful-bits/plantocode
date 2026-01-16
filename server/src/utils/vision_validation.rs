@@ -10,12 +10,20 @@ use crate::error::AppError;
 pub struct ProviderVisionConstraints {
     /// Allowed MIME types for images (e.g., "image/jpeg", "image/png").
     pub allowed_image_mime_types: Vec<&'static str>,
+    /// Allowed MIME types for documents (e.g., "application/pdf").
+    pub allowed_document_mime_types: Vec<&'static str>,
     /// Maximum number of images allowed in a single request.
     pub max_images: Option<usize>,
+    /// Maximum number of documents allowed in a single request.
+    pub max_documents: Option<usize>,
     /// Maximum total bytes across all images in a request.
     pub max_total_bytes: Option<u64>,
+    /// Maximum total bytes across all documents in a request.
+    pub max_total_document_bytes: Option<u64>,
     /// Maximum bytes for a single image.
     pub max_single_image_bytes: Option<u64>,
+    /// Maximum bytes for a single document.
+    pub max_single_document_bytes: Option<u64>,
 }
 
 impl ProviderVisionConstraints {
@@ -23,6 +31,14 @@ impl ProviderVisionConstraints {
     pub fn is_mime_allowed(&self, mime: &str) -> bool {
         let canonical = canonicalize_mime(mime);
         self.allowed_image_mime_types
+            .iter()
+            .any(|&allowed| canonicalize_mime(allowed) == canonical)
+    }
+
+    /// Check if a document MIME type is allowed for this provider.
+    pub fn is_document_mime_allowed(&self, mime: &str) -> bool {
+        let canonical = canonicalize_mime(mime);
+        self.allowed_document_mime_types
             .iter()
             .any(|&allowed| canonicalize_mime(allowed) == canonical)
     }
@@ -40,9 +56,13 @@ pub fn constraints_for_provider(provider_code: &str) -> ProviderVisionConstraint
                 "image/webp",
                 "image/gif",
             ],
+            allowed_document_mime_types: vec!["application/pdf"],
             max_images: Some(500),
+            max_documents: None,
             max_total_bytes: Some(50 * 1024 * 1024), // 50MB
+            max_total_document_bytes: None,
             max_single_image_bytes: None,
+            max_single_document_bytes: None,
         },
         "anthropic" => ProviderVisionConstraints {
             allowed_image_mime_types: vec![
@@ -51,9 +71,13 @@ pub fn constraints_for_provider(provider_code: &str) -> ProviderVisionConstraint
                 "image/gif",
                 "image/webp",
             ],
+            allowed_document_mime_types: vec!["application/pdf"],
             max_images: Some(100),
+            max_documents: None,
             max_total_bytes: Some(32 * 1024 * 1024), // 32MB
+            max_total_document_bytes: Some(32 * 1024 * 1024), // 32MB
             max_single_image_bytes: None,
+            max_single_document_bytes: Some(32 * 1024 * 1024),
         },
         "google" => ProviderVisionConstraints {
             // Google does NOT support GIF
@@ -64,9 +88,13 @@ pub fn constraints_for_provider(provider_code: &str) -> ProviderVisionConstraint
                 "image/heic",
                 "image/heif",
             ],
+            allowed_document_mime_types: vec!["application/pdf"],
             max_images: None,
+            max_documents: None,
             max_total_bytes: Some(20 * 1024 * 1024), // 20MB
+            max_total_document_bytes: Some(20 * 1024 * 1024), // 20MB
             max_single_image_bytes: None,
+            max_single_document_bytes: Some(20 * 1024 * 1024),
         },
         "openrouter" => ProviderVisionConstraints {
             allowed_image_mime_types: vec![
@@ -75,16 +103,24 @@ pub fn constraints_for_provider(provider_code: &str) -> ProviderVisionConstraint
                 "image/webp",
                 "image/gif",
             ],
+            allowed_document_mime_types: vec![],
             max_images: None,
+            max_documents: None,
             max_total_bytes: None,
+            max_total_document_bytes: None,
             max_single_image_bytes: None,
+            max_single_document_bytes: None,
         },
         "xai" => ProviderVisionConstraints {
             // xAI only supports JPEG and PNG
             allowed_image_mime_types: vec!["image/jpeg", "image/png"],
+            allowed_document_mime_types: vec![],
             max_images: None,
+            max_documents: None,
             max_total_bytes: None,
+            max_total_document_bytes: None,
             max_single_image_bytes: Some(20 * 1024 * 1024), // 20MB per image
+            max_single_document_bytes: None,
         },
         // Default: permissive constraints for unknown providers
         _ => ProviderVisionConstraints {
@@ -94,9 +130,13 @@ pub fn constraints_for_provider(provider_code: &str) -> ProviderVisionConstraint
                 "image/webp",
                 "image/gif",
             ],
+            allowed_document_mime_types: vec![],
             max_images: None,
+            max_documents: None,
             max_total_bytes: None,
+            max_total_document_bytes: None,
             max_single_image_bytes: None,
+            max_single_document_bytes: None,
         },
     }
 }
@@ -162,6 +202,11 @@ pub fn validate_vision_media_for_provider(
         .filter(|item| item.kind == VisionMediaKind::Image)
         .count();
 
+    let document_count = items
+        .iter()
+        .filter(|item| item.kind == VisionMediaKind::Document)
+        .count();
+
     // Check max images limit
     if let Some(max_images) = constraints.max_images {
         if image_count > max_images {
@@ -172,60 +217,115 @@ pub fn validate_vision_media_for_provider(
         }
     }
 
-    let mut total_bytes: u64 = 0;
-
-    for item in items {
-        // Only validate images (documents have different validation)
-        if item.kind != VisionMediaKind::Image {
-            continue;
-        }
-
-        let canonical_mime = canonicalize_mime(&item.mime_type);
-
-        // Special case for Google: explicitly reject GIF with clear message
-        if provider_lower == "google" && canonical_mime == "image/gif" {
-            return Err(AppError::Validation(
-                "google: GIF format is not supported; use JPEG, PNG, WebP, HEIC, or HEIF".to_string()
-            ));
-        }
-
-        // Check MIME type is allowed
-        if !constraints.is_mime_allowed(&item.mime_type) {
+    // Check max documents limit
+    if let Some(max_documents) = constraints.max_documents {
+        if document_count > max_documents {
             return Err(AppError::Validation(format!(
-                "{}: MIME type '{}' is not supported; allowed types: {}",
-                provider_lower,
-                item.mime_type,
-                constraints.allowed_image_mime_types.join(", ")
+                "{}: document count {} exceeds maximum of {} documents",
+                provider_lower, document_count, max_documents
             )));
         }
+    }
 
-        // Calculate byte size if base64 length is known
-        if let Some(base64_len) = item.base64_len {
-            let item_bytes = approximate_bytes_from_base64_len(base64_len);
+    let mut total_image_bytes: u64 = 0;
+    let mut total_document_bytes: u64 = 0;
 
-            // Check single image size limit
-            if let Some(max_single) = constraints.max_single_image_bytes {
-                if item_bytes > max_single {
-                    let max_mb = max_single / (1024 * 1024);
-                    let item_mb = item_bytes / (1024 * 1024);
+    for item in items {
+        match item.kind {
+            VisionMediaKind::Image => {
+                let canonical_mime = canonicalize_mime(&item.mime_type);
+
+                // Special case for Google: explicitly reject GIF with clear message
+                if provider_lower == "google" && canonical_mime == "image/gif" {
+                    return Err(AppError::Validation(
+                        "google: GIF format is not supported; use JPEG, PNG, WebP, HEIC, or HEIF".to_string()
+                    ));
+                }
+
+                // Check MIME type is allowed
+                if !constraints.is_mime_allowed(&item.mime_type) {
                     return Err(AppError::Validation(format!(
-                        "{}: image size ~{}MB exceeds {}MB limit",
-                        provider_lower, item_mb, max_mb
+                        "{}: MIME type '{}' is not supported; allowed types: {}",
+                        provider_lower,
+                        item.mime_type,
+                        constraints.allowed_image_mime_types.join(", ")
                     )));
                 }
-            }
 
-            total_bytes += item_bytes;
+                // Calculate byte size if base64 length is known
+                if let Some(base64_len) = item.base64_len {
+                    let item_bytes = approximate_bytes_from_base64_len(base64_len);
+
+                    // Check single image size limit
+                    if let Some(max_single) = constraints.max_single_image_bytes {
+                        if item_bytes > max_single {
+                            let max_mb = max_single / (1024 * 1024);
+                            let item_mb = item_bytes / (1024 * 1024);
+                            return Err(AppError::Validation(format!(
+                                "{}: image size ~{}MB exceeds {}MB limit",
+                                provider_lower, item_mb, max_mb
+                            )));
+                        }
+                    }
+
+                    total_image_bytes += item_bytes;
+                }
+            }
+            VisionMediaKind::Document => {
+                if constraints.allowed_document_mime_types.is_empty() {
+                    return Err(AppError::Validation(format!(
+                        "{}: document inputs are not supported",
+                        provider_lower
+                    )));
+                }
+
+                if !constraints.is_document_mime_allowed(&item.mime_type) {
+                    return Err(AppError::Validation(format!(
+                        "{}: document MIME type '{}' is not supported; allowed types: {}",
+                        provider_lower,
+                        item.mime_type,
+                        constraints.allowed_document_mime_types.join(", ")
+                    )));
+                }
+
+                if let Some(base64_len) = item.base64_len {
+                    let item_bytes = approximate_bytes_from_base64_len(base64_len);
+
+                    if let Some(max_single) = constraints.max_single_document_bytes {
+                        if item_bytes > max_single {
+                            let max_mb = max_single / (1024 * 1024);
+                            let item_mb = item_bytes / (1024 * 1024);
+                            return Err(AppError::Validation(format!(
+                                "{}: document size ~{}MB exceeds {}MB limit",
+                                provider_lower, item_mb, max_mb
+                            )));
+                        }
+                    }
+
+                    total_document_bytes += item_bytes;
+                }
+            }
         }
     }
 
     // Check total size limit
     if let Some(max_total) = constraints.max_total_bytes {
-        if total_bytes > max_total {
+        if total_image_bytes > max_total {
             let max_mb = max_total / (1024 * 1024);
-            let total_mb = total_bytes / (1024 * 1024);
+            let total_mb = total_image_bytes / (1024 * 1024);
             return Err(AppError::Validation(format!(
                 "{}: total image size ~{}MB exceeds {}MB limit",
+                provider_lower, total_mb, max_mb
+            )));
+        }
+    }
+
+    if let Some(max_total) = constraints.max_total_document_bytes {
+        if total_document_bytes > max_total {
+            let max_mb = max_total / (1024 * 1024);
+            let total_mb = total_document_bytes / (1024 * 1024);
+            return Err(AppError::Validation(format!(
+                "{}: total document size ~{}MB exceeds {}MB limit",
                 provider_lower, total_mb, max_mb
             )));
         }
@@ -266,6 +366,7 @@ mod tests {
         assert_eq!(constraints.max_total_bytes, Some(50 * 1024 * 1024));
         assert!(constraints.is_mime_allowed("image/jpeg"));
         assert!(constraints.is_mime_allowed("image/gif"));
+        assert!(constraints.is_document_mime_allowed("application/pdf"));
     }
 
     #[test]
@@ -419,15 +520,26 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_documents_are_skipped() {
-        // Documents should not be validated against image constraints
+    fn test_validate_documents_allowed_for_anthropic() {
         let items = vec![VisionMediaItem {
             kind: VisionMediaKind::Document,
             mime_type: "application/pdf".to_string(),
-            base64_len: Some(100 * 1024 * 1024), // 100MB - would fail if treated as image
+            base64_len: Some(1024 * 1024),
         }];
 
-        assert!(validate_vision_media_for_provider("google", &items).is_ok());
+        assert!(validate_vision_media_for_provider("anthropic", &items).is_ok());
+    }
+
+    #[test]
+    fn test_validate_documents_allowed_for_openai() {
+        let items = vec![VisionMediaItem {
+            kind: VisionMediaKind::Document,
+            mime_type: "application/pdf".to_string(),
+            base64_len: Some(1024 * 1024),
+        }];
+
+        let result = validate_vision_media_for_provider("openai", &items);
+        assert!(result.is_ok());
     }
 
     #[test]

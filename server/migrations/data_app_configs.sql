@@ -98,7 +98,7 @@ VALUES (
         "temperature": 0.2
       },
       "video_analysis": {
-        "model": "google/gemini-2.5-pro",
+        "model": "google/gemini-3-flash-preview",
         "allowed_models": ["google/gemini-3-pro-preview", "google/gemini-2.5-pro", "google/gemini-3-flash-preview"],
         "max_tokens": 50000,
         "temperature": 0.4

@@ -9,7 +9,9 @@ use crate::models::AuthenticatedUser;
 use crate::services::billing_service::BillingService;
 use crate::services::request_tracker::RequestTracker;
 use crate::utils::vision_capabilities::model_supports_vision;
-use crate::utils::vision_normalizer::{contains_images, parse_messages, VisionPart, ImageSource};
+use crate::utils::vision_normalizer::{
+    contains_documents, contains_images, parse_messages, DocumentSource, VisionPart, ImageSource,
+};
 use crate::utils::vision_validation::{
     validate_vision_media_for_provider, VisionMediaItem, VisionMediaKind, canonicalize_mime,
 };
@@ -59,12 +61,14 @@ pub async fn llm_chat_completion_handler(
     let messages_value = serde_json::to_value(&payload.messages)?;
     let parsed_messages = parse_messages(&messages_value).unwrap_or_default();
     let has_images = contains_images(&parsed_messages);
+    let has_documents = contains_documents(&parsed_messages);
+    let has_media = has_images || has_documents;
 
-    if has_images {
+    if has_media {
         // Check if model supports vision
         if !model_supports_vision(&model_with_provider.capabilities) {
             return Err(AppError::BadRequest(format!(
-                "Model '{}' does not support vision/image inputs. Please use a vision-capable model.",
+                "Model '{}' does not support vision/image/document inputs. Please use a vision-capable model.",
                 model_id
             )));
         }
@@ -73,41 +77,84 @@ pub async fn llm_chat_completion_handler(
         let mut validation_items: Vec<VisionMediaItem> = Vec::new();
         for msg in &parsed_messages {
             for part in &msg.parts {
-                if let VisionPart::Image { image } = part {
-                    let (mime_type, base64_len) = match &image.source {
-                        ImageSource::DataUrl { data_url } => {
-                            // Extract MIME type and base64 length from data URL
-                            if let Some(comma_pos) = data_url.find(',') {
-                                let header = &data_url[..comma_pos];
-                                let data = &data_url[comma_pos + 1..];
-                                let mime = header
-                                    .strip_prefix("data:")
-                                    .and_then(|s| s.split(';').next())
-                                    .unwrap_or("image/jpeg");
-                                (canonicalize_mime(mime), Some(data.len()))
-                            } else {
-                                ("image/jpeg".to_string(), None)
+                match part {
+                    VisionPart::Image { image } => {
+                        let (mime_type, base64_len) = match &image.source {
+                            ImageSource::DataUrl { data_url } => {
+                                // Extract MIME type and base64 length from data URL
+                                if let Some(comma_pos) = data_url.find(',') {
+                                    let header = &data_url[..comma_pos];
+                                    let data = &data_url[comma_pos + 1..];
+                                    let mime = header
+                                        .strip_prefix("data:")
+                                        .and_then(|s| s.split(';').next())
+                                        .unwrap_or("image/jpeg");
+                                    (canonicalize_mime(mime), Some(data.len()))
+                                } else {
+                                    ("image/jpeg".to_string(), None)
+                                }
                             }
-                        }
-                        ImageSource::Base64 { mime_type, data_base64 } => {
-                            (canonicalize_mime(mime_type), Some(data_base64.len()))
-                        }
-                        ImageSource::Url { .. } => {
-                            return Err(AppError::Validation(
-                                "Remote image URLs are not supported; please send base64/data URLs".to_string()
-                            ));
-                        }
-                        ImageSource::ProviderFileId { .. } => {
-                            // File IDs don't need size validation
-                            (image.media_type.clone().unwrap_or_else(|| "image/jpeg".to_string()), None)
-                        }
-                    };
+                            ImageSource::Base64 { mime_type, data_base64 } => {
+                                (canonicalize_mime(mime_type), Some(data_base64.len()))
+                            }
+                            ImageSource::Url { .. } => {
+                                return Err(AppError::Validation(
+                                    "Remote image URLs are not supported; please send base64/data URLs".to_string()
+                                ));
+                            }
+                            ImageSource::ProviderFileId { .. } => {
+                                // File IDs don't need size validation
+                                (
+                                    image.media_type.clone().unwrap_or_else(|| "image/jpeg".to_string()),
+                                    None,
+                                )
+                            }
+                        };
 
-                    validation_items.push(VisionMediaItem {
-                        kind: VisionMediaKind::Image,
-                        mime_type,
-                        base64_len,
-                    });
+                        validation_items.push(VisionMediaItem {
+                            kind: VisionMediaKind::Image,
+                            mime_type,
+                            base64_len,
+                        });
+                    }
+                    VisionPart::Document { document } => {
+                        let (mime_type, base64_len) = match &document.source {
+                            DocumentSource::DataUrl { data_url } => {
+                                if let Some(comma_pos) = data_url.find(',') {
+                                    let header = &data_url[..comma_pos];
+                                    let data = &data_url[comma_pos + 1..];
+                                    let mime = header
+                                        .strip_prefix("data:")
+                                        .and_then(|s| s.split(';').next())
+                                        .unwrap_or("application/pdf");
+                                    (canonicalize_mime(mime), Some(data.len()))
+                                } else {
+                                    ("application/pdf".to_string(), None)
+                                }
+                            }
+                            DocumentSource::Base64 { mime_type, data_base64 } => {
+                                (canonicalize_mime(mime_type), Some(data_base64.len()))
+                            }
+                            DocumentSource::Url { .. } => {
+                                return Err(AppError::Validation(
+                                    "Remote document URLs are not supported; please send base64/data URLs".to_string()
+                                ));
+                            }
+                            DocumentSource::ProviderFileId { .. } => {
+                                (
+                                    document.media_type.clone().unwrap_or_else(|| "application/pdf".to_string()),
+                                    None,
+                                )
+                            }
+                        };
+
+                        validation_items.push(VisionMediaItem {
+                            kind: VisionMediaKind::Document,
+                            mime_type,
+                            base64_len,
+                        });
+                    }
+                    _ => {}
                 }
             }
         }

@@ -917,6 +917,71 @@ impl GoogleClient {
                                 }
                                 // Note: file_id references are OpenAI-specific and not supported here
                             }
+                            "document" => {
+                                if let Some(source) = part.get("source") {
+                                    let source_type = source.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                                    match source_type {
+                                        "base64" => {
+                                            let media_type = source
+                                                .get("media_type")
+                                                .and_then(|m| m.as_str())
+                                                .unwrap_or("application/pdf");
+                                            let data = source.get("data").and_then(|d| d.as_str()).unwrap_or("");
+
+                                            if media_type != "application/pdf" {
+                                                return Err(AppError::BadRequest(format!(
+                                                    "Google Gemini supports PDF documents only; received '{}'",
+                                                    media_type
+                                                )));
+                                            }
+
+                                            if !data.is_empty() {
+                                                google_parts.push(GooglePart {
+                                                    inline_data: Some(GoogleBlob {
+                                                        mime_type: media_type.to_string(),
+                                                        data: data.to_string(),
+                                                    }),
+                                                    ..Default::default()
+                                                });
+                                            }
+                                        }
+                                        "url" => {
+                                            if let Some(url) = source.get("url").and_then(|u| u.as_str()) {
+                                                if url.starts_with("data:") {
+                                                    let (mime_type, data) = parse_data_url(url)?;
+                                                    if mime_type != "application/pdf" {
+                                                        return Err(AppError::BadRequest(format!(
+                                                            "Google Gemini supports PDF documents only; received '{}'",
+                                                            mime_type
+                                                        )));
+                                                    }
+                                                    google_parts.push(GooglePart {
+                                                        inline_data: Some(GoogleBlob {
+                                                            mime_type: mime_type.to_string(),
+                                                            data,
+                                                        }),
+                                                        ..Default::default()
+                                                    });
+                                                } else if url.starts_with("gs://")
+                                                    || url.contains("generativelanguage.googleapis.com")
+                                                {
+                                                    google_parts.push(GooglePart {
+                                                        file_data: Some(GoogleFileData {
+                                                            mime_type: "application/pdf".to_string(),
+                                                            file_uri: url.to_string(),
+                                                        }),
+                                                        ..Default::default()
+                                                    });
+                                                } else {
+                                                    tracing::warn!("URL-based documents are not directly supported for Google API");
+                                                }
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
                             _ => {
                                 // Skip unsupported content types
                             }

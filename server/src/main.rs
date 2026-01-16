@@ -590,20 +590,21 @@ async fn main() -> std::io::Result<()> {
         let api_key_rate_limiter =
             create_strict_rate_limiter(api_key_rate_limit_config, rate_limit_storage.clone());
 
-        // Configure payload limits (5MB = 5,242,880 bytes)
+        // Configure payload limits (128MB)
         // PayloadConfig: Controls raw payload size before extraction
-        let payload_config = web::PayloadConfig::new(5_242_880);
+        let payload_limit = 128 * 1024 * 1024;
+        let payload_config = web::PayloadConfig::new(payload_limit);
 
         // JsonConfig: Controls JSON deserialization limits
         let json_config = web::JsonConfig::default()
-            .limit(5_242_880)
+            .limit(payload_limit)
             .error_handler(|err, _req| {
                 actix_web::error::InternalError::from_response(
                     err,
                     actix_web::HttpResponse::BadRequest().json(serde_json::json!({
                         "error": {
                             "type": "payload_too_large",
-                            "message": "Request payload exceeds the 5MB limit"
+                            "message": "Request payload exceeds the 128MB limit"
                         }
                     })),
                 )

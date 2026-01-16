@@ -12,6 +12,7 @@ pub struct VisionMessage {
 pub enum VisionPart {
     Text { text: String },
     Image { image: VisionImage },
+    Document { document: VisionDocument },
 }
 
 #[derive(Debug, Clone)]
@@ -22,7 +23,21 @@ pub struct VisionImage {
 }
 
 #[derive(Debug, Clone)]
+pub struct VisionDocument {
+    pub source: DocumentSource,
+    pub media_type: Option<String>,  // application/pdf, etc.
+}
+
+#[derive(Debug, Clone)]
 pub enum ImageSource {
+    Url { url: String },
+    DataUrl { data_url: String },
+    Base64 { mime_type: String, data_base64: String },
+    ProviderFileId { file_id: String, provider: Option<String> },
+}
+
+#[derive(Debug, Clone)]
+pub enum DocumentSource {
     Url { url: String },
     DataUrl { data_url: String },
     Base64 { mime_type: String, data_base64: String },
@@ -277,6 +292,100 @@ fn parse_content_part(part_value: &Value) -> Result<VisionPart, AppError> {
                 },
             })
         }
+        "document" => {
+            // Anthropic-style: { "type": "document", "source": { "type": "base64"|"url"|"file", ... } }
+            let source_obj = part_obj
+                .get("source")
+                .and_then(|v| v.as_object())
+                .ok_or_else(|| {
+                    AppError::BadRequest("document part missing 'source' object".to_string())
+                })?;
+
+            let source_type = source_obj
+                .get("type")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    AppError::BadRequest("document source missing 'type' field".to_string())
+                })?;
+
+            let source = match source_type {
+                "base64" => {
+                    let mime_type = source_obj
+                        .get("media_type")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            AppError::BadRequest(
+                                "base64 document source missing 'media_type'".to_string(),
+                            )
+                        })?
+                        .to_string();
+
+                    let data_base64 = source_obj
+                        .get("data")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            AppError::BadRequest("base64 document source missing 'data'".to_string())
+                        })?
+                        .to_string();
+
+                    validate_document_mime(&mime_type)?;
+
+                    DocumentSource::Base64 {
+                        mime_type: mime_type.clone(),
+                        data_base64,
+                    }
+                }
+                "url" => {
+                    let url = source_obj
+                        .get("url")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            AppError::BadRequest("url document source missing 'url'".to_string())
+                        })?
+                        .to_string();
+
+                    if url.starts_with("data:") {
+                        let (mime_type, _) = parse_data_url(&url)?;
+                        validate_document_mime(&mime_type)?;
+                        DocumentSource::DataUrl { data_url: url }
+                    } else {
+                        DocumentSource::Url { url }
+                    }
+                }
+                "file" => {
+                    let file_id = source_obj
+                        .get("file_id")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            AppError::BadRequest("file document source missing 'file_id'".to_string())
+                        })?
+                        .to_string();
+
+                    DocumentSource::ProviderFileId {
+                        file_id,
+                        provider: Some("anthropic".to_string()),
+                    }
+                }
+                _ => {
+                    return Err(AppError::BadRequest(format!(
+                        "unknown document source type: {}",
+                        source_type
+                    )))
+                }
+            };
+
+            let media_type = match &source {
+                DocumentSource::Base64 { mime_type, .. } => Some(mime_type.clone()),
+                DocumentSource::DataUrl { data_url } => {
+                    parse_data_url(data_url).ok().map(|(mime, _)| mime)
+                }
+                _ => None,
+            };
+
+            Ok(VisionPart::Document {
+                document: VisionDocument { source, media_type },
+            })
+        }
         _ => Err(AppError::BadRequest(format!(
             "unknown content part type: {}",
             part_type
@@ -326,6 +435,13 @@ pub fn contains_images(messages: &[VisionMessage]) -> bool {
     messages
         .iter()
         .any(|msg| msg.parts.iter().any(|part| matches!(part, VisionPart::Image { .. })))
+}
+
+/// Check if any VisionPart::Document present
+pub fn contains_documents(messages: &[VisionMessage]) -> bool {
+    messages
+        .iter()
+        .any(|msg| msg.parts.iter().any(|part| matches!(part, VisionPart::Document { .. })))
 }
 
 /// Canonicalize MIME type to standard form
@@ -396,6 +512,18 @@ pub fn validate_image_mime(mime: &str) -> Result<(), AppError> {
     }
 }
 
+/// Validate document MIME type against whitelist
+pub fn validate_document_mime(mime: &str) -> Result<(), AppError> {
+    let canonical = mime.to_lowercase();
+    match canonical.as_str() {
+        "application/pdf" => Ok(()),
+        _ => Err(AppError::BadRequest(format!(
+            "unsupported document MIME type: {}. Supported types: application/pdf",
+            mime
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -461,6 +589,41 @@ mod tests {
                 assert_eq!(image.detail.as_deref(), Some("high"));
             }
             _ => panic!("Expected image part"),
+        }
+    }
+
+    #[test]
+    fn test_parse_document_base64() {
+        let messages = json!([
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": "JVBERi0xLjQ="
+                        }
+                    }
+                ]
+            }
+        ]);
+
+        let result = parse_messages(&messages).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].role, "user");
+        assert_eq!(result[0].parts.len(), 1);
+
+        match &result[0].parts[0] {
+            VisionPart::Document { document } => match &document.source {
+                DocumentSource::Base64 { mime_type, data_base64 } => {
+                    assert_eq!(mime_type, "application/pdf");
+                    assert_eq!(data_base64, "JVBERi0xLjQ=");
+                }
+                _ => panic!("Expected base64 document source"),
+            },
+            _ => panic!("Expected document part"),
         }
     }
 

@@ -11,7 +11,6 @@ import { cdnUrl } from '@/lib/cdn';
 import { XPixel } from '@/components/analytics/XPixel';
 import { CookieConsent } from '@/components/analytics/CookieConsent';
 import { GoogleAnalytics } from '@/components/analytics/GoogleAnalytics';
-import { DatafastAnalytics } from '@/components/analytics/DatafastAnalytics';
 import Script from 'next/script';
 import { I18nProvider } from '@/components/i18n/I18nProvider';
 import { NextIntlClientProvider } from 'next-intl';
@@ -230,12 +229,6 @@ export default async function LocaleLayout({
             <GoogleAnalytics
               measurementId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID}
               locale={locale}
-            />
-          )}
-          {/* Datafast Analytics - Loads ONLY after consent */}
-          {process.env.NEXT_PUBLIC_DATAFAST_WEBSITE_ID && (
-            <DatafastAnalytics
-              websiteId={process.env.NEXT_PUBLIC_DATAFAST_WEBSITE_ID}
             />
           )}
         </ClientProviders>

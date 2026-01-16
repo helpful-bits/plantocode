@@ -2,7 +2,8 @@ use crate::config::settings::AppSettings;
 use crate::error::AppError;
 use actix_web::web;
 use futures_util::{Stream, StreamExt};
-use reqwest::{Client, header::HeaderMap};
+use base64::{Engine as _, engine::general_purpose};
+use reqwest::{Client, header::HeaderMap, multipart};
 use serde_json::Value;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -19,9 +20,15 @@ use super::transcription::{
 use super::utils::*;
 
 use crate::clients::usage_extractor::{ProviderUsage, UsageExtractor};
+use crate::utils::vision_validation::scrub_base64;
 
 // OpenAI API base URL
 const OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+
+#[derive(Debug, serde::Deserialize)]
+struct OpenAIFileUploadResponse {
+    pub id: String,
+}
 
 // Helper function to truncate long strings in JSON for logging
 fn truncate_long_strings(value: &mut serde_json::Value, max_length: usize) {
@@ -90,6 +97,116 @@ impl OpenAIClient {
         *counter
     }
 
+    async fn upload_file_bytes(
+        &self,
+        data: Vec<u8>,
+        file_name: &str,
+        mime_type: &str,
+    ) -> Result<String, AppError> {
+        let url = format!("{}/v1/files", self.base_url.trim_end_matches("/v1"));
+
+        let part = multipart::Part::bytes(data)
+            .file_name(file_name.to_string())
+            .mime_str(mime_type)
+            .map_err(|e| AppError::Internal(format!("Invalid MIME type: {}", e)))?;
+
+        let form = multipart::Form::new()
+            .text("purpose", "assistants")
+            .part("file", part);
+
+        let response = self
+            .client
+            .post(&url)
+            .bearer_auth(&self.api_key)
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|e| AppError::External(format!("OpenAI file upload failed: {}", e)))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Failed to get error response".to_string());
+            return Err(AppError::External(format!(
+                "OpenAI file upload failed with status {}: {}",
+                status, error_text
+            )));
+        }
+
+        let file_response: OpenAIFileUploadResponse = response
+            .json()
+            .await
+            .map_err(|e| AppError::Internal(format!("OpenAI file response parse failed: {}", e)))?;
+
+        Ok(file_response.id)
+    }
+
+    async fn attach_document_file_ids(
+        &self,
+        request: &mut OpenAIChatRequest,
+    ) -> Result<(), AppError> {
+        for message in &mut request.messages {
+            let OpenAIContent::Parts(parts) = &mut message.content else {
+                continue;
+            };
+
+            for part in parts.iter_mut() {
+                if part.part_type == "input_file" {
+                    continue;
+                }
+
+                if part.part_type != "document" {
+                    continue;
+                }
+
+                if part.file_id.is_some() {
+                    part.part_type = "input_file".to_string();
+                    part.source = None;
+                    continue;
+                }
+
+                let source = part.source.as_ref().ok_or_else(|| {
+                    AppError::BadRequest("Document part missing source payload".to_string())
+                })?;
+
+                if source.source_type.to_lowercase() != "base64" {
+                    return Err(AppError::BadRequest(
+                        "OpenAI document source type must be 'base64'".to_string(),
+                    ));
+                }
+
+                let media_type = source.media_type.to_lowercase();
+                if media_type != "application/pdf" {
+                    return Err(AppError::BadRequest(format!(
+                        "OpenAI supports PDF documents only; received '{}'",
+                        source.media_type
+                    )));
+                }
+
+                let file_name = source
+                    .file_name
+                    .clone()
+                    .unwrap_or_else(|| "document.pdf".to_string());
+
+                let cleaned = scrub_base64(&source.data);
+                let bytes = general_purpose::STANDARD
+                    .decode(cleaned.as_bytes())
+                    .map_err(|_| {
+                        AppError::BadRequest("Invalid base64 document data".to_string())
+                    })?;
+
+                let file_id = self.upload_file_bytes(bytes, &file_name, &media_type).await?;
+                part.part_type = "input_file".to_string();
+                part.file_id = Some(file_id);
+                part.source = None;
+            }
+        }
+
+        Ok(())
+    }
+
     // Chat Completions
     #[instrument(skip(self, request), fields(model = %request.model))]
     pub async fn chat_completion(
@@ -121,6 +238,7 @@ impl OpenAIClient {
 
         let mut non_streaming_request = request.clone();
         non_streaming_request.stream = Some(false);
+        self.attach_document_file_ids(&mut non_streaming_request).await?;
         let (_, request_body) =
             prepare_request_body(&non_streaming_request, web_mode, Some(requires_background))?;
 
@@ -243,20 +361,23 @@ impl OpenAIClient {
             request.model
         );
 
+        let mut prepared_request = request.clone();
+        self.attach_document_file_ids(&mut prepared_request).await?;
+
         // Clone necessary parts for 'static lifetime
         let api_key = self.api_key.clone();
         let base_url = self.base_url.clone();
         let request_id_counter = self.request_id_counter.clone();
 
-        if model_requires_background(&request.model, web_mode) {
+        if model_requires_background(&prepared_request.model, web_mode) {
             // For deep research models with web mode, use immediate streaming with progress updates
             tracing::info!(
                 "Using immediate synthetic streaming for deep research model: {}",
-                request.model
+                prepared_request.model
             );
 
             // Step 1: Create background job (non-blocking)
-            let mut background_request = request.clone();
+            let mut background_request = prepared_request.clone();
             background_request.stream = Some(false);
             let (_, background_body) =
                 prepare_request_body(&background_request, web_mode, Some(true))?;
@@ -298,7 +419,7 @@ impl OpenAIClient {
                 })?;
 
             let response_id = background_response.id.clone();
-            let response_model = request.model.clone();
+            let response_model = prepared_request.model.clone();
 
             // Step 2: Create immediate streaming response with progress updates
             let synthetic_stream = create_deep_research_stream(
@@ -317,7 +438,7 @@ impl OpenAIClient {
         }
 
         // Standard streaming flow
-        let mut streaming_request = request.clone();
+        let mut streaming_request = prepared_request.clone();
         streaming_request.stream = Some(true);
         streaming_request.stream_options = Some(StreamOptions {
             include_usage: true,

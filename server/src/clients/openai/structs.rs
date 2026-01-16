@@ -189,15 +189,28 @@ pub enum OpenAIContent {
     Parts(Vec<OpenAIContentPart>),
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OpenAIMediaSource {
+    #[serde(rename = "type")]
+    pub source_type: String,
+    #[serde(rename = "media_type")]
+    pub media_type: String,
+    pub data: String,
+    #[serde(rename = "file_name", alias = "fileName", skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+}
+
 #[skip_serializing_none]
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct OpenAIContentPart {
     #[serde(rename = "type")]
-    pub part_type: String,  // "text" | "image_url" | "input_text" | "input_image"
+    pub part_type: String,  // "text" | "image_url" | "input_text" | "input_image" | "document" | "input_file"
     pub text: Option<String>,
     pub image_url: Option<OpenAIImageUrl>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub file_id: Option<String>,  // For input_image with file reference
+    pub file_id: Option<String>,  // For input_image/input_file with file reference
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<OpenAIMediaSource>, // For document parts with base64 payloads
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
