@@ -59,7 +59,7 @@ core/.env
 core/.env.local
 server/.env
 server/.env.sqlx
-desktop/.env
+desktop/src-tauri/.env
 
 # Vercel
 .vercel
