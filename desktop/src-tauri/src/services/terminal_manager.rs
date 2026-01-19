@@ -26,6 +26,7 @@ const TERMINAL_IN_MEMORY_BUFFER_BYTES: usize = 32 * 1_048_576;
 const FLUSH_INTERVAL_SECS: u64 = 10;
 const FLUSH_SCAN_TICK_MILLIS: u64 = 1000;
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
+const WINDOWS_WRITE_CHUNK_BYTES: usize = 8 * 1024;
 
 enum TerminalState {
     Initializing,
@@ -430,15 +431,26 @@ impl TerminalManager {
             let mut state_guard = h.state.lock().unwrap();
             if let TerminalState::Running { writer, .. } = &mut *state_guard {
                 log::debug!("📝 Writing input: session={} bytes={}", session_id, data.len());
-                writer.write_all(&data).map_err(|e| {
-                    AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
-                })?;
-                writer.flush().map_err(|e| {
-                    AppError::ExternalServiceError(format!(
-                        "Failed to flush terminal writer: {}",
-                        e
-                    ))
-                })?;
+                if cfg!(windows) && data.len() > WINDOWS_WRITE_CHUNK_BYTES {
+                    for chunk in data.chunks(WINDOWS_WRITE_CHUNK_BYTES) {
+                        writer.write_all(chunk).map_err(|e| {
+                            AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
+                        })?;
+                    }
+                } else {
+                    writer.write_all(&data).map_err(|e| {
+                        AppError::ExternalServiceError(format!("Failed to write to terminal: {}", e))
+                    })?;
+                }
+
+                if !cfg!(windows) {
+                    writer.flush().map_err(|e| {
+                        AppError::ExternalServiceError(format!(
+                            "Failed to flush terminal writer: {}",
+                            e
+                        ))
+                    })?;
+                }
             } else {
                 log::warn!("❌ Write input failed: session {} not in Running state", session_id);
                 return Err(AppError::TerminalStateError(format!(
