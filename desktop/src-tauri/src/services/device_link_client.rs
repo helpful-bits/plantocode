@@ -1603,10 +1603,8 @@ impl DeviceLinkClient {
         result
     }
 
-    /// Send raw terminal output bytes using batching to reduce WebSocket frame count
-    /// Data is accumulated in a batch buffer and flushed periodically (adaptive, >= 1000ms) or
-    /// immediately when the buffer exceeds 128KB threshold.
-    /// Only active when connected AND the session is bound.
+    /// Send raw terminal output bytes.
+    /// Bound sessions are flushed immediately to avoid TUI redraw artifacts; unbound sessions buffer.
     pub fn send_terminal_output_binary(&self, session_id: &str, data: &[u8]) -> Result<(), AppError> {
         // Early return if not connected
         if !self.is_connected() {
@@ -1634,36 +1632,49 @@ impl DeviceLinkClient {
             return Ok(());
         }
 
-        // Session is bound and connected - add to batch buffer
-        let should_flush_immediately = {
-            let mut batch_buffers = self.batch_buffer_by_session.lock().unwrap();
-            let buf = batch_buffers.entry(session_id.to_string()).or_default();
+        // Session is bound and connected - flush immediately for smoother terminal rendering
+        // (avoid large bursty frames that can duplicate/garble TUI output).
+        let sender = self.binary_sender.lock().unwrap().clone();
+        let Some(tx) = sender.as_ref() else {
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buf = pending.entry(session_id.to_string()).or_default();
             buf.extend_from_slice(data);
-            // Check if we should flush immediately due to size threshold
-            buf.len() >= BATCH_SIZE_THRESHOLD
+            if buf.len() > MAX_PENDING_BYTES {
+                let overflow = buf.len() - MAX_PENDING_BYTES;
+                buf.drain(0..overflow);
+            }
+            return Ok(());
         };
 
-        // If buffer exceeds threshold, flush immediately via binary channel
-        if should_flush_immediately {
-            let data_to_send = {
-                let mut batch_buffers = self.batch_buffer_by_session.lock().unwrap();
-                batch_buffers.remove(session_id).unwrap_or_default()
-            };
-
-            if !data_to_send.is_empty() {
-                let framed_data = wrap_with_ptc1_frame(session_id, &data_to_send);
-                let sender = self.binary_sender.lock().unwrap();
-                if let Some(tx) = sender.as_ref() {
-                    tx.send(framed_data)
-                        .map_err(|_| {
-                            warn!("Binary uplink: channel closed for session {}", session_id);
-                            AppError::NetworkError("Binary uplink channel closed".into())
-                        })?;
-                    debug!(
-                        "Binary uplink: immediate flush {} bytes for session {} (threshold exceeded)",
-                        data_to_send.len(), session_id
-                    );
+        // Flush any stale batch buffer for this session to preserve ordering.
+        if let Ok(mut batch_buffers) = self.batch_buffer_by_session.lock() {
+            if let Some(buffered) = batch_buffers.remove(session_id) {
+                if !buffered.is_empty() {
+                    let framed = wrap_with_ptc1_frame(session_id, &buffered);
+                    if tx.send(framed).is_err() {
+                        warn!("Binary uplink: channel closed while flushing buffered data for session {}", session_id);
+                        let mut pending = self.pending_binary_by_session.lock().unwrap();
+                        let buf = pending.entry(session_id.to_string()).or_default();
+                        buf.extend_from_slice(&buffered);
+                        if buf.len() > MAX_PENDING_BYTES {
+                            let overflow = buf.len() - MAX_PENDING_BYTES;
+                            buf.drain(0..overflow);
+                        }
+                        return Ok(());
+                    }
                 }
+            }
+        }
+
+        let framed_data = wrap_with_ptc1_frame(session_id, data);
+        if tx.send(framed_data).is_err() {
+            warn!("Binary uplink: channel closed for session {}", session_id);
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buf = pending.entry(session_id.to_string()).or_default();
+            buf.extend_from_slice(data);
+            if buf.len() > MAX_PENDING_BYTES {
+                let overflow = buf.len() - MAX_PENDING_BYTES;
+                buf.drain(0..overflow);
             }
         }
 
