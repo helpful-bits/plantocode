@@ -186,8 +186,9 @@ public class TerminalDataService: ObservableObject {
                         }
 
                         do {
+                            let includeSnapshot = self.shouldRequestSnapshot(sessionId: sessionId)
                             self.logger.info("terminal.rebind sid=\(sessionId) after reconnect")
-                            try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: true)
+                            try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: includeSnapshot)
                         } catch {
                             self.logger.error("Failed to rebind session \(sessionId): \(error)")
                         }
@@ -642,9 +643,11 @@ public class TerminalDataService: ObservableObject {
 
         ensureGlobalBinarySubscription(relayClient: relayClient, deviceId: deviceId)
 
+        let shouldIncludeSnapshot = includeSnapshot && shouldRequestSnapshot(sessionId: sessionId)
+
         Task {
             do {
-                try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: includeSnapshot)
+                try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: shouldIncludeSnapshot)
             } catch {
                 self.logger.error("Failed to send binary bind: \(error)")
             }
@@ -657,6 +660,11 @@ public class TerminalDataService: ObservableObject {
             return sid
         }
         return jobId
+    }
+
+    private func shouldRequestSnapshot(sessionId: String) -> Bool {
+        guard let ring = outputRings[sessionId] else { return true }
+        return ring.isEmpty
     }
 
     /// Handle bind acknowledgement and reissue last-known size

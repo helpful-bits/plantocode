@@ -46,7 +46,8 @@ public struct PlanDetailView: View {
     }
 
     private var observedJob: BackgroundJob? {
-        container.jobsService.jobs.first(where: { $0.id == currentJobId })
+        container.jobsService.jobsById[currentJobId]
+            ?? container.jobsService.jobs.first(where: { $0.id == currentJobId })
     }
 
     private var isStreaming: Bool {
@@ -375,153 +376,95 @@ public struct PlanDetailView: View {
 
     @ViewBuilder
     private func editorControls() -> some View {
-        HStack(spacing: 0) {
-            HStack(spacing: 24) {
-                Button {
-                    isEditMode.toggle()
-                    if !isEditMode {
-                        isEditorFocused = false
-                    }
-                } label: {
-                    Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(Color.primary)
+        HStack(spacing: 20) {
+            Button {
+                isEditMode.toggle()
+                if !isEditMode {
+                    isEditorFocused = false
                 }
-
-                Button {
-                    navigateToPlan(direction: .previous)
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
-                }
-                .disabled(!canGoPrevious)
-
-                Button {
-                    navigateToPlan(direction: .next)
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
-                }
-                .disabled(!canGoNext)
-
-                Button {
-                    showingTerminal = true
-                } label: {
-                    Image(systemName: "terminal")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
-                        .foregroundColor(Color.primary)
-                }
+            } label: {
+                Image(systemName: isEditMode ? "pencil.circle.fill" : "pencil.circle")
+                    .font(.title2)
+                    .foregroundColor(Color.primary)
             }
 
-            Spacer(minLength: 16)
+            Button {
+                navigateToPlan(direction: .previous)
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.title2)
+                    .foregroundColor(canGoPrevious ? Color.textPrimary : Color.textMuted)
+            }
+            .disabled(!canGoPrevious)
 
-            if !isLandscape {
-                Button(showingMarkdown ? "Show Original" : "Show Markdown") {
+            Button {
+                navigateToPlan(direction: .next)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.title2)
+                    .foregroundColor(canGoNext ? Color.textPrimary : Color.textMuted)
+            }
+            .disabled(!canGoNext)
+
+            Button {
+                showingTerminal = true
+            } label: {
+                Image(systemName: "terminal")
+                    .font(.title2)
+                    .foregroundColor(Color.primary)
+            }
+
+            if !isLandscape && !markdownContent.isEmpty {
+                Button {
                     showingMarkdown.toggle()
+                } label: {
+                    Image(systemName: showingMarkdown ? "doc.plaintext" : "doc.richtext")
+                        .font(.title2)
+                        .foregroundColor(Color.primary)
                 }
-                .font(.caption)
-                .foregroundColor(Color.primary)
-                .frame(width: 120, alignment: .trailing)
-                .opacity(markdownContent.isEmpty ? 0 : 1)
-                .disabled(markdownContent.isEmpty)
-                .accessibilityHidden(markdownContent.isEmpty)
             }
         }
     }
 
     @ViewBuilder
     private func bottomOverlay() -> some View {
-        VStack(spacing: 0) {
-            floatingEditorToolbar()
-            bottomMetadataView()
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [
-                    Color.backgroundPrimary.opacity(0.0),
-                    Color.backgroundPrimary.opacity(0.9)
-                ]),
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .bottom)
-        )
-    }
-
-    @ViewBuilder
-    private func floatingEditorToolbar() -> some View {
-        HStack(spacing: 0) {
+        VStack(spacing: 6) {
+            // Row 1: Editor controls
             editorControls()
 
-            if isLandscape {
-                Spacer()
-                Button("Done") {
-                    isEditorFocused = false
+            // Row 2: Metadata (fixed height to prevent layout jumps)
+            HStack(spacing: 6) {
+                if let job = observedJob, job.taskType == "implementation_plan_merge" {
+                    Text("Merged")
+                        .font(.caption2)
+                        .foregroundColor(Color.info)
+                    Text("•")
+                        .font(.caption2)
+                        .foregroundColor(Color.textMuted.opacity(0.4))
                 }
-                .buttonStyle(PrimaryButtonStyle())
+
+                if let job = observedJob,
+                   let modelName = PlanContentParser.extractModelName(metadata: job.metadata) {
+                    Text(modelName)
+                        .font(.caption2)
+                        .foregroundColor(Color.textMuted)
+                } else {
+                    // Placeholder to maintain consistent height
+                    Text(" ")
+                        .font(.caption2)
+                }
             }
+            .frame(height: 16)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 10)
         .background(
             Color.surfacePrimary
                 .opacity(0.96)
         )
-        .overlay(
-            Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.border),
-            alignment: .top
-        )
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 4)
-    }
-
-    @ViewBuilder
-    private func bottomMetadataView() -> some View {
-        HStack(spacing: 6) {
-            if let job = observedJob {
-                Text(formatDate(job.createdAt))
-                    .font(.caption2)
-                    .foregroundColor(Color.textMuted)
-
-                if job.taskType == "implementation_plan_merge" {
-                    Text("Merged")
-                        .font(.caption2)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(dynamicColor(Theme.Semantic.Status.infoBackground))
-                        .foregroundColor(Color.info)
-                        .clipShape(Capsule())
-                }
-
-                if let modelName = PlanContentParser.extractModelName(metadata: job.metadata) {
-                    Text("•")
-                        .font(.caption2)
-                        .foregroundColor(Color.textMuted.opacity(0.6))
-                    Text(modelName)
-                        .font(.caption2)
-                        .foregroundColor(Color.textMuted)
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(
-            Color.surfacePrimary
-                .opacity(0.85)
-        )
-        .clipShape(Capsule())
-        .padding(.top, 6)
-        .padding(.bottom, 4)
+        .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 2)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Computed Properties
@@ -591,8 +534,16 @@ public struct PlanDetailView: View {
     private func loadPlanContent() {
         guard let job = observedJob else { return }
 
-        if !hasInitializedContent {
-            xmlContent = job.response ?? xmlContent
+        if let response = job.response, !response.isEmpty {
+            if !hasUnsavedChanges && (!hasInitializedContent || xmlContent.isEmpty || xmlContent != response) {
+                isLoadingContent = true
+                xmlContent = response
+                Task { @MainActor in
+                    isLoadingContent = false
+                }
+            }
+        } else if !hasInitializedContent {
+            xmlContent = ""
         }
 
         reloadMarkdownFromJob()

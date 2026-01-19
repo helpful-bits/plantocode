@@ -25,7 +25,7 @@ use url::Url;
 static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
 
 // Maximum pending bytes per terminal session before trimming
-const MAX_PENDING_BYTES: usize = 2 * 1_048_576; // 2 MiB cap
+const MAX_PENDING_BYTES: usize = 8 * 1_048_576; // 8 MiB cap
 
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 64 * 1024;
 
@@ -450,6 +450,7 @@ pub struct DeviceLinkClient {
     binary_sender: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
     event_listener_id: Mutex<Option<tauri::EventId>>,
     pending_binary_by_session: Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    pending_trimmed_by_session: Mutex<std::collections::HashSet<String>>,
     binding_sessions: Mutex<std::collections::HashSet<String>>,
     /// Batch buffer for terminal output - accumulates data before sending to reduce frame count
     /// This is separate from pending_binary_by_session which holds data for unbound sessions
@@ -470,6 +471,7 @@ impl DeviceLinkClient {
             binary_sender: Mutex::new(None),
             event_listener_id: Mutex::new(None),
             pending_binary_by_session: Mutex::new(std::collections::HashMap::new()),
+            pending_trimmed_by_session: Mutex::new(std::collections::HashSet::new()),
             binding_sessions: Mutex::new(std::collections::HashSet::new()),
             batch_buffer_by_session: Arc::new(Mutex::new(std::collections::HashMap::new())),
             recent_disconnects: Mutex::new(Vec::new()),
@@ -507,6 +509,27 @@ impl DeviceLinkClient {
         let mut disconnects = self.recent_disconnects.lock().unwrap();
         disconnects.retain(|t| now.duration_since(*t) <= Duration::from_secs(LOW_BANDWIDTH_WINDOW_SECS));
         disconnects.push(now);
+    }
+
+    fn buffer_pending_bytes(&self, session_id: &str, data: &[u8]) {
+        let trimmed = {
+            let mut pending = self.pending_binary_by_session.lock().unwrap();
+            let buf = pending.entry(session_id.to_string()).or_default();
+            buf.extend_from_slice(data);
+            if buf.len() > MAX_PENDING_BYTES {
+                let overflow = buf.len() - MAX_PENDING_BYTES;
+                buf.drain(0..overflow);
+                true
+            } else {
+                false
+            }
+        };
+
+        if trimmed {
+            if let Ok(mut trimmed_map) = self.pending_trimmed_by_session.lock() {
+                trimmed_map.insert(session_id.to_string());
+            }
+        }
     }
 
     fn recent_disconnect_count(&self) -> usize {
@@ -968,12 +991,30 @@ impl DeviceLinkClient {
                                         error!("Failed to lock bound_session_ids mutex");
                                     }
 
+                                    let pending_trimmed = {
+                                        let trimmed = this.pending_trimmed_by_session.lock().unwrap();
+                                        trimmed.contains(&session_id)
+                                    };
+
                                     let has_pending = {
                                         let pending = this.pending_binary_by_session.lock().unwrap();
                                         pending.get(&session_id).map(|buf| !buf.is_empty()).unwrap_or(false)
                                     };
 
-                                    let should_send_snapshot = include_snapshot && !has_pending && !skip_snapshot;
+                                    if pending_trimmed {
+                                        if let Ok(mut pending) = this.pending_binary_by_session.lock() {
+                                            pending.remove(&session_id);
+                                        }
+                                        if let Ok(mut trimmed) = this.pending_trimmed_by_session.lock() {
+                                            trimmed.remove(&session_id);
+                                        }
+                                    }
+
+                                    let should_send_snapshot = if pending_trimmed {
+                                        true
+                                    } else {
+                                        include_snapshot && !has_pending && !skip_snapshot
+                                    };
                                     if should_send_snapshot {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
                                             if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(snapshot_limit)) {
@@ -984,14 +1025,16 @@ impl DeviceLinkClient {
                                                 }
                                             }
                                         }
-                                    } else if include_snapshot && skip_snapshot {
+                                    } else if include_snapshot && skip_snapshot && !pending_trimmed {
                                         info!(
                                             "Binary uplink: skipping snapshot for session {} (low-bandwidth mode)",
                                             session_id
                                         );
                                     }
 
-                                    this.flush_pending_for_session(&session_id, &bin_tx_for_receiver);
+                                    if !pending_trimmed {
+                                        this.flush_pending_for_session(&session_id, &bin_tx_for_receiver);
+                                    }
 
                                     if let Ok(mut binding) = this.binding_sessions.lock() {
                                         binding.remove(&session_id);
@@ -1609,26 +1652,14 @@ impl DeviceLinkClient {
         // Early return if not connected
         if !self.is_connected() {
             // Not connected - buffer to pending data with cap
-            let mut pending = self.pending_binary_by_session.lock().unwrap();
-            let buf = pending.entry(session_id.to_string()).or_default();
-            buf.extend_from_slice(data);
-            if buf.len() > MAX_PENDING_BYTES {
-                let overflow = buf.len() - MAX_PENDING_BYTES;
-                buf.drain(0..overflow);
-            }
+            self.buffer_pending_bytes(session_id, data);
             return Ok(());
         }
 
         // Early return if session is not bound
         if !self.is_session_bound(session_id) {
             // Connected but session not bound - buffer to pending data with cap
-            let mut pending = self.pending_binary_by_session.lock().unwrap();
-            let buf = pending.entry(session_id.to_string()).or_default();
-            buf.extend_from_slice(data);
-            if buf.len() > MAX_PENDING_BYTES {
-                let overflow = buf.len() - MAX_PENDING_BYTES;
-                buf.drain(0..overflow);
-            }
+            self.buffer_pending_bytes(session_id, data);
             return Ok(());
         }
 
@@ -1636,13 +1667,7 @@ impl DeviceLinkClient {
         // (avoid large bursty frames that can duplicate/garble TUI output).
         let sender = self.binary_sender.lock().unwrap().clone();
         let Some(tx) = sender.as_ref() else {
-            let mut pending = self.pending_binary_by_session.lock().unwrap();
-            let buf = pending.entry(session_id.to_string()).or_default();
-            buf.extend_from_slice(data);
-            if buf.len() > MAX_PENDING_BYTES {
-                let overflow = buf.len() - MAX_PENDING_BYTES;
-                buf.drain(0..overflow);
-            }
+            self.buffer_pending_bytes(session_id, data);
             return Ok(());
         };
 
@@ -1669,13 +1694,7 @@ impl DeviceLinkClient {
         let framed_data = wrap_with_ptc1_frame(session_id, data);
         if tx.send(framed_data).is_err() {
             warn!("Binary uplink: channel closed for session {}", session_id);
-            let mut pending = self.pending_binary_by_session.lock().unwrap();
-            let buf = pending.entry(session_id.to_string()).or_default();
-            buf.extend_from_slice(data);
-            if buf.len() > MAX_PENDING_BYTES {
-                let overflow = buf.len() - MAX_PENDING_BYTES;
-                buf.drain(0..overflow);
-            }
+            self.buffer_pending_bytes(session_id, data);
         }
 
         Ok(())
@@ -1768,6 +1787,10 @@ impl DeviceLinkClient {
             pending.clear();
         }
 
+        if let Ok(mut trimmed) = self.pending_trimmed_by_session.lock() {
+            trimmed.clear();
+        }
+
         if let Ok(mut binding) = self.binding_sessions.lock() {
             binding.clear();
         }
@@ -1788,6 +1811,9 @@ impl DeviceLinkClient {
         };
 
         if pending.is_empty() {
+            if let Ok(mut trimmed) = self.pending_trimmed_by_session.lock() {
+                trimmed.remove(session_id);
+            }
             return;
         }
 
@@ -1828,6 +1854,10 @@ impl DeviceLinkClient {
             "Binary uplink: flushed {} pending bytes for session {}",
             sent_bytes, session_id
         );
+
+        if let Ok(mut trimmed) = self.pending_trimmed_by_session.lock() {
+            trimmed.remove(session_id);
+        }
     }
 
     fn clear_terminal_buffers_for_session(&self, session_id: Option<&str>) {
@@ -1836,6 +1866,14 @@ impl DeviceLinkClient {
                 pending.remove(sid);
             } else {
                 pending.clear();
+            }
+        }
+
+        if let Ok(mut trimmed) = self.pending_trimmed_by_session.lock() {
+            if let Some(sid) = session_id {
+                trimmed.remove(sid);
+            } else {
+                trimmed.clear();
             }
         }
 
