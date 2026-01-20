@@ -629,7 +629,7 @@ public class TerminalDataService: ObservableObject {
         self.logger.info("Attached binary stream for session \(sessionId)")
     }
 
-    private func bindBinary(to sessionId: String, includeSnapshot: Bool) {
+    private func bindBinary(to sessionId: String, includeSnapshot: Bool, forceSnapshot: Bool = false) {
         guard let deviceId = connectionManager.activeDeviceId,
               let relayClient = connectionManager.relayConnection(for: deviceId) else {
             self.logger.warning("Cannot bind: no active relay connection")
@@ -643,11 +643,11 @@ public class TerminalDataService: ObservableObject {
 
         ensureGlobalBinarySubscription(relayClient: relayClient, deviceId: deviceId)
 
-        let shouldIncludeSnapshot = includeSnapshot && shouldRequestSnapshot(sessionId: sessionId)
+        let shouldIncludeSnapshot = includeSnapshot && (forceSnapshot || shouldRequestSnapshot(sessionId: sessionId))
 
         Task {
             do {
-                try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: shouldIncludeSnapshot)
+                try await relayClient.sendBinaryBind(sessionId: sessionId, includeSnapshot: shouldIncludeSnapshot, forceSnapshot: forceSnapshot)
             } catch {
                 self.logger.error("Failed to send binary bind: \(error)")
             }
@@ -665,6 +665,12 @@ public class TerminalDataService: ObservableObject {
     private func shouldRequestSnapshot(sessionId: String) -> Bool {
         guard let ring = outputRings[sessionId] else { return true }
         return ring.isEmpty
+    }
+
+    public func requestSnapshot(jobId: String) {
+        guard let sessionId = resolveSessionId(for: jobId) else { return }
+        boundSessions.insert(sessionId)
+        bindBinary(to: sessionId, includeSnapshot: true, forceSnapshot: true)
     }
 
     /// Handle bind acknowledgement and reissue last-known size

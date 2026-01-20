@@ -530,6 +530,12 @@ public struct RemoteTerminalView: View {
                             }
                         }
                     }
+                    terminalController.onResizeCompleted = { needsSnapshot in
+                        guard needsSnapshot else { return }
+                        Task {
+                            terminalService.requestSnapshot(jobId: capturedJobId)
+                        }
+                    }
 
                     if outputCancellable == nil {
                         outputCancellable = terminalService
@@ -691,6 +697,7 @@ class SwiftTermController: NSObject, ObservableObject {
     }
     var onSend: (([UInt8]) -> Void)?
     var onResize: ((Int, Int) -> Void)?
+    var onResizeCompleted: ((Bool) -> Void)?
     var isFirstResize = true
     private var pendingData: [Data] = []
 
@@ -723,6 +730,7 @@ class SwiftTermController: NSObject, ObservableObject {
     // Resize transition buffering: pause feeding briefly during resize to avoid scroll corruption
     private var isResizeInProgress: Bool = false
     private var resizeBuffer: [Data] = []
+    private var didBufferDuringResize: Bool = false
     private static let maxResizeBufferChunks = 30
     private static let resizeDebounceIdle: TimeInterval = 0.25  // 250ms when no active output
     private static let resizeDebounceActive: TimeInterval = 0.08  // 80ms when actively streaming
@@ -746,6 +754,7 @@ class SwiftTermController: NSObject, ObservableObject {
         burstStartedAt = nil
         isFeedingPaused = false
         isResizeInProgress = false
+        didBufferDuringResize = false
         lastSentCols = 0
         lastSentRows = 0
         terminalView = nil
@@ -856,6 +865,7 @@ class SwiftTermController: NSObject, ObservableObject {
         // This prevents cursor positioning commands from being interpreted with wrong dimensions
         if isResizeInProgress {
             resizeBuffer.append(data)
+            didBufferDuringResize = true
             // Prevent unbounded memory growth during resize
             if resizeBuffer.count > Self.maxResizeBufferChunks {
                 resizeBuffer.removeFirst(resizeBuffer.count - Self.maxResizeBufferChunks)
@@ -978,6 +988,7 @@ extension SwiftTermController: TerminalViewDelegate {
             // Start resize transition: buffer incoming data to avoid scroll corruption
             // from cursor positioning commands interpreted with wrong dimensions
             isResizeInProgress = true
+            didBufferDuringResize = false
 
             // Adaptive debounce: shorter when actively streaming (burstStartedAt != nil),
             // longer when idle to coalesce rapid keyboard show/hide cycles
@@ -1029,7 +1040,13 @@ extension SwiftTermController: TerminalViewDelegate {
             }
             resizeBuffer.removeAll()
 
-            if !consolidated.isEmpty {
+            if didBufferDuringResize {
+                // Drop buffered output and request a fresh snapshot to avoid
+                // rendering old-size cursor sequences into the new geometry.
+                pendingData.removeAll(keepingCapacity: false)
+                batchBuffer.removeAll(keepingCapacity: false)
+                onResizeCompleted?(true)
+            } else if !consolidated.isEmpty {
                 UIView.performWithoutAnimation { [self] in
                     let buffer = ArraySlice([UInt8](consolidated))
                     terminalView.feed(byteArray: buffer)

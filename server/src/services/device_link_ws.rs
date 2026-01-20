@@ -1935,6 +1935,9 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
         let include_snapshot = payload.get("includeSnapshot")
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
+        let force_snapshot = payload.get("forceSnapshot")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         if let Some(connection_manager) = &self.connection_manager {
             let producer_device_id = match connection_manager.get_primary_desktop_device_id(&user_id) {
@@ -1962,7 +1965,8 @@ impl Handler<HandleTerminalBinaryBind> for DeviceLinkWs {
                     "type": "terminal.binary.bind",
                     "payload": {
                         "sessionId": session_id,
-                        "includeSnapshot": include_snapshot
+                        "includeSnapshot": include_snapshot,
+                        "forceSnapshot": force_snapshot
                     }
                 });
 

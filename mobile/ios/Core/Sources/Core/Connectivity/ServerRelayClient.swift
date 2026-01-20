@@ -992,16 +992,17 @@ public class ServerRelayClient: NSObject, ObservableObject {
     }
 
     /// Send control message to bind this mobile device to the desktop producer for binary terminal output
-    public func sendBinaryBind(sessionId: String, includeSnapshot: Bool = true) async throws {
+    public func sendBinaryBind(sessionId: String, includeSnapshot: Bool = true, forceSnapshot: Bool = false) async throws {
         guard case .connected = connectionState, hasSessionCredentials else {
             throw ServerRelayError.notConnected
         }
 
-        logger.info("sendBinaryBind: binding to sessionId=\(sessionId), includeSnapshot=\(includeSnapshot)")
+        logger.info("sendBinaryBind: binding to sessionId=\(sessionId), includeSnapshot=\(includeSnapshot), forceSnapshot=\(forceSnapshot)")
 
         let payload: [String: Any] = [
             "sessionId": sessionId,
-            "includeSnapshot": includeSnapshot
+            "includeSnapshot": includeSnapshot,
+            "forceSnapshot": forceSnapshot
         ]
 
         try await self.sendMessage(type: "terminal.binary.bind", payload: payload)

@@ -972,6 +972,7 @@ impl DeviceLinkClient {
                                 info!("Received terminal.binary.bind message: {:?}", env.payload);
                                 let session_id_opt = env.payload.get("sessionId").and_then(|v| v.as_str());
                                 let include_snapshot = env.payload.get("includeSnapshot").and_then(|v| v.as_bool()).unwrap_or(true);
+                                let force_snapshot = env.payload.get("forceSnapshot").and_then(|v| v.as_bool()).unwrap_or(false);
 
                                 if let Some(session_id_str) = session_id_opt {
                                     let session_id = session_id_str.to_string();
@@ -1001,16 +1002,19 @@ impl DeviceLinkClient {
                                         pending.get(&session_id).map(|buf| !buf.is_empty()).unwrap_or(false)
                                     };
 
-                                    if pending_trimmed {
+                                    if pending_trimmed || force_snapshot {
                                         if let Ok(mut pending) = this.pending_binary_by_session.lock() {
                                             pending.remove(&session_id);
                                         }
                                         if let Ok(mut trimmed) = this.pending_trimmed_by_session.lock() {
                                             trimmed.remove(&session_id);
                                         }
+                                        if let Ok(mut batch) = this.batch_buffer_by_session.lock() {
+                                            batch.remove(&session_id);
+                                        }
                                     }
 
-                                    let should_send_snapshot = if pending_trimmed {
+                                    let should_send_snapshot = if pending_trimmed || force_snapshot {
                                         true
                                     } else {
                                         include_snapshot && !has_pending && !skip_snapshot
@@ -1025,14 +1029,14 @@ impl DeviceLinkClient {
                                                 }
                                             }
                                         }
-                                    } else if include_snapshot && skip_snapshot && !pending_trimmed {
+                                    } else if include_snapshot && skip_snapshot && !pending_trimmed && !force_snapshot {
                                         info!(
                                             "Binary uplink: skipping snapshot for session {} (low-bandwidth mode)",
                                             session_id
                                         );
                                     }
 
-                                    if !pending_trimmed {
+                                    if !pending_trimmed && !force_snapshot {
                                         this.flush_pending_for_session(&session_id, &bin_tx_for_receiver);
                                     }
 
