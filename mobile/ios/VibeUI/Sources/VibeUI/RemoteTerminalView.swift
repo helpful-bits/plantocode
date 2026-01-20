@@ -368,7 +368,7 @@ public struct RemoteTerminalView: View {
     }
 
     private var stopButton: some View {
-        Button("Stop") { killSession() }
+        Button("Stop") { sendCtrlC() }
             .buttonStyle(CompactDestructiveButtonStyle())
             .accessibilityLabel("Stop Process")
     }
@@ -676,6 +676,7 @@ public struct RemoteTerminalView: View {
 // MARK: - SwiftTerm Controller
 
 class SwiftTermController: NSObject, ObservableObject {
+    private static let clearScreenBytes: [UInt8] = [0x1b, 0x5b, 0x32, 0x4a, 0x1b, 0x5b, 0x48] // ESC[2J ESC[H
     weak var terminalView: TerminalView? {
         didSet {
             guard let terminalView = terminalView else { return }
@@ -710,9 +711,10 @@ class SwiftTermController: NSObject, ObservableObject {
     private var framesSinceLastData: Int = 0
     private static let burstThreshold: TimeInterval = 0.1
     private static let burstCooldown: TimeInterval = 0.5
-    private static let minFlushIntervalIdle: TimeInterval = 0.35
-    private static let minFlushIntervalBurst: TimeInterval = 0.6
+    private static let minFlushIntervalIdle: TimeInterval = 0.12
+    private static let minFlushIntervalBurst: TimeInterval = 0.06
     private var lastFlushAt: Date = .distantPast
+    private static let dsrRequestSequence: [UInt8] = [0x1b, 0x5b, 0x36, 0x6e]
 
     private var effectiveMinFlushInterval: TimeInterval {
         return burstStartedAt == nil ? Self.minFlushIntervalIdle : Self.minFlushIntervalBurst
@@ -809,8 +811,8 @@ class SwiftTermController: NSObject, ObservableObject {
     private func setupDisplayLinkIfNeeded() {
         guard displayLink == nil else { return }
         let link = CADisplayLink(target: self, selector: #selector(displayLinkFired))
-        // Lower frame rate reduces network/CPU pressure; terminal does not need high FPS.
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 2, maximum: 10, preferred: 6)
+        // Moderate frame rate keeps latency low without maxing out CPU.
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 6, maximum: 30, preferred: 15)
         link.add(to: .main, forMode: .common)
         link.isPaused = true
         displayLink = link
@@ -904,6 +906,11 @@ class SwiftTermController: NSObject, ObservableObject {
         // Accumulate data in batch buffer
         batchBuffer.append(data)
 
+        if containsDsrRequest(data) {
+            flushBatchBuffer()
+            return
+        }
+
         // Mark that we need a flush and unpause display link
         needsFlush = true
         setupDisplayLinkIfNeeded()
@@ -947,6 +954,23 @@ class SwiftTermController: NSObject, ObservableObject {
             // behavior during TUI redraws (like Claude Code's progress display).
             // Let SwiftTerm manage all scrolling naturally.
         }
+    }
+
+    private func containsDsrRequest(_ data: Data) -> Bool {
+        guard !data.isEmpty else { return false }
+        let bytes = [UInt8](data)
+        let pattern = Self.dsrRequestSequence
+        guard bytes.count >= pattern.count else { return false }
+
+        for idx in 0...(bytes.count - pattern.count) {
+            if bytes[idx] == pattern[0]
+                && bytes[idx + 1] == pattern[1]
+                && bytes[idx + 2] == pattern[2]
+                && bytes[idx + 3] == pattern[3] {
+                return true
+            }
+        }
+        return false
     }
 
     func send(data: [UInt8]) {
@@ -1031,28 +1055,20 @@ extension SwiftTermController: TerminalViewDelegate {
             return
         }
 
-        // Feed resize-buffered data without animation to avoid scroll jumping
-        // CRITICAL: Consolidate all chunks into one to avoid multiple scroll updates
-        if !resizeBuffer.isEmpty {
-            var consolidated = Data()
-            for chunk in resizeBuffer {
-                consolidated.append(chunk)
-            }
-            resizeBuffer.removeAll()
+        resizeBuffer.removeAll()
 
-            if didBufferDuringResize {
-                // Drop buffered output and request a fresh snapshot to avoid
-                // rendering old-size cursor sequences into the new geometry.
-                pendingData.removeAll(keepingCapacity: false)
-                batchBuffer.removeAll(keepingCapacity: false)
-                onResizeCompleted?(true)
-            } else if !consolidated.isEmpty {
-                UIView.performWithoutAnimation { [self] in
-                    let buffer = ArraySlice([UInt8](consolidated))
-                    terminalView.feed(byteArray: buffer)
-                }
-            }
+        // Clear local buffers and screen; rehydrate via snapshot after resize.
+        pendingData.removeAll(keepingCapacity: false)
+        batchBuffer.removeAll(keepingCapacity: false)
+        backgroundBuffer.removeAll(keepingCapacity: false)
+        needsFlush = false
+
+        UIView.performWithoutAnimation { [self] in
+            let buffer = ArraySlice(Self.clearScreenBytes)
+            terminalView.feed(byteArray: buffer)
         }
+
+        onResizeCompleted?(true)
 
         // Let SwiftTerm handle scrolling naturally after resize
 

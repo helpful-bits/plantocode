@@ -146,9 +146,16 @@ impl TerminalManager {
             .await
             .ok()
             .flatten();
+        let mut effective_cli = preferred_cli.clone();
+        if effective_cli.is_none() {
+            if which::which("claude").is_ok() {
+                effective_cli = Some("claude".to_string());
+            }
+        }
         log::info!(
-            "terminal.auto_cli preference {:?}",
-            preferred_cli.as_deref().unwrap_or("unset")
+            "terminal.auto_cli preference {:?} (effective {:?})",
+            preferred_cli.as_deref().unwrap_or("unset"),
+            effective_cli.as_deref().unwrap_or("unset")
         );
         let additional_args = settings_repo
             .get_value("terminal.additional_args")
@@ -194,7 +201,7 @@ impl TerminalManager {
 
         // If a CLI tool is configured, prepare to launch it after shell starts
         let mut init_command = None;
-        if let Some(cli) = preferred_cli.as_deref() {
+        if let Some(cli) = effective_cli.as_deref() {
             if cli != "none" && !cli.is_empty() {
                 let cli_cmd = match cli {
                     "claude" => Some("claude"),
@@ -276,9 +283,15 @@ impl TerminalManager {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 let mut state_guard = handle_for_init.state.lock().unwrap();
                 if let TerminalState::Running { writer, .. } = &mut *state_guard {
-                    let command_with_newline = format!("{}\n", init_cmd);
+                    let command_with_newline = if cfg!(windows) {
+                        format!("{}\r\n", init_cmd)
+                    } else {
+                        format!("{}\n", init_cmd)
+                    };
                     let _ = writer.write_all(command_with_newline.as_bytes());
-                    let _ = writer.flush();
+                    if !cfg!(windows) {
+                        let _ = writer.flush();
+                    }
                 }
             });
         }

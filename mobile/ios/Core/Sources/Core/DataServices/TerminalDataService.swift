@@ -114,6 +114,11 @@ public class TerminalDataService: ObservableObject {
     private var lastKnownSizeBySession: [String: (cols: Int, rows: Int)] = [:]
     private var hardResetObserver: NSObjectProtocol?
     private var bindAckObserver: NSObjectProtocol?
+    private var dsrRequestDeadlineBySession: [String: Date] = [:]
+    private var dsrProbeTailBySession: [String: [UInt8]] = [:]
+
+    private static let dsrRequestSequence: [UInt8] = [0x1b, 0x5b, 0x36, 0x6e]
+    private static let dsrResponseWindow: TimeInterval = 1.0
 
     // MARK: - Initialization
     public init() {
@@ -400,6 +405,11 @@ public class TerminalDataService: ObservableObject {
             self.logger.info("terminal.write sessionId=\(session.id) appSessionId=\(binding.appSessionId) contextType=\(binding.contextType.rawValue) jobId=\(binding.jobId ?? "nil") bytes=\(data.count)")
         }
 
+        if shouldSuppressDsrResponse(sessionId: session.id, data: data) {
+            self.logger.debug("Suppressing unexpected DSR response for session \(session.id)")
+            return
+        }
+
         var lastError: Error?
 
         for attempt in 0..<Self.maxWriteRetries {
@@ -670,6 +680,7 @@ public class TerminalDataService: ObservableObject {
     public func requestSnapshot(jobId: String) {
         guard let sessionId = resolveSessionId(for: jobId) else { return }
         boundSessions.insert(sessionId)
+        outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         bindBinary(to: sessionId, includeSnapshot: true, forceSnapshot: true)
     }
 
@@ -706,6 +717,8 @@ public class TerminalDataService: ObservableObject {
             return
         }
 
+        trackDsrRequests(sessionId: sessionId, data: event.data)
+
         if outputRings[sessionId] == nil {
             outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
@@ -727,6 +740,80 @@ public class TerminalDataService: ObservableObject {
             )
             textPublisher.send(output)
         }
+    }
+
+    private func trackDsrRequests(sessionId: String, data: Data) {
+        guard !data.isEmpty else { return }
+
+        let bytes = [UInt8](data)
+        let tail = dsrProbeTailBySession[sessionId] ?? []
+        let combined = tail + bytes
+        let pattern = Self.dsrRequestSequence
+
+        if combined.count >= pattern.count {
+            for idx in 0...(combined.count - pattern.count) {
+                if combined[idx] == pattern[0]
+                    && combined[idx + 1] == pattern[1]
+                    && combined[idx + 2] == pattern[2]
+                    && combined[idx + 3] == pattern[3] {
+                    dsrRequestDeadlineBySession[sessionId] = Date().addingTimeInterval(Self.dsrResponseWindow)
+                    break
+                }
+            }
+        }
+
+        let tailLength = max(pattern.count - 1, 0)
+        if tailLength > 0 {
+            dsrProbeTailBySession[sessionId] = Array(combined.suffix(tailLength))
+        } else {
+            dsrProbeTailBySession[sessionId] = []
+        }
+    }
+
+    private func isStandaloneDsrResponse(_ data: Data) -> Bool {
+        let bytes = [UInt8](data)
+        guard bytes.count >= 6 else { return false }
+        guard bytes[0] == 0x1b, bytes[1] == 0x5b, bytes[bytes.count - 1] == 0x52 else {
+            return false
+        }
+
+        var seenSeparator = false
+        var hasRowDigits = false
+        var hasColDigits = false
+
+        for b in bytes[2..<(bytes.count - 1)] {
+            if b == 0x3b {
+                if seenSeparator {
+                    return false
+                }
+                seenSeparator = true
+                continue
+            }
+            if b < 0x30 || b > 0x39 {
+                return false
+            }
+            if seenSeparator {
+                hasColDigits = true
+            } else {
+                hasRowDigits = true
+            }
+        }
+
+        return seenSeparator && hasRowDigits && hasColDigits
+    }
+
+    private func shouldSuppressDsrResponse(sessionId: String, data: Data) -> Bool {
+        guard isStandaloneDsrResponse(data) else { return false }
+
+        let now = Date()
+        if let deadline = dsrRequestDeadlineBySession[sessionId] {
+            if deadline >= now {
+                return false
+            }
+        }
+
+        dsrRequestDeadlineBySession.removeValue(forKey: sessionId)
+        return true
     }
 
     private func ensureGlobalBinarySubscriptionForActiveDevice() {
@@ -757,6 +844,8 @@ public class TerminalDataService: ObservableObject {
         readinessBySession.removeValue(forKey: sessionId)
 
         outputRings.removeValue(forKey: sessionId)
+        dsrRequestDeadlineBySession.removeValue(forKey: sessionId)
+        dsrProbeTailBySession.removeValue(forKey: sessionId)
         lastActivityBySession.removeValue(forKey: sessionId)
         lastKnownSizeBySession.removeValue(forKey: sessionId)
 
@@ -1068,6 +1157,8 @@ public class TerminalDataService: ObservableObject {
 
         lastActivityBySession.removeAll()
         firstResizeCompleted.removeAll()
+        dsrRequestDeadlineBySession.removeAll()
+        dsrProbeTailBySession.removeAll()
 
         lifecycleBySession.removeAll()
         readinessBySession.removeAll()

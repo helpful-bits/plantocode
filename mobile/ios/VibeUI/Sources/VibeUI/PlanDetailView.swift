@@ -21,7 +21,6 @@ public struct PlanDetailView: View {
     @State private var parsedMarkdown: MarkdownContent?
     @State private var isConvertingToMarkdown: Bool = false
     @State private var showingMarkdown: Bool = true
-    @State private var isLoading = false
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var currentIndex: Int
@@ -71,6 +70,14 @@ public struct PlanDetailView: View {
         observedJob?.markdownConversionStatus ?? PlanContentParser.extractMarkdownConversionStatus(from: observedJob?.metadata)
     }
 
+    private var hasXmlContent: Bool {
+        !xmlContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var hasMarkdownContent: Bool {
+        !markdownContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private enum PlanDisplayStatus {
         case streamingXml
         case convertingToMarkdown
@@ -97,6 +104,19 @@ public struct PlanDetailView: View {
         return .ready
     }
 
+    private var shouldShowLoadingView: Bool {
+        if isStreaming {
+            return false
+        }
+        if isConvertingToMarkdown || (markdownConversionStatus == "pending" && markdownContent.isEmpty) {
+            return false
+        }
+        if showingMarkdown {
+            return !hasXmlContent && !hasMarkdownContent
+        }
+        return !hasXmlContent
+    }
+
     public init(jobId: String, allPlanJobIds: [String]) {
         self.jobId = jobId
         self.allPlanJobIds = allPlanJobIds
@@ -108,7 +128,7 @@ public struct PlanDetailView: View {
         ZStack {
             Color.backgroundPrimary.ignoresSafeArea()
 
-            if isLoading {
+            if shouldShowLoadingView {
                 loadingView()
             } else if let error = errorMessage {
                 errorView(message: error)
