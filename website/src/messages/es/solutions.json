@@ -84,7 +84,7 @@
       },
       "gettingStarted": {
         "step1": {
-          "description": "Instala para macOS, Windows o Linux. Conecta a tu modelo de IA preferido (Claude, GPT-4, Gemini o modelos locales). No se requieren claves API para comenzar.",
+          "description": "Instala para macOS, Windows o Linux. Conecta a tu modelo de IA preferido (Claude, GPT-4, Gemini o modelos locales). En hosting no se requieren claves API; en self-host se usan tus claves.",
           "title": "Descarga PlanToCode"
         },
         "step2": {

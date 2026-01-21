@@ -15,8 +15,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: L
   return generatePageMetadata({
     locale,
     slug: '/docs/copy-buttons',
-    title: t['copyButtonsDoc.meta.title'] || 'Copy Buttons - PlanToCode',
-    description: t['copyButtonsDoc.meta.description'] || 'How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution.',
+    title: t['copyButtons.meta.title'] || 'Copy Buttons - PlanToCode',
+    description: t['copyButtons.meta.description'] || 'How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution.',
   });
 }
 
@@ -30,58 +30,40 @@ export default async function CopyButtonsDocPage({ params }: { params: Promise<{
 
   // Placeholder examples
   const placeholders = [
-    { placeholder: '{{IMPLEMENTATION_PLAN}}', description: 'Full merged plan XML content' },
-    { placeholder: '{{STEP_CONTENT}}', description: 'Content of a specific plan step by index' },
-    { placeholder: '{{TASK_DESCRIPTION}}', description: 'The refined task specification' },
-    { placeholder: '{{PROJECT_CONTEXT}}', description: 'File paths, directory structure, and repo summary' },
-    { placeholder: '{{SELECTED_FILES}}', description: 'List of files included in the plan' },
-    { placeholder: '{{MODEL_NAME}}', description: 'Currently selected model identifier' },
-    { placeholder: '{{SESSION_ID}}', description: 'Active session UUID for traceability' },
-    { placeholder: '{{COMMANDS}}', description: 'Extracted shell commands from plan steps' },
-    { placeholder: '{{STEPS_SECTION}}', description: 'Plan steps without agent instructions' },
-    { placeholder: '{{REQUIREMENTS}}', description: 'Task requirements and constraints' },
+    { placeholder: '{{IMPLEMENTATION_PLAN}}', description: 'Full plan content as shown in the viewer' },
+    { placeholder: '{{STEP_CONTENT}}', description: 'Content of the selected plan step (when a step is selected)' },
+    { placeholder: '{{TASK_DESCRIPTION}}', description: 'Current task description from the session' },
   ];
 
   // Default buttons
   const defaultButtons = [
-    { id: 'use-full-plan', label: 'Use Full Plan', description: 'Copies the entire implementation plan XML content. Best for agents that accept structured plan input.' },
-    { id: 'use-step', label: 'Use This Step', description: 'Copies only the currently selected step content. Useful for incremental execution or reviewing specific changes.' },
-    { id: 'use-commands', label: 'Use Commands', description: 'Extracts and copies only the shell commands from the plan steps. Ideal for quick terminal execution.' },
-    { id: 'use-steps-only', label: 'Use Steps Only', description: 'Copies the plan steps without agent instructions or metadata. Cleaner output for human review.' },
-  ];
-
-  // Audit fields
-  const auditFields = [
-    { field: 'action_id', description: 'Unique identifier for this handoff action' },
-    { field: 'plan_id', description: 'Source implementation plan reference' },
-    { field: 'job_id', description: 'Associated background job if applicable' },
-    { field: 'session_id', description: 'Target terminal session or null for clipboard' },
-    { field: 'template_id', description: 'Template configuration that was used' },
-    { field: 'content_hash', description: 'SHA-256 of resolved content for integrity' },
-    { field: 'created_at', description: 'Timestamp of the action' },
+    { id: 'parallel-agents', label: 'Parallel Claude Coding Agents', description: 'Template that instructs Claude Code to launch parallel agents using the plan.' },
+    { id: 'investigate-results', label: 'Investigate Results', description: 'Template that asks the agent to review changes without launching new agents.' },
+    { id: 'task-only', label: 'Task', description: 'Copies only the task description.' },
+    { id: 'task-and-plan', label: 'Task + Plan', description: 'Combines task description and plan for full context.' },
+    { id: 'plan-only', label: 'Plan', description: 'Copies only the plan content.' },
   ];
 
   return (
     <DocsArticle
-      title={t['copyButtonsDoc.title'] || 'Copy Buttons'}
-      description={t['copyButtonsDoc.description'] || 'Template-driven handoff from implementation plans to PTY terminals and external tools.'}
-      date={t['copyButtonsDoc.date'] || '2025-09-23'}
-      readTime={t['copyButtonsDoc.readTime'] || '10 min'}
-      category={t['copyButtonsDoc.category'] || 'Execution'}
+      title={t['copyButtons.title'] || 'Copy Buttons'}
+      description={t['copyButtons.description'] || 'Template-driven handoff from implementation plans to PTY terminals and external tools.'}
+      date={t['copyButtons.date'] || '2025-09-23'}
+      readTime={t['copyButtons.readTime'] || '10 min'}
+      category={t['copyButtons.category'] || 'Execution'}
     >
       <p className="text-base text-muted-foreground leading-relaxed mb-6">
-        Copy buttons bridge planning and execution by resolving template placeholders against the active plan, then delivering
-        the result to PTY sessions or the system clipboard. Each action is tied to job metadata for complete audit trails,
-        enabling teams to trace exactly what was sent to agents.
+        Copy buttons resolve template placeholders against the active plan and then send the result to the clipboard (plan views)
+        or the PTY (terminal modal). They are a lightweight way to hand plan context to agent CLIs or terminals without extra steps.
       </p>
 
       <DocsMediaBlock
         className="mb-12"
-        title={t['copyButtonsDoc.visuals.templateFlow.title'] || 'Template resolution flow'}
-        description={t['copyButtonsDoc.visuals.templateFlow.description'] || 'How button templates pull task context, plan XML, and model settings before handoff.'}
-        imageSrc={t['copyButtonsDoc.visuals.templateFlow.imageSrc'] || '/images/docs/copy-buttons/templates.svg'}
-        imageAlt={t['copyButtonsDoc.visuals.templateFlow.imageAlt'] || 'Flow showing copy button template resolution'}
-        caption={t['copyButtonsDoc.visuals.templateFlow.caption']}
+        title={t['copyButtons.visuals.templateFlow.title'] || 'Template resolution flow'}
+        description={t['copyButtons.visuals.templateFlow.description'] || 'How button templates pull task context, plan XML, and model settings before handoff.'}
+        imageSrc={t['copyButtons.visuals.templateFlow.imageSrc'] || '/images/docs/copy-buttons/templates.svg'}
+        imageAlt={t['copyButtons.visuals.templateFlow.imageAlt'] || 'Flow showing copy button template resolution'}
+        caption={t['copyButtons.visuals.templateFlow.caption']}
       />
 
       {/* Template Configuration Sources Section */}
@@ -89,29 +71,29 @@ export default async function CopyButtonsDocPage({ params }: { params: Promise<{
         <h2 className="text-2xl font-bold">Template Configuration Sources</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Copy button templates follow a layered configuration model. Server defaults provide baseline templates, project-level
-            overrides customize for team workflows, and task-specific configurations handle one-off scenarios.
+            Copy button templates follow a layered configuration model. Server defaults provide baseline templates, and
+            project-level overrides customize the implementation_plan task for a given repo.
           </p>
           <div className="space-y-4 mt-4">
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Server Defaults</h4>
               <p className="text-sm text-muted-foreground">
                 Shared templates from <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">/api/config/desktop-runtime-config</code>.
-                Includes button labels, template strings, target (terminal or clipboard), and visibility conditions.
+                Includes button labels and template strings.
               </p>
             </div>
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Project Overrides</h4>
               <p className="text-sm text-muted-foreground">
-                Templates stored in SQLite <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">project_settings</code> table.
-                Merged at runtime with server defaults to customize for team standards.
+                Templates stored in SQLite key_value_store under <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">project_task_settings</code>.
+                Merged at runtime with server defaults to customize team standards.
               </p>
             </div>
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Task-Specific</h4>
               <p className="text-sm text-muted-foreground">
-                Per-<code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">task_model_config</code> templates for specialized
-                workflows. Enables custom handoff patterns without modifying global settings.
+                Copy buttons are configured per task type (implementation_plan) and stored per project. There is no per-job
+                override in the current release.
               </p>
             </div>
           </div>
@@ -124,7 +106,7 @@ export default async function CopyButtonsDocPage({ params }: { params: Promise<{
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
             Templates use double-brace placeholders that are resolved against the active plan and session context at click time.
-            The resolution engine supports nested context access and conditional sections.
+            Supported placeholders include the full plan, the current task description, and the selected step content.
           </p>
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
             <pre className="text-slate-100 text-sm overflow-x-auto"><code>{`// Example template with placeholders
@@ -132,13 +114,7 @@ You are an AI coding assistant. Execute the following plan:
 
 {{IMPLEMENTATION_PLAN}}
 
-Working on task: {{TASK_DESCRIPTION}}
-
-Selected files for context:
-{{SELECTED_FILES}}
-
-Model: {{MODEL_NAME}}
-Session: {{SESSION_ID}}`}</code></pre>
+Task: {{TASK_DESCRIPTION}}`}</code></pre>
           </div>
           <div className="mt-6">
             <h4 className="text-sm font-semibold text-foreground mb-3">Available Placeholders</h4>
@@ -154,8 +130,8 @@ Session: {{SESSION_ID}}`}</code></pre>
             </div>
           </div>
           <p className="text-sm text-muted-foreground mt-4">
-            <strong>Resolution order:</strong> Job metadata first, then plan content, then session context. Undefined placeholders
-            are preserved in the output for debugging.
+            <strong>Resolution:</strong> Missing placeholders are replaced with empty strings. Step content is only available
+            when a plan step is selected.
           </p>
         </GlassCard>
       </section>
@@ -166,7 +142,7 @@ Session: {{SESSION_ID}}`}</code></pre>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
             When a button is clicked, the template processor executes a multi-step pipeline: placeholder extraction,
-            context lookup, value substitution, and output formatting.
+            context lookup, value substitution, and delivery to clipboard or terminal.
           </p>
           <div className="space-y-4 mt-4">
             <div className="flex items-start gap-4">
@@ -193,16 +169,16 @@ Session: {{SESSION_ID}}`}</code></pre>
             <div className="flex items-start gap-4">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold">4</div>
               <div>
-                <h4 className="font-semibold">Format Output</h4>
-                <p className="text-sm text-muted-foreground">Apply target-specific escaping (shell for terminal, plain for clipboard)</p>
+                <h4 className="font-semibold">Send Output</h4>
+                <p className="text-sm text-muted-foreground">Copy to clipboard (plan views) or write to the PTY input buffer (terminal modal)</p>
               </div>
             </div>
           </div>
           <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-200 mb-2">Large Plan Chunking</h4>
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              Plans exceeding 100KB are automatically chunked into sequential segments with clear boundaries to avoid
-              overloading terminal buffers or clipboard limits. Each chunk is prefixed with its position (e.g., "[Part 1/3]").
+              Terminal handoff splits large content into 4KB segments and appends a carriage return after sending.
+              Clipboard copy is a single write.
             </p>
           </div>
         </GlassCard>
@@ -213,39 +189,23 @@ Session: {{SESSION_ID}}`}</code></pre>
         <h2 className="text-2xl font-bold">PTY Terminal Handoff</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Buttons configured for terminal handoff write directly to the PTY session input buffer. The resolved template
-            appears as if typed by the user, triggering agent execution immediately.
+            In the plan terminal modal, copy buttons write the resolved template to the PTY input buffer. Large content is
+            chunked and a carriage return is appended after sending.
           </p>
           <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm"><code>{`// Terminal handoff implementation
-async fn handoff_to_terminal(
-    session_id: &str,
-    content: &str,
-    template_id: &str,
-) -> Result<HandoffResult> {
-    // Get PTY writer for session
-    let writer = terminal_manager.get_writer(session_id)?;
-
-    // Write content to PTY input buffer
-    writer.write_all(content.as_bytes()).await?;
-
-    // Log the action for audit
-    copy_button_actions.insert(CopyButtonAction {
-        session_id: session_id.to_string(),
-        template_id: template_id.to_string(),
-        content_hash: sha256(content),
-        created_at: Utc::now(),
-    })?;
-
-    Ok(HandoffResult::Terminal { session_id })
-}`}</code></pre>
+            <pre className="text-slate-100 text-sm"><code>{`// Terminal handoff (PlanTerminalModal)
+const textToSend = replacePlaceholders(button.content, {
+  IMPLEMENTATION_PLAN: planContent,
+  TASK_DESCRIPTION: taskDescription ?? ''
+});
+await sendInChunks(sessionId, textToSend);`}</code></pre>
           </div>
           <div className="bg-muted/30 rounded-lg p-4 mt-4">
             <h4 className="text-sm font-semibold text-foreground mb-2">Handoff Details</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
-              <li>• Content written via <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">master.take_writer()</code></li>
-              <li>• Supports multi-line input and escape sequences</li>
-              <li>• UI displays first 100 characters as confirmation preview</li>
+              <li>• Content sent via <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">write_terminal_input_command</code></li>
+              <li>• Chunked into 4KB segments for large plans</li>
+              <li>• Appends a carriage return after sending</li>
             </ul>
           </div>
         </GlassCard>
@@ -256,68 +216,24 @@ async fn handoff_to_terminal(
         <h2 className="text-2xl font-bold">Clipboard Handoff</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Buttons configured for clipboard copy the resolved template to the system clipboard using the Tauri clipboard API.
-            This enables handoff to external tools like IDE terminals or web-based agents.
+            In plan cards and plan modals, buttons copy the resolved template to the system clipboard using the browser
+            clipboard API. This enables handoff to external tools like IDE terminals or web-based agents.
           </p>
           <div className="grid md:grid-cols-2 gap-4 mt-4">
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Cross-Platform API</h4>
               <p className="text-sm text-muted-foreground">
-                Uses <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">tauri::api::clipboard::set_text()</code> for
-                consistent clipboard access across macOS, Windows, and Linux.
+                Uses <code className="px-1.5 py-0.5 rounded bg-muted text-xs font-mono">navigator.clipboard.writeText()</code> inside the
+                Tauri webview for clipboard access.
               </p>
             </div>
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">User Feedback</h4>
               <p className="text-sm text-muted-foreground">
-                Toast notification confirms the copy with a preview of the content and token count estimate for the target model.
+                Toast notification confirms the copy action.
               </p>
             </div>
           </div>
-        </GlassCard>
-      </section>
-
-      {/* Job Metadata and Audit Trail Section */}
-      <section className="space-y-6 mb-12">
-        <h2 className="text-2xl font-bold">Job Metadata and Audit Trail</h2>
-        <GlassCard className="p-6">
-          <p className="text-muted-foreground leading-relaxed mb-4">
-            Every copy button action is linked to job metadata for complete traceability. The audit record includes the source plan,
-            target session, resolved content hash, and user context.
-          </p>
-          <div className="bg-slate-900 rounded-lg p-4 mt-4 border border-slate-700">
-            <pre className="text-slate-100 text-sm"><code>{`-- copy_button_actions table schema
-CREATE TABLE copy_button_actions (
-    action_id    TEXT PRIMARY KEY,
-    plan_id      TEXT NOT NULL REFERENCES implementation_plans(id),
-    job_id       TEXT REFERENCES background_jobs(id),
-    session_id   TEXT REFERENCES terminal_sessions(session_id),
-    template_id  TEXT NOT NULL,
-    content_hash TEXT NOT NULL,  -- SHA-256 for integrity verification
-    created_at   TEXT NOT NULL
-);
-
--- Query to trace plan handoffs
-SELECT * FROM copy_button_actions
-WHERE plan_id = ?
-ORDER BY created_at DESC;`}</code></pre>
-          </div>
-          <div className="mt-6">
-            <h4 className="text-sm font-semibold text-foreground mb-3">Audit Record Fields</h4>
-            <div className="grid gap-2">
-              {auditFields.map((item) => (
-                <div key={item.field} className="flex items-start gap-3 bg-muted/30 rounded-lg p-3">
-                  <code className="px-2 py-1 rounded bg-primary/10 text-primary text-xs font-mono font-semibold">
-                    {item.field}
-                  </code>
-                  <span className="text-sm text-muted-foreground">{item.description}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground mt-4">
-            <strong>Retention:</strong> Audit records are retained for 90 days by default, configurable in project settings.
-          </p>
         </GlassCard>
       </section>
 
@@ -350,7 +266,7 @@ ORDER BY created_at DESC;`}</code></pre>
         <h2 className="text-2xl font-bold">Customizing Copy Buttons</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Copy buttons can be customized at multiple levels: global defaults, project-level overrides, and per-task configurations.
+            Copy buttons can be customized at two levels: global defaults and project-level overrides for the implementation_plan task type.
           </p>
           <div className="space-y-4 mt-4">
             <div className="bg-muted/30 rounded-lg p-4">
@@ -364,14 +280,13 @@ ORDER BY created_at DESC;`}</code></pre>
               <h4 className="text-sm font-semibold text-foreground mb-2">Project-Level Customization</h4>
               <p className="text-sm text-muted-foreground">
                 Each project can override the default buttons through the Settings panel. Project-specific buttons are stored
-                in SQLite and merged with server defaults at runtime.
+                in key_value_store and merged with server defaults at runtime.
               </p>
             </div>
             <div className="bg-muted/30 rounded-lg p-4">
               <h4 className="text-sm font-semibold text-foreground mb-2">Task-Level Configuration</h4>
               <p className="text-sm text-muted-foreground">
-                Individual tasks can have their own copy button configurations. This allows different button sets for
-                implementation plans, code reviews, or documentation tasks.
+                Copy buttons are configured per task type (implementation_plan) and stored per project. There are no per-job overrides.
               </p>
             </div>
           </div>
@@ -387,22 +302,20 @@ ORDER BY created_at DESC;`}</code></pre>
         <h2 className="text-2xl font-bold">UI Integration and Safety</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Copy buttons appear in plan viewers and terminal headers. Each button shows a preview popover with the resolved
-            content and token estimate before execution.
+            Copy buttons appear in plan viewers and terminal headers. Clicking a button sends output immediately; there is
+            no preview step by default.
           </p>
           <div className="grid md:grid-cols-2 gap-4 mt-4">
             <div className="bg-muted/30 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-foreground mb-2">Token Estimation</h4>
+              <h4 className="text-sm font-semibold text-foreground mb-2">Token Counts</h4>
               <p className="text-sm text-muted-foreground">
-                Token estimates help reviewers validate that the prompt fits within the target model's context window before handoff.
-                Displayed alongside the preview.
+                Plan cards display total token counts for the plan job. Copy buttons do not compute per-template token estimates.
               </p>
             </div>
             <div className="bg-muted/30 rounded-lg p-4">
-              <h4 className="text-sm font-semibold text-foreground mb-2">Full Preview Modal</h4>
+              <h4 className="text-sm font-semibold text-foreground mb-2">Preview</h4>
               <p className="text-sm text-muted-foreground">
-                Clicking the preview icon opens a modal with the full resolved template, syntax highlighting, and diff view
-                if the template has changed since last use.
+                There is no preview popover or modal in the current release. Open the plan content to inspect what will be copied.
               </p>
             </div>
           </div>
@@ -448,7 +361,7 @@ ORDER BY created_at DESC;`}</code></pre>
         <GlassCard className="p-6" highlighted>
           <h2 className="text-xl font-semibold mb-3">Trace handoff to execution</h2>
           <p className="text-muted-foreground leading-relaxed mb-4">
-            Terminal sessions show where copy button output lands and how it is logged.
+            Terminal sessions show where copy button output lands and keep the session output log.
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild size="lg">

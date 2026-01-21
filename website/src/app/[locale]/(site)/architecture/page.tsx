@@ -9,8 +9,8 @@ import { generatePageMetadata } from '@/content/metadata';
 export async function generateMetadata({ params }: { params: Promise<{ locale: Locale }> }): Promise<Metadata> {
   const { locale } = await params;
   const t = await loadMessagesFor(locale, ['pages']);
-  const title = t['architecture.meta.title'];
-  const description = t['architecture.meta.description'];
+  const title = t['architecturePage.meta.title'];
+  const description = t['architecturePage.meta.description'];
 
   return generatePageMetadata({
     locale,

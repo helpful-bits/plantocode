@@ -6,8 +6,8 @@ const SRC = 'src';
 const FILE_GLOBS = [`${SRC}/**/*.{ts,tsx}`];
 
 const KEY_REGEXES = [
-  /t\(\s*['"]([a-zA-Z0-9_.-]+)['"]\s*[),]/g,
-  /t\[\s*['"]([a-zA-Z0-9_.-]+)['"]\s*\]/g,
+  /\bt\(\s*['"]([a-zA-Z0-9_.-]+)['"]\s*[),]/g,
+  /\bt\[\s*['"]([a-zA-Z0-9_.-]+)['"]\s*\]/g,
 ];
 
 async function main() {

@@ -7,15 +7,31 @@ function flatten(input, prefix = '') {
   const out = {};
   for (const [k, v] of Object.entries(input || {})) {
     const key = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === 'object') Object.assign(out, flatten(v, key));
-    else out[key] = String(v ?? '');
+    if (Array.isArray(v)) {
+      out[key] = v;
+      v.forEach((item, index) => {
+        const itemKey = `${key}.${index}`;
+        if (Array.isArray(item)) {
+          out[itemKey] = item;
+        } else if (item && typeof item === 'object') {
+          Object.assign(out, flatten(item, itemKey));
+        } else {
+          out[itemKey] = String(item ?? '');
+        }
+      });
+    } else if (v && typeof v === 'object') {
+      Object.assign(out, flatten(v, key));
+    } else {
+      out[key] = String(v ?? '');
+    }
   }
   return out;
 }
 
 async function loadLocale(locale) {
   const root = `src/messages/${locale}`;
-  const files = await globby(`${root}/**/*.json`);
+  const namespaces = ['common', 'seo', 'home', 'features', 'docs', 'pages', 'legal'];
+  const files = await globby(namespaces.map((ns) => `${root}/${ns}.json`));
   const flatByFile = {};
   const owners = {};
   for (const f of files) {
@@ -40,7 +56,13 @@ async function main() {
 
   for (const loc of locales) {
     const { merged, owners } = await loadLocale(loc);
-    const missing = used.usedKeys.filter((k) => !(k in merged));
+    const mergedKeys = Object.keys(merged);
+    const mergedKeySet = new Set(mergedKeys);
+    const missing = used.usedKeys.filter((k) => {
+      if (mergedKeySet.has(k)) return false;
+      const prefix = `${k}.`;
+      return !mergedKeys.some((existing) => existing.startsWith(prefix));
+    });
     const collisions = Object.entries(owners).filter(([, v]) => v.length > 1);
 
     if (missing.length) {

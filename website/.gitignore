@@ -36,3 +36,4 @@ next-env.d.ts
 
 # deployment
 deploy/
+/.i18n.used.json

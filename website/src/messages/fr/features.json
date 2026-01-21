@@ -13,158 +13,76 @@
         "architecture": "Architecture overview"
       },
       "button": "Télécharger PlanToCode"
-    },
-    "description": "Outils complets pour planifier, réviser et exécuter des modifications de code complexes. De la découverte de fichiers à l'exécution dans le terminal, tout ce dont vous avez besoin pour un développement assisté par IA sécurisé.",
-    "learnMore": "En savoir plus",
-    "title": "Fonctionnalités de planification de développement IA"
-  },
-  "meetings": {
-    "meta": {
-      "title": "Meeting & Recording Ingestion - System Walkthrough",
-      "description": "How PlanToCode captures meetings and recordings, extracts requirements, and feeds them into planning workflows."
-    },
-    "badge": "Specification capture",
-    "title": "Meeting & Recording Ingestion",
-    "subtitle": "Multimodal pipeline that turns recorded discussions into structured requirements for planning. Analysis runs through the configured transcription and vision providers.",
-    "ariaLabel": "Meeting and recording ingestion features",
-    "cards": {
-      "multimodal": {
-        "title": "Multimodal extraction pipeline",
-        "description": "Audio and key frames are processed to produce transcripts, UI context, and requirement notes for task refinement.",
-        "link": "See video analysis"
-      },
-      "insights": {
-        "title": "Curated insights for planning",
-        "description": "Decisions, constraints, and action items are surfaced as selectable notes that feed the plan.",
-        "link": "See text improvement"
-      }
-    },
-    "benefits": {
-      "title": "What the system outputs",
-      "collaboration": {
-        "title": "Decision log",
-        "description": "Captures decisions and action items with timestamps for traceable planning."
-      },
-      "transcription": {
-        "title": "Speaker-aware transcript",
-        "description": "Transcribes audio with speaker segmentation so requirements keep attribution."
-      },
-      "visual": {
-        "title": "Visual context frames",
-        "description": "Summarizes screens and diagrams into notes used during task refinement."
-      }
-    },
-    "howItWorks": {
-      "title": "Pipeline steps",
-      "step1": {
-        "title": "Ingest recording",
-        "description": "Upload a Teams or Zoom recording or a screen capture; the system normalizes formats and indexes the media."
-      },
-      "step2": {
-        "title": "Multimodal analysis",
-        "description": "Audio transcript and key frames are analyzed to extract requirements, constraints, and UI state."
-      },
-      "step3": {
-        "title": "Attach to task",
-        "description": "Outputs are attached to the task as structured notes before planning and file discovery."
-      }
-    },
-    "relatedFeatures": {
-      "title": "Related components",
-      "videoAnalysis": {
-        "title": "Video Analysis",
-        "description": "Analyze screen recordings and capture UI context for planning."
-      },
-      "voiceTranscription": {
-        "title": "Voice Transcription",
-        "description": "Capture spoken requirements directly into the task input."
-      },
-      "textImprovement": {
-        "title": "Text Improvement",
-        "description": "Normalize raw notes into structured task descriptions."
-      },
-      "learnMore": "Learn more"
-    },
-    "cta": {
-      "title": "Continue the pipeline",
-      "description": "Follow the video analysis docs and the architecture overview to see how these notes flow into planning and execution.",
-      "links": {
-        "docs": "Video analysis docs",
-        "architecture": "Architecture overview"
-      }
     }
   },
   "fileDiscovery": {
     "benefits": {
       "costEffective": {
-        "description": "Workflow optimisé pour les tokens avec batching intelligent. Suivi des coûts intégré à chaque étape.",
-        "title": "Fonctionnement rentable"
+        "description": "Token-aware batching with cost tracking at each stage.",
+        "title": "Token budgeting"
       },
       "multiStage": {
-        "description": "Workflow IA en 5 étapes avec filtrage regex, évaluation de pertinence et découverte de chemins pour identifier les fichiers les plus pertinents.",
-        "title": "Intelligence multi-étapes"
+        "description": "Four-stage workflow with regex filtering, relevance assessment, and relationship analysis to identify relevant files.",
+        "title": "Multi-stage pipeline"
       },
       "realTimeProgress": {
-        "description": "Suivi de progression en direct avec mises à jour étape par étape. Voyez exactement ce que l'IA découvre.",
-        "title": "Progression en temps réel"
+        "description": "Stage-by-stage progress updates emitted by background jobs.",
+        "title": "Progress visibility"
       }
     },
     "capabilities": {
       "git": {
-        "description": "Exécute `git ls-files --cached --others --exclude-standard` pour respecter les règles .gitignore. Repli sur la bibliothèque git2 en cas d'échec de la commande.",
+        "description": "Executes `git ls-files --cached --others --exclude-standard` to respect .gitignore rules. Falls back to git2 library if command fails.",
         "features": [
-          "Git ls-files avec respect de .gitignore",
-          "Détection et filtrage des fichiers binaires",
-          "Exclusion basée sur l'extension (97 types)",
-          "Analyse de contenu pour détection de binaires"
+          "Git ls-files with .gitignore respect",
+          "Binary file detection and filtering",
+          "Extension-based exclusion list for common binary types",
+          "Content analysis for binary detection"
         ],
-        "title": "Intégration du dépôt Git"
+        "title": "Git Repository Integration"
       },
       "planIntegration": {
-        "description": "Les fichiers découverts alimentent directement le système de planification d'implémentation. Le contexte est préservé et optimisé pour la génération de plan, garantissant des résultats complets et précis.",
+        "description": "Discovered files feed directly into the implementation planning system. Context is preserved and reused across sessions.",
         "features": [
-          "Intégration transparente de génération de plan",
-          "Préservation du contexte entre les sessions",
-          "Support de génération de plan multi-modèles",
-          "Préparation de synthèse architecturale"
+          "Plan generation handoff",
+          "Context preservation across sessions",
+          "Multiple plan drafts per task",
+          "Structured plan inputs"
         ],
-        "title": "Intégration du plan d'implémentation"
+        "title": "Implementation Plan Integration"
       },
-      "title": "Capacités de découverte avancées",
+      "title": "Advanced Discovery Capabilities",
       "tokenManagement": {
-        "description": "L'estimation de tokens consciente du contenu optimise le batching. Différents ratios pour JSON/XML (5 cars/token), code (3 cars/token) et texte (4 cars/token) assurent un traitement efficace.",
+        "description": "Content-aware token estimation drives batching. Ratios for JSON/XML (5 chars/token), code (3 chars/token), and text (4 chars/token) guide chunking.",
         "features": [
-          "Dimensionnement dynamique des chunks par type de fichier",
-          "Réservation de 2000 tokens de surcharge de prompt",
-          "Traitement par lots (100 fichiers par défaut)",
-          "TTL de cache de fichiers de 30 secondes"
+          "Dynamic chunk sizing per file type",
+          "2000-token prompt overhead reservation",
+          "Token-budgeted batching (size varies by content and limits)",
+          "Chunking based on estimated tokens, not fixed file counts"
         ],
-        "title": "Gestion intelligente des tokens"
+        "title": "Smart Token Management"
       },
       "workflow": {
-        "description": "WorkflowOrchestrator gère le cycle de vie avec initialisation paresseuse, planification de dépendances et récupération de jobs orphelins. Chaque étape s'exécute comme un job en arrière-plan indépendant.",
+        "description": "WorkflowOrchestrator manages lifecycle with lazy initialization, dependency scheduling, and orphaned job recovery. Each stage runs as an independent background job.",
         "features": [
-          "Gestion des dépendances d'étapes",
-          "Mises à jour de progression pilotées par événements via Tauri",
-          "Persistance de WorkflowIntermediateData",
-          "Logique de réessai avec backoff exponentiel"
+          "Stage dependency management",
+          "Event-driven progress updates via Tauri",
+          "WorkflowIntermediateData persistence",
+          "Exponential backoff retry logic"
         ],
-        "title": "Orchestration de workflow distribué"
+        "title": "Distributed Workflow Orchestration"
       }
     },
     "cta": {
-      "description": "Laissez l'IA naviguer intelligemment dans votre base de code. De l'analyse du dépôt au contexte prêt pour l'implémentation, c'est ainsi que la découverte de fichiers devrait fonctionner - intelligente, efficace, rentable.",
       "links": {
-        "docs": "Lire la documentation technique",
-        "buildYourOwn": "Build your own pipeline",
-        "planMode": "Voir la planification d'implémentation"
+        "docs": "Read file discovery docs"
       },
-      "title": "Découvrez la découverte intelligente de fichiers"
+      "title": "Explore the internals"
     },
     "hero": {
-      "badge": "Navigation de dépôt pilotée par l'IA",
-      "description": "PlanToCode cartographie les fichiers impactés avant que vous n'exécutiez quoi que ce soit. Vous obtenez un contexte ciblé en qui vous pouvez avoir confiance.",
-      "title": "Trouvez automatiquement ce qui compte dans votre base de code"
+      "badge": "File discovery workflow",
+      "description": "PlanToCode stages file discovery as a Rust workflow that narrows, scores, and persists context before any plan generation.",
+      "title": "File Discovery Pipeline"
     },
     "pipeline": {
       "title": "How the File Discovery Pipeline Works",
@@ -186,60 +104,60 @@
     },
     "performance": {
       "accuracy": {
-        "description": "Raffinement multi-étapes avec évaluation de pertinence et analyse de relations pilotées par l'IA.",
-        "title": "Taux de précision",
-        "value": "Élevé"
+        "description": "Multi-stage refinement with relevance assessment and relationship analysis captured per job.",
+        "title": "Relevance Quality",
+        "value": "Traceable"
       },
       "cost": {
-        "description": "Par exécution de workflow. L'optimisation intelligente des tokens maintient les coûts minimaux tout en maximisant la qualité de découverte.",
-        "title": "Coût typique",
-        "value": "0,10-0,15$"
+        "description": "Token estimation and batching keep prompts small before LLM scoring.",
+        "title": "Token Budgeting",
+        "value": "Token-aware"
       },
       "speed": {
-        "description": "Dépend de la taille et de la complexité du dépôt. Suivi de progression en temps réel avec mises à jour étape par étape.",
-        "title": "Temps de traitement",
-        "value": "Variable"
+        "description": "Stage-by-stage jobs stream updates without blocking the UI.",
+        "title": "Job Scheduling",
+        "value": "Staged"
       },
-      "title": "Rentable et rapide"
+      "title": "Operational Characteristics"
     },
     "workflow": {
       "stage1": {
-        "description": "L'IA analyse votre structure de répertoires (jusqu'à 2 niveaux de profondeur) pour identifier les zones de projet pertinentes. Utilise l'intelligence hiérarchique pour sélectionner les dossiers parents vs. les sous-répertoires.",
+        "description": "Analyzes the directory structure (up to 2 levels deep) to identify candidate project areas and select parent folders vs. subdirectories.",
         "features": [
-          "Analyse hiérarchique des répertoires",
-          "Sélection intelligente parent/sous-répertoire",
-          "Évite les sélections imbriquées redondantes"
+          "Hierarchical directory analysis",
+          "Parent/subdirectory selection heuristics",
+          "Avoids redundant nested selections"
         ],
-        "title": "Sélection de dossier racine"
+        "title": "Root Folder Selection"
       },
       "stage2": {
-        "description": "Génère des patterns regex intelligents et effectue un filtrage initial de fichiers. S'intègre avec git pour respecter les règles .gitignore et filtrer les fichiers binaires.",
+        "description": "Generates regex patterns and performs initial file filtering. Integrates with git to respect .gitignore rules and filter binary files.",
         "features": [
-          "Création dynamique de patterns regex",
-          "Intégration de git ls-files",
-          "Détection et exclusion des fichiers binaires"
+          "Dynamic regex pattern creation",
+          "Git ls-files integration",
+          "Binary file detection and exclusion"
         ],
-        "title": "Génération de patterns regex et filtrage"
+        "title": "Regex Pattern Generation & Filtering"
       },
       "stage3": {
-        "description": "Analyse approfondie du contenu utilisant LLM pour évaluer la pertinence des fichiers par rapport à votre tâche. Utilise un batching intelligent avec estimation de tokens consciente du contenu pour un traitement optimal.",
+        "description": "LLM-based relevance scoring to assess file relevance to the task. Uses token-aware batching with content-aware estimation.",
         "features": [
-          "Scoring de pertinence basé sur le contenu",
-          "Batching intelligent conscient des tokens",
-          "Gestion de la surcharge de 2000 tokens"
+          "Content-based relevance scoring",
+          "Token-aware batching",
+          "2000-token overhead management"
         ],
-        "title": "Évaluation de pertinence de fichiers IA"
+        "title": "File Relevance Assessment"
       },
       "stage4": {
-        "description": "Découvre des fichiers contextuellement pertinents supplémentaires par analyse de relations. Analyse les imports, configurations et structure de projet pour trouver les fichiers liés.",
+        "description": "Discovers additional contextually relevant files through relationship analysis. Analyzes imports, configurations, and project structure to find related files.",
         "features": [
-          "Analyse des déclarations d'import",
-          "Traversée du graphe de dépendances",
-          "Découverte de fichiers de configuration"
+          "Import statement analysis",
+          "Dependency graph traversal",
+          "Configuration file discovery"
         ],
-        "title": "Découverte de chemins étendus"
+        "title": "Extended Path Discovery"
       },
-      "title": "Le processus de découverte en 5 étapes"
+      "title": "The 4-Stage Discovery Workflow"
     }
   },
   "mergeInstructions": {
@@ -364,7 +282,7 @@
         "title": "Composants frontend"
       },
       "metadata": {
-        "description": "Piste d'audit complète et capacité de débogage.",
+        "description": "Full job history for traceability and debugging.",
         "features": [
           "IDs de jobs sources préservés",
           "Prompt complet stocké pour débogage",
@@ -439,7 +357,7 @@
     "copyButtons": {
       "examples": {
         "serverConfigured": {
-          "button": "Button: \"Parallel agent workflows\"",
+          "button": "Button: \"Parallel Claude Coding Agents\"",
           "hint": "+ Custom instructions...",
           "template": "Template: \"{{IMPLEMENTATION_PLAN}}\""
         },
@@ -450,22 +368,22 @@
         }
       },
       "serverConfigured": {
-        "description": "Boutons de copie dynamiques configurés côté serveur avec placeholders de modèle.",
-        "title": "Boutons configurés côté serveur"
+        "description": "Server-configured copy buttons with template placeholders.",
+        "title": "Server-Configured Buttons"
       },
       "stepExtraction": {
-        "description": "Copiez des étapes individuelles ou des plans complets avec extraction automatique de contenu.",
-        "title": "Extraction intelligente d'étapes"
+        "description": "Copy individual steps or full plans using the structured plan format.",
+        "title": "Structured Step Extraction"
       },
-      "title": "Système de boutons de copie configurable"
+      "title": "Configurable Copy Button System"
     },
     "cta": {
-      "description": "De la génération pilotée par l'IA à la révision humaine à l'exécution contrôlée. C'est ainsi que les équipes d'entreprise adoptent les agents de codage IA en toute confiance — avec gouvernance humain-dans-la-boucle, granularité fichier par fichier et contrôle total à chaque étape.",
+      "description": "Follow how plans are generated, reviewed, merged, and handed off to execution, with job history for each step.",
       "links": {
-        "mergePlans": "En savoir plus sur la synthèse architecturale",
-        "terminal": "Voir l'intégration du terminal"
+        "mergePlans": "Merge pipeline",
+        "terminal": "Terminal sessions"
       },
-      "title": "Découvrez le développement IA sécurisé et contrôlé par l'humain"
+      "title": "Trace the plan pipeline"
     },
     "editing": {
       "monaco": {
@@ -681,10 +599,8 @@
       "title": "Capacités clés"
     },
     "cta": {
-      "description": "Arrêtez de lutter avec des exigences vagues. Capturez des idées avec la voix, raffinez-les avec des prompts IA et créez des spécifications que les équipes de développement peuvent implémenter en toute confiance.",
       "links": {
         "docs": "Text improvement docs",
-        "architecture": "Architecture overview",
         "demo": "Voir la démo",
         "voice": "Voir les fonctionnalités vocales"
       },
@@ -794,84 +710,81 @@
   },
   "voiceTranscription": {
     "accuracy": {
-      "bottomLine": "En résumé : Moins d'erreurs signifie moins de tickets ambigus et moins de retravail. gpt-4o-transcribe aide les équipes à capturer des spécifications précises et prêtes pour l'implémentation du premier coup.",
-      "about": "About the evaluation context",
+      "bottomLine": "Summary: Audio quality and the configured model drive accuracy. Review transcribed text before planning.",
+      "about": "About transcription quality",
       "models": {
-        "aws": "AWS Transcribe — reconnaissance vocale gérée par Amazon Web Services.",
-        "google": "Google Speech-to-Text v2 — reconnaissance vocale cloud par Google.",
-        "gpt": "OpenAI gpt-4o-transcribe — modèle vocal multilingue avancé optimisé pour la précision et la latence.",
-        "whisper": "Whisper large-v2 — référence de modèle large open-source pour comparaison."
+        "aws": "Transcription runs through the configured provider; there is no offline or on-device mode.",
+        "google": "Additional providers can be enabled by self-hosted admins via the allowlist.",
+        "gpt": "Primary transcription model is configured per project from the server allowlist.",
+        "whisper": "No diarization or speaker labels are produced in the current pipeline."
       },
-      "title": "Benchmarks de précision"
+      "title": "Accuracy factors"
     },
     "capabilities": {
       "multiLanguage": {
-        "description": "La transcription OpenAI prend en charge plusieurs langues.",
-        "title": "Support de plusieurs langues"
+        "description": "The configured transcription provider supports multiple languages. Project settings select the default language.",
+        "title": "Multiple Language Support"
       },
       "perProject": {
-        "description": "Définissez les valeurs par défaut du projet. Votre équipe partage des valeurs par défaut sensées.",
-        "title": "Configuration par projet"
+        "description": "Set project defaults for language, temperature, and transcription model. Integrates with text_improvement and task_refinement prompts.",
+        "title": "Per-Project Configuration"
       },
       "terminalDictation": {
-        "description": "Dictez les commandes directement à votre session de terminal.",
-        "title": "Dictée dans le terminal"
+        "description": "Dictate commands into the active PTY session; the transcript is inserted into the terminal input buffer.",
+        "title": "Terminal Dictation (Stage 5)"
       },
-      "title": "Capacités clés"
+      "title": "Key Capabilities"
     },
     "cta": {
-      "description": "De la voix aux spécifications raffinées, de manière transparente. Capturez les exigences mains libres, puis raffinez avec des prompts IA. C'est ainsi que les équipes d'entreprise devraient capturer et clarifier les exigences.",
       "links": {
-        "docs": "Voice transcription docs",
-        "textImprovement": "Explorer l'amélioration de texte",
-        "terminal": "Voir l'intégration du terminal"
+        "docs": "Voice transcription docs"
       },
-      "title": "Commencez à capturer des spécifications avec la voix"
+      "title": "Voice transcription in the pipeline"
     },
     "example": {
       "competitor": {
-        "label": "Modèle concurrent",
-        "text": "Créer une réplique Postgres dans us-east avec 2 CPU, 8GB RAM, et activer la réplication ; définir le niveau wal logique et les expéditeurs max égal dix."
+        "label": "Baseline transcription",
+        "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
       },
       "comparisonTitle": "Token-level comparison",
       "errorSummary": "Errors — Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
       "impact": "Impact: Mishearing \"read-replica\" as \"replica\", dropping region suffix \"-1\", or changing \"wal_level=logical\" can lead to incorrect deployments or data flows.",
       "primaryBadge": "reference-aligned",
       "primaryLabel": "Primary transcription model",
-      "gpt": "Créer un read-replica Postgres dans us-east-1 avec 2 vCPU, 8 GB RAM, et activer la réplication logique ; définir wal_level=logical et max_wal_senders=10.",
-      "reference": "Créer un read-replica Postgres dans us-east-1 avec 2 vCPU, 8GB RAM, et activer la réplication logique ; définir wal_level=logical et max_wal_senders=10.",
-      "title": "Exemple illustratif : capture de spécifications"
+      "gpt": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "reference": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "title": "Transcription comparison"
     },
     "faq": {
       "customize": {
-        "answer": "Oui. Vous pouvez configurer les paramètres de langue et de modèle pour chaque projet. Les paramètres sont stockés dans la configuration du projet et partagés entre les membres de l'équipe.",
-        "question": "Puis-je personnaliser les paramètres de transcription par projet ?"
+        "answer": "Yes. You can configure language and model settings per project. Settings persist across sessions and are reused by transcription jobs.",
+        "question": "Can I customize transcription settings per project?"
       },
       "languages": {
-        "answer": "La transcription OpenAI prend en charge plusieurs langues. Vous pouvez définir une langue par défaut par projet.",
-        "question": "Quelles langues sont prises en charge pour la transcription vocale ?"
+        "answer": "Supported languages depend on the configured transcription provider. You can set a default language per project.",
+        "question": "Which languages are supported for voice transcription?"
       },
       "model": {
-        "answer": "Nous utilisons la transcription OpenAI pour des résultats précis.",
-        "question": "Quel modèle d'IA est utilisé pour la transcription ?"
+        "answer": "The transcription model is configured per project from the provider allowlist.",
+        "question": "Which model is used for transcription?"
       },
       "offline": {
-        "answer": "Non, la transcription vocale nécessite une connexion internet pour envoyer l'audio à l'API OpenAI gpt-4o-transcribe. La transcription se fait en temps réel avec une latence minimale.",
-        "question": "La transcription vocale fonctionne-t-elle hors ligne ?"
+        "answer": "No. Voice transcription requires an internet connection to send audio to the configured provider.",
+        "question": "Does voice transcription work offline?"
       },
       "whereToUse": {
-        "answer": "La transcription vocale fonctionne à deux endroits : (1) Panneau de description de tâche - dictez les exigences d'implémentation, et (2) Modale de terminal - dictez les commandes qui sont ajoutées à votre session shell active.",
-        "question": "Où puis-je utiliser la transcription vocale dans l'application ?"
+        "answer": "Voice transcription works in two places: (1) Task description panel - dictate implementation requirements (Stage 1), and (2) Terminal modal - dictate commands that are appended to your active shell session (Stage 5).",
+        "question": "Where can I use voice transcription in the app?"
       }
     },
     "hero": {
-      "badge": "Transcription vocale pour développeurs",
-      "description": "Énoncez vos exigences et idées naturellement. C'est la première étape de votre workflow de spécification : capturez rapidement les idées avec la voix, puis raffinez-les manuellement avec des prompts pilotés par l'IA. Le moyen le plus rapide de capturer les spécifications initiales avant le raffinement.",
-      "title": "Capture rapide de spécifications avec la voix"
+      "badge": "Stage 1 & Stage 5 Voice Input",
+      "description": "Dictate tasks and commands; audio is sent to the configured transcription provider and inserted into the task description or PTY input. Voice transcription respects per-project settings and feeds text_improvement and task_refinement jobs.",
+      "title": "Voice transcription for specification capture and terminal control"
     },
     "workflow": {
       "stage1": {
-        "description": "Dictate tasks to capture constraints, context, and intent; transcripts become inputs for refinement jobs.",
+        "description": "Dictate tasks to capture constraints, context, and intent; transcribed text becomes input for refinement jobs.",
         "title": "Stage 1: Dictating Tasks"
       },
       "stage5": {
@@ -879,61 +792,61 @@
         "title": "Stage 5: Terminal Voice Control"
       },
       "integration": {
-        "description": "Voice respects per-project language and temperature settings. Transcripts feed into text_improvement for grammar polish and task_refinement for completeness expansion.",
+        "description": "Voice respects per-project language and temperature settings. Transcribed text feeds into text_improvement for grammar polish and task_refinement for completeness expansion.",
         "title": "Integration with Text Enhancement Prompts"
       },
       "title": "Voice Transcription Across Stages"
     },
     "nextSteps": {
-      "description": "La transcription vocale est la première étape de notre workflow de capture de spécifications. Une fois que vous avez capturé vos exigences, utilisez des prompts pilotés par l'IA pour transformer les transcriptions brutes en spécifications claires et prêtes pour l'implémentation.",
-      "link": "En savoir plus sur le Mode de capture de spécifications",
+      "description": "Voice transcription is Stage 1 input in the planning pipeline. After capturing dictated text, text_improvement cleans grammar and task_refinement expands completeness, preparing specs for Stage 2 file discovery.",
+      "link": "Learn about text_improvement and task_refinement",
       "taskRefinement": {
-        "description": "Étendez les descriptions avec exigences implicites, cas limites et considérations techniques.",
-        "title": "Raffinement de tâche"
+        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations. Prepares specs for FileFinderWorkflow.",
+        "title": "Task Refinement (Stage 1 → 2)"
       },
       "textEnhancement": {
-        "description": "Polissez la grammaire, améliorez la clarté et augmentez la lisibilité tout en préservant votre intention originale.",
-        "title": "Amélioration de texte"
+        "description": "Polish grammar, improve clarity, and preserve intent for review.",
+        "title": "Text Enhancement (Stage 1)"
       },
-      "title": "Raffinez vos spécifications capturées"
+      "title": "Refine Dictated Text Before File Discovery"
     },
     "painPoints": {
       "captureIdeas": {
-        "description": "Les parties prenantes pensent plus vite qu'elles ne tapent. Les exigences et le contexte se perdent pendant que les doigts rattrapent. La voix vous permet de capturer la spécification complète avant que les détails critiques ne s'estompent.",
-        "title": "Capturez les idées avant qu'elles ne s'estompent"
+        "description": "Dictation preserves context at discovery time and creates clean text inputs for refinement jobs.",
+        "title": "Capture context at discovery time"
       },
       "contextSwitching": {
-        "description": "Arrêtez ce que vous faites pour ouvrir une application de notes, taper, puis revenir. Chaque changement brise la concentration. La voix reste dans le même espace de travail.",
-        "title": "Le changement de contexte tue l'élan"
+        "description": "Dictation writes directly into the active task or terminal field so the session context stays intact.",
+        "title": "Keep input in the active surface"
       },
       "handsBusy": {
-        "description": "En train de réviser du code ? De déboguer ? De dessiner des diagrammes d'architecture ? Vos mains sont occupées mais vous devez enregistrer la tâche. La transcription vocale vous maintient dans le flux.",
-        "title": "Difficile de décrire lorsque les mains sont occupées"
+        "description": "Voice capture keeps input flowing during code review, debugging, or sketching; dictated text stays in the task or session.",
+        "title": "Hands-free input during active review"
       },
-      "title": "Pourquoi la voix accélère la capture de spécifications"
+      "title": "Why voice capture exists in intake"
     },
     "useCases": {
       "codeReview": {
-        "outcome": "Tâche créée avec contexte complet, zéro frappe, pas de changement de contexte.",
-        "scenario": "La révision de code révèle une opportunité de refactoring. Vos mains sont sur le diff, les yeux sur l'écran. La voix capture la description de la tâche.",
-        "title": "Dicter pendant la révision de code"
+        "outcome": "Transcribed text is ready for text_improvement and task_refinement.",
+        "scenario": "While reviewing a diff, dictate refactor requirements into the task panel; the dictated text is stored in the task description.",
+        "title": "Dictate refactor notes during review (Stage 1)"
       },
       "fasterEntry": {
-        "outcome": "Saisie de tâches 10x plus rapide. Retour QA traité en minutes au lieu d'heures.",
-        "scenario": "Vous avez 10 bugs similaires à enregistrer après les tests QA. Taper chacun prend 2 minutes. La transcription vocale prend 20 secondes.",
-        "title": "Saisie de tâches plus rapide pour le travail répétitif"
+        "outcome": "Dictated notes are queued for task_refinement to normalize into specs.",
+        "scenario": "After QA, dictate multiple bug reports; each dictation becomes task input you can refine.",
+        "title": "Batch capture for repeated reports"
       },
       "handsFree": {
-        "outcome": "Idées enregistrées instantanément. Retour au débogage sans casser le flux.",
-        "scenario": "Vous êtes plongé dans une session de débogage. Vous repérez trois problèmes liés qui nécessitent une correction. Énoncez-les dans l'enregistreur vocal sans quitter votre terminal.",
-        "title": "Capturer des idées mains libres"
+        "outcome": "Captured text is stored as task input and can be refined later.",
+        "scenario": "During a debugging session, dictate related issues without leaving the terminal or editor.",
+        "title": "Capture issues during debug (Stage 1)"
       },
       "terminalCommands": {
-        "outcome": "Commandes saisies correctement, plus rapidement que de chercher dans la documentation.",
-        "scenario": "Besoin d'une commande git complexe avec des flags que vous oubliez toujours. Dictez-la naturellement, laissez la transcription gérer la syntaxe.",
-        "title": "Commandes de terminal sans mémoriser la syntaxe"
+        "outcome": "The command and output are logged to the session history.",
+        "scenario": "While monitoring output, dictate a command into the active PTY input buffer.",
+        "title": "Dictated commands in PTY (Stage 5)"
       },
-      "title": "Cas d'usage réels"
+      "title": "Pipeline examples"
     }
   },
   "integratedTerminal": {
@@ -972,238 +885,233 @@
   },
   "videoAnalysis": {
     "meta": {
-      "title": "Meeting & Recording Analysis - Multimodal AI",
-      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements from Microsoft Teams meetings and screen recordings."
+      "title": "Video Analysis Pipeline - PlanToCode",
+      "description": "Adaptive analysis of screen recordings guided by system prompts and your focus prompt."
     },
     "capabilities": {
       "fileUpload": {
-        "description": "Téléchargez des enregistrements existants, des rapports de bugs clients ou des vidéos de démo. Prend en charge tous les formats vidéo courants.",
+        "description": "Upload existing recordings or capture new ones for analysis.",
         "features": [
-          "Formats MP4, WebM, MOV, AVI",
-          "Interface glisser-déposer",
-          "Téléchargement par lots pour plusieurs vidéos"
+          "MP4, WebM, MOV, AVI support",
+          "Local recording stored before upload",
+          "Long recordings split into chunks"
         ],
-        "title": "Support de téléchargement de fichiers"
+        "title": "Recording upload"
       },
       "fpsControl": {
-        "description": "Ajustez le taux d'extraction de frames pour équilibrer le détail de l'analyse avec le coût. FPS plus élevé pour les interactions détaillées, plus faible pour l'optimisation des coûts.",
+        "description": "FPS is a sampling hint that trades detail for cost; for large files the provider may ignore it.",
         "features": [
-          "1-2 FPS : Aperçu rentable",
-          "3-5 FPS : Analyse équilibrée",
-          "6-10 FPS : Capture détaillée de l'état UI"
+          "0.1 to 20 FPS selection in the UI",
+          "Lower FPS reduces token usage",
+          "Long recordings may be chunked for analysis"
         ],
-        "title": "Contrôle FPS (1-10 FPS)"
+        "title": "Frame rate hint"
       },
       "gemini": {
-        "description": "Alimenté par Google Gemini 3 Pro ou Flash pour une compréhension avancée de la vision. Extrait les erreurs, les patterns et fournit des suggestions.",
+        "description": "Video analysis uses Google Gemini video models configured per project; usage is tracked with job metadata.",
         "features": [
-          "Extraction de messages d'erreur",
-          "Détection d'état UI et transitions",
-          "Reconnaissance de patterns et suggestions"
+          "Allowed models set by server config",
+          "Per-project model defaults",
+          "Usage and cost tracking"
         ],
-        "title": "Analyse de vision Gemini"
+        "title": "Model selection"
       },
       "screenRecording": {
-        "description": "Capturez des bugs, des interactions UI ou des flux de démo directement dans l'application. Pas besoin d'outils d'enregistrement externes ou de changement de contexte.",
+        "description": "Local capture with synchronized audio and video stored alongside the task.",
         "features": [
-          "Capture d'écran en un clic",
-          "Enregistrez l'écran complet ou des fenêtres spécifiques",
-          "Optimisation automatique du format"
+          "Full screen or window capture",
+          "Audio and video sync",
+          "Stored with the task id"
         ],
-        "title": "Enregistrement d'écran intégré"
+        "title": "Screen recording"
       },
-      "title": "Capacités d'analyse puissantes"
+      "title": "Pipeline controls"
     },
     "cta": {
-      "description": "Des réunions Teams aux plans d'implémentation. Arrêtez de perdre des exigences dans des appels d'une heure. Laissez l'IA multimodale extraire automatiquement chaque décision, élément d'action et contexte visuel.",
+      "description": "Connect video artifacts to the rest of the planning pipeline: deep research and file discovery.",
       "links": {
-        "fileDiscovery": "Explorer la découverte de fichiers",
-        "research": "Voir les capacités de recherche IA"
+        "fileDiscovery": "File discovery pipeline",
+        "research": "Deep research stage"
       },
-      "title": "Transformez les notes de réunion en exigences exploitables"
+      "title": "Continue in the pipeline"
     },
     "faq": {
       "formats": {
-        "answer": "PlanToCode prend en charge les formats vidéo MP4, WebM, MOV et AVI. Les vidéos sont traitées localement et les frames sont extraites selon vos paramètres FPS avant d'être envoyées à Gemini Vision pour analyse. La plupart des outils d'enregistrement d'écran produisent des formats compatibles par défaut.",
-        "question": "Quels formats vidéo sont pris en charge ?"
+        "answer": "MP4, WebM, MOV, and AVI are supported. Other formats may work but are not guaranteed.",
+        "question": "Which video formats are supported?"
       },
       "fps": {
-        "answer": "Recommandations FPS selon le cas d'usage : 1-2 FPS pour les rapports de bugs généraux, les enregistrements longs et l'optimisation des coûts - capture les moments clés sans frames excessives. 3-5 FPS pour une analyse équilibrée pour la plupart des cas d'usage - bon pour les walkthroughs UI et les captures de bugs standard. 6-10 FPS pour les interactions UI détaillées, les problèmes d'animation et les changements d'état rapides - coût plus élevé mais plus complet.",
-        "question": "Quels paramètres FPS dois-je utiliser ?"
+        "answer": "FPS is a sampling hint. Higher FPS can increase cost; for very large files the provider may sample at a fixed rate, and long recordings may be chunked.",
+        "question": "What FPS settings should I use?"
       },
       "model": {
-        "answer": "Utilisez Gemini 3 Flash pour les captures de bugs simples, les démos UI rapides et la documentation où la vitesse et le coût importent. Choisissez Gemini 3 Pro pour les problèmes UI complexes, l'analyse détaillée de patterns et lorsque vous avez besoin d'une compréhension contextuelle plus profonde. Pro fournit des insights plus nuancés mais coûte plus cher par frame.",
-        "question": "Quel modèle d'IA dois-je choisir ?"
+        "answer": "Video analysis uses Google Gemini video models. The default model is configured per project from the server allowlist.",
+        "question": "Which model should I choose?"
       },
       "optimization": {
-        "answer": "Stratégies d'optimisation des coûts : Utilisez des paramètres FPS plus faibles (1-2 FPS) pour les vidéos longues ou l'analyse simple. Choisissez Gemini Flash plutôt que Pro lorsque l'analyse détaillée n'est pas critique. Coupez les vidéos aux sections pertinentes uniquement avant le téléchargement. Utilisez l'enregistrement d'écran pour capturer uniquement les interactions nécessaires plutôt que de télécharger de longs enregistrements.",
-        "question": "Comment puis-je optimiser les coûts d'analyse ?"
+        "answer": "Trim to relevant segments, keep the focus prompt specific, and use lower FPS when high visual detail is not required.",
+        "question": "How can I optimize analysis costs?"
       }
     },
     "hero": {
-      "badge": "Analyse de réunions et enregistrements multimodale",
-      "description": "Enregistrez des réunions Microsoft Teams ou capturez des présentations d'écran. L'IA multimodale analyse les transcriptions audio et le contenu visuel pour extraire les exigences et décisions exploitables.",
-      "title": "Capture de réunions et présentations pour l'extraction d'exigences"
+      "badge": "Stage 1 input: Screen recording analysis",
+      "description": "Record or upload a screen recording, add a focus prompt, and let the video analysis system prompt guide a Gemini model to extract what matters. Results are stored as a job response you can attach to the task.",
+      "title": "Multimodal video analysis for requirements capture"
     },
     "howItWorks": {
       "steps": [
         {
-          "title": "Enregistrer ou télécharger une réunion",
-          "description": "Capturez des réunions Microsoft Teams, enregistrez des présentations d'écran lors de la présentation de tâches depuis Jira ou des outils d'entreprise similaires, ou téléchargez des enregistrements existants. Prend en charge les formats MP4, WebM, MOV et AVI pour une compatibilité maximale avec les outils de réunion d'entreprise."
+          "title": "Capture or upload video",
+          "description": "Record your screen (with optional audio) or pick an existing file. Recordings stay local until analysis starts."
         },
         {
-          "title": "Gemini Vision analyse les frames",
-          "description": "La vidéo est traitée à votre FPS choisi (1-10), et les frames sont analysées par Gemini 3 Pro ou Flash. L'IA identifie les erreurs, les états UI, les interactions utilisateur et les patterns visuels."
+          "title": "Set a focus prompt",
+          "description": "Your task description and optional focus prompt are wrapped in <description> and <video_attention_prompt> tags."
         },
         {
-          "title": "Extraire les détails exploitables",
-          "description": "L'IA extrait les messages d'erreur, les transitions d'état UI, les patterns d'interaction et génère des suggestions d'amélioration avec horodatages."
+          "title": "Run adaptive analysis",
+          "description": "The default video analysis system prompt tells the model to focus on what you show and say and to quote visible text when relevant."
         },
         {
-          "title": "Attachement automatique à la description de tâche",
-          "description": "L'analyse complète est formatée et automatiquement attachée à votre description de tâche, prête pour la planification d'implémentation ou la correction de bugs."
+          "title": "Attach to the task pipeline",
+          "description": "The analysis summary is stored in the job record and can be appended to the task description."
         }
       ],
-      "title": "Comment fonctionne l'analyse de réunions"
+      "title": "How the pipeline runs"
     },
     "insights": {
       "actionItems": {
-        "description": "Éléments d'action concrets avec propriétaires et dépendances implicites identifiées",
-        "title": "Éléments d'action"
+        "description": "Action items and suggested fixes based on what was shown and said.",
+        "title": "Action items"
       },
       "decisions": {
-        "description": "Décisions clés extraites avec contexte et attribuées à des intervenants spécifiques",
-        "title": "Décisions résumées"
+        "description": "Decisions or open questions captured from the recording.",
+        "title": "Decisions"
       },
-      "description": "Après avoir traité votre enregistrement de réunion, le système analyse à la fois les transcriptions audio et le contenu visuel (écrans partagés, documents, moments clés) pour extraire des insights exploitables. Les insights extraits - décisions résumées, éléments d'action et points de discussion clés - sont présentés dans une interface intuitive où les chefs d'équipe peuvent réviser, sélectionner et les incorporer dans des plans d'implémentation exploitables.",
+      "description": "Analysis results are stored in the job response and can be applied to the task description for refinement and planning.",
       "discussionPoints": {
-        "description": "Contexte important, préoccupations soulevées et approches alternatives discutées",
-        "title": "Points de discussion"
+        "description": "UI issues, design tradeoffs, or bugs worth following up.",
+        "title": "Discussion points"
       },
-      "title": "Extraction d'insights exploitables"
+      "title": "Structured outputs"
     },
     "models": {
       "flash": {
-        "description": "Analyse rapide et rentable pour les captures de bugs simples et la documentation. Idéal pour une utilisation à volume élevé.",
+        "description": "Lower cost and latency for straightforward UI flows and documentation.",
         "features": [
-          "Coût inférieur par frame",
-          "Temps de traitement plus rapide",
-          "Bon pour l'analyse UI simple"
+          "Fast turnaround",
+          "Lower cost for straightforward recordings",
+          "Good for simple flows"
         ],
-        "title": "Gemini 3 Flash"
+        "title": "Fast analysis model"
       },
       "pro": {
-        "description": "Analyse complète avec insights plus profonds. Meilleur pour les problèmes UI complexes, la reconnaissance de patterns détaillée et le débogage avancé.",
+        "description": "Deeper context for complex UI issues and nuanced workflows.",
         "features": [
-          "Reconnaissance de patterns avancée",
-          "Compréhension contextuelle plus profonde",
-          "Meilleur pour les flux UI complexes"
+          "Richer reasoning",
+          "Better for complex flows",
+          "Higher cost for complex recordings"
         ],
-        "title": "Gemini 3 Pro"
+        "title": "Deep analysis model"
       },
-      "title": "Choisissez votre modèle d'analyse"
+      "title": "Model tradeoffs"
     },
     "multimodal": {
       "audioTranscript": {
-        "description": "Transcription audio complète des discussions de réunion. Extrayez les exigences clés, décisions et éléments d'action à partir de l'audio de la réunion.",
+        "description": "The model analyzes the audio track directly; the app does not generate a separate transcript.",
         "features": [
-          "Transcription audio complète",
-          "Extraction des points de décision",
-          "Identification des éléments d'action"
+          "Narration guides what to focus on",
+          "Spoken intent and errors inform the summary",
+          "No standalone transcript file produced"
         ],
-        "title": "Analyse de transcription audio"
+        "title": "Audio and narration context"
       },
-      "title": "Analyse multimodale des réunions",
+      "title": "Audio and visual extraction",
       "visualContent": {
-        "description": "L'IA analyse les écrans partagés, les documents présentés et les moments visuels clés. Capture les maquettes UI, les diagrammes d'architecture et autre contexte visuel critique pour les exigences.",
+        "description": "The model analyzes what is visible in the video and can quote on-screen text when it is clear.",
         "features": [
-          "Extraction de contenu d'écran partagé",
-          "Analyse de documents et diagrammes",
-          "Identification des moments clés"
+          "UI flows and state changes from what is visible",
+          "Best-effort quotes of logs, errors, and labels",
+          "No local frame export or OCR pipeline"
         ],
-        "title": "Analyse de contenu visuel"
+        "title": "Visual context from the recording"
       }
     },
     "painPoints": {
       "incompleteNotes": {
-        "description": "Les preneurs de notes ne peuvent pas tout capturer — qui a dit quoi, ce qui a été montré à l'écran, les changements subtils d'exigences. Le contexte important se perd entre les réunions et l'implémentation.",
-        "title": "Les notes de réunion manuelles sont incomplètes"
+        "description": "Screenshare changes and error dialogs are easy to miss in notes; recordings preserve that context.",
+        "title": "Manual notes omit frame references"
       },
       "requirementsLost": {
-        "description": "Les décisions et exigences critiques discutées en réunion sont oubliées ou mal interprétées. La prise de notes manuelle manque le contexte, l'intention de l'intervenant et les références visuelles.",
-        "title": "Les exigences se perdent dans les réunions"
+        "description": "Text notes miss on-screen state and timing; recordings keep the visual context intact.",
+        "title": "UI state lives in recordings"
       },
       "reviewTime": {
-        "description": "Les équipes passent des heures à réviser manuellement les enregistrements de réunions pour extraire les décisions clés. Les exigences enfouies dans des appels d'une heure sont difficiles à trouver et à documenter.",
-        "title": "Le temps de révision gaspille les ressources de l'équipe"
+        "description": "Long recordings are hard to review; a focused summary highlights what matters.",
+        "title": "Raw recordings are expensive to review"
       },
-      "title": "Pourquoi l'analyse de réunions compte pour les équipes d'entreprise"
+      "title": "Why multimodal ingestion exists"
     },
     "useCases": {
       "bugCapture": {
-        "description": "Enregistrez le bug tel qu'il se produit. L'IA extrait les messages d'erreur, identifie les états UI avant et après le problème, et capture les patterns d'interaction menant au bug.",
-        "title": "Capture de bug avec contexte complet"
+        "description": "Summarize reproduction steps and visible errors from a recording.",
+        "title": "Bug timeline artifacts"
       },
       "onboarding": {
-        "description": "Enregistrez des walkthroughs de fonctionnalités et générez une documentation automatique. L'IA crée des guides étape par étape avec captures d'écran et descriptions à partir de vos enregistrements.",
-        "title": "Documentation d'intégration"
+        "description": "Produce walkthrough notes from a screen recording.",
+        "title": "Walkthrough summaries"
       },
-      "title": "Cas d'usage concrets",
+      "title": "Example outputs",
       "uiDemo": {
-        "description": "Analysez des démos clients, des enregistrements de session utilisateur ou des walkthroughs de conception. Extrayez des patterns UI, des insights de comportement utilisateur et des opportunités d'amélioration.",
-        "title": "Analyse de démo UI"
+        "description": "Capture UI states and flows shown in the recording.",
+        "title": "UI state capture"
       }
     }
   },
   "copyButtons": {
-    "meta": {
-      "title": "Boutons de copie - Transformez les invites en flux de travail",
-      "description": "Transformez les invites en flux de travail réutilisables avec des boutons de copie configurables."
-    },
     "concept": {
       "dragDrop": {
-        "description": "Gestion visuelle des workflows avec intégration @dnd-kit. Réorganisez les boutons pour correspondre à votre processus.",
-        "title": "Réorganisation par glisser-déposer"
+        "description": "Drag-and-drop ordering for button sets. Organize buttons by execution stage or priority.",
+        "title": "Drag-and-drop ordering"
       },
       "serverConfigured": {
-        "description": "Boutons dynamiques avec substitution de placeholders. Surcharges spécifiques au projet avec traitement unifié des prompts.",
-        "title": "Modèles configurés côté serveur"
+        "description": "Template prompts with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{STEP_CONTENT}}. Server defaults with project-level overrides.",
+        "title": "Template Placeholders"
       },
       "terminal": {
-        "description": "Exécution en un clic dans des sessions de terminal persistantes. Envoi segmenté pour les contenus volumineux.",
-        "title": "Intégration du terminal"
+        "description": "Send templated content to persistent terminal sessions (Stage 5). Large content is chunked when writing to the PTY.",
+        "title": "Terminal integration (Stage 5)"
       }
     },
     "configuration": {
       "projectSettings": {
-        "description": "Boutons de copie stockés dans les paramètres des tâches avec surcharges au niveau du projet et valeurs par défaut côté serveur.",
+        "description": "Copy buttons are stored in per-project task settings in key_value_store and merged with server defaults.",
         "features": [
-          "Persistance en base de données SQLite",
-          "Configurations par défaut gérées côté serveur",
-          "Portée par répertoire de projet",
-          "Mises à jour de configuration en temps réel"
+          "Key-value storage in SQLite",
+          "Server-managed default configurations",
+          "Project directory scoping",
+          "Settings sync across desktop and mobile"
         ],
-        "title": "Paramètres spécifiques au projet"
+        "title": "Project-Specific Settings"
       },
-      "title": "Configuration et gestion",
+      "title": "Configuration & Management",
       "visualUI": {
-        "description": "Éditeur intuitif avec réorganisation par glisser-déposer, gestion de saisie avec anti-rebond et prévisualisation en temps réel.",
+        "description": "Configuration editor with drag-drop reordering and debounced inputs for labels and templates.",
         "features": [
-          "Poignées de glissement pour réorganisation visuelle",
-          "Traitement de saisie avec anti-rebond de 300ms",
-          "Mode lecture seule pour les boutons système",
-          "Support du workflow de personnalisation"
+          "Drag handles for visual reordering",
+          "300ms debounced input processing",
+          "Read-only mode for system buttons",
+          "Template ordering support"
         ],
-        "title": "Interface de configuration visuelle"
+        "title": "Visual Configuration UI"
       }
     },
     "cta": {
-      "description": "N'importe quel prompt devient un bouton. Modèles intelligents avec placeholders. Workflows complexes, lancement instantané. Vos meilleures astuces, toujours prêtes.",
       "links": {
-        "planMode": "Voir les plans d'implémentation",
-        "terminal": "Explorer l'intégration du terminal"
+        "planMode": "See Stage 3 planning & Stage 4 merge",
+        "terminal": "Explore Stage 5 terminal integration"
       },
-      "title": "Transformez vos prompts en workflows"
+      "title": "Template-driven execution handoff"
     },
     "exampleConfig": {
       "title": "Example button configuration:",
@@ -1220,18 +1128,18 @@
     },
     "exampleValues": {
       "investigationButton": "\"Investigate Results\"",
-      "investigationPurpose": "Thorough validation workflows",
-      "parallelButton": "\"Parallel agent template\"",
-      "parallelPurpose": "Complex multi-agent setup instructions",
-      "projectContextTemplate": "{{PROJECT_CONTEXT}}",
-      "projectDynamic": "Project-aware instructions",
+      "investigationPurpose": "Validation and review workflows",
+      "parallelButton": "\"Parallel Claude Coding Agents\"",
+      "parallelPurpose": "Parallel agent instruction templates",
+      "projectContextTemplate": "{{TASK_DESCRIPTION}}",
+      "projectDynamic": "Task-aware instructions",
       "stepResult": "Focused step execution",
       "stepTemplate": "{{STEP_CONTENT}}"
     },
     "hero": {
-      "badge": "Système d'automatisation de workflows configurable",
-      "description": "Enregistrez vos meilleurs prompts sous forme de boutons. Substituez le contenu du plan et exécutez-les dans le terminal.",
-      "title": "Workflows. En un clic."
+      "badge": "Template handoff",
+      "description": "Copy buttons insert {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and {{STEP_CONTENT}} into predefined templates.",
+      "title": "Template prompts with plan substitution"
     },
     "technical": {
       "architecture": {
@@ -1243,97 +1151,69 @@
           "storage": "## 1. Configuration storage",
           "ui": "## 3. UI integration"
         },
-        "execution": "Clic sur le bouton déclenche le traitement du modèle → Substitution de placeholders avec le contenu du plan → Validation de la session du terminal → Transmission segmentée du contenu",
-        "processing": "Correspondance de placeholders basée sur regex → Substitution dynamique de contenu → Extraction de données contextuelle → Gestion des erreurs pour les valeurs non définies",
-        "storage": "CopyButtonConfig[] dans les paramètres de tâche → Stockage en base de données spécifique au projet → Configurations par défaut côté serveur → Synchronisation en temps réel",
-        "ui": "Cartes de plan d'implémentation → Modales de visualisation de contenu → En-têtes d'interface du terminal → Éditeur de configuration par glisser-déposer"
+        "execution": "Button click triggers template processing -> clipboard copy or PTY write (chunked)",
+        "processing": "Regex placeholder matching -> substitution with plan, step, and task text -> missing values become empty strings",
+        "storage": "CopyButtonConfig[] stored in per-project task settings (key_value_store) plus server-side defaults",
+        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
       },
-      "title": "Implémentation technique"
+      "title": "Technical Implementation"
     },
     "templateSystem": {
       "placeholders": {
-        "description": "Remplacement dynamique de contenu utilisant la syntaxe {{PLACEHOLDER}}. Traitement contextuel avec les plans d'implémentation.",
+        "description": "Template prompts with {{PLACEHOLDER}} substitution. Supported placeholders include plan content, step content, and task description.",
         "examples": [
-          "{{IMPLEMENTATION_PLAN}} - Contenu complet du plan",
-          "{{STEP_CONTENT}} - Contenu de l'étape sélectionnée",
-          "{{PROJECT_CONTEXT}} - Contexte spécifique au projet",
-          "Placeholders personnalisés pour l'extensibilité"
+          "{{IMPLEMENTATION_PLAN}} - Full plan content",
+          "{{STEP_CONTENT}} - Selected step content",
+          "{{TASK_DESCRIPTION}} - Task requirements"
         ],
-        "title": "Substitution de placeholders"
+        "title": "Placeholder Substitution"
       },
       "processor": {
-        "description": "Moteur de modèles avancé avec sections conditionnelles, formatage XML et nettoyage intelligent.",
+        "description": "Template processor injects XML plans, task descriptions, and governance constraints into predefined prompts.",
         "features": [
-          "Correspondance de placeholders basée sur regex",
-          "Gestion des caractères d'échappement",
-          "Support du contenu multiligne",
-          "Gestion élégante des valeurs non définies"
+          "Regex-based placeholder matching",
+          "XML plan formatting and escaping",
+          "Multi-line governance instruction support",
+          "Graceful undefined handling"
         ],
-        "title": "Traitement unifié des prompts"
+        "title": "Unified Prompt Processing"
       },
-      "title": "Système de modèles intelligent"
+      "title": "Template system"
     },
     "terminalIntegration": {
       "oneClick": {
-        "description": "Les boutons de copie s'intègrent directement aux sessions de terminal pour une exécution instantanée. Gestion intelligente du contenu pour éviter le débordement du terminal.",
+        "description": "Copy buttons integrate with Stage 5 terminal sessions and insert plan context into the active PTY with logging.",
         "features": [
-          "Collage automatique dans le terminal actif",
-          "Envoi segmenté pour les contenus volumineux",
-          "Surveillance de l'état de santé de la session",
-          "Repli sur le presse-papiers par sécurité"
+          "Automatic paste to active terminal session",
+          "Chunked sending for large XML plans",
+          "Session health monitoring",
+          "Clipboard fallback for safety"
         ],
-        "title": "Automatisation en un clic"
+        "title": "Stage 5 execution handoff"
       },
-      "title": "Exécution transparente dans le terminal"
+      "title": "Stage 5 Terminal Execution"
     },
     "useCases": {
       "customTeam": {
-        "description": "Processus spécifiques à l'équipe avec contexte de projet et normes de codage.",
-        "title": "Workflows d'équipe personnalisés"
+        "description": "Team-specific governance constraints with {{PROJECT_CONTEXT}} and coding standards.",
+        "title": "Team governance templates"
       },
       "investigation": {
-        "description": "Processus de révision standardisés pour les résultats des plans d'implémentation.",
-        "title": "Investigation et révision"
+        "description": "Standardized review prompts for Stage 3 implementation plan results.",
+        "title": "Investigation and review"
       },
       "parallel": {
-        "description": "Lancez plusieurs agents de codage Claude simultanément avec des instructions préconfigurées.",
-        "title": "Workflows d'agents parallèles"
+        "description": "Example button: \"Parallel agent template\" inserts the plan XML and governance instructions.",
+        "title": "Parallel agent templates"
       },
       "stepByStep": {
-        "description": "Extrayez et exécutez les étapes d'implémentation individuelles avec leur contexte.",
-        "title": "Exécution étape par étape"
+        "description": "Extract individual implementation steps with {{STEP_CONTENT}}. Execute step-by-step with full plan context.",
+        "title": "Step-by-step execution"
       },
-      "title": "Cas d'usage concrets"
-    },
-    "comparison": {
-      "plantocode": {
-        "items": [
-          "Automatisation en un clic",
-          "Substitution dynamique de contenu",
-          "Système intelligent de placeholders",
-          "Traitement contextuel",
-          "Workflows persistants et réutilisables"
-        ],
-        "title": "Boutons de copie PlanToCode"
-      },
-      "title": "Ce qui fait la différence",
-      "traditional": {
-        "items": [
-          "Workflows manuels de copier-coller",
-          "Modèles statiques et immuables",
-          "Aucune conscience du contexte",
-          "Modifications manuelles sujettes aux erreurs",
-          "Workflows perdus au fil du temps"
-        ],
-        "title": "Copier-coller traditionnel"
-      }
+      "title": "Example configurations"
     }
   },
   "deepResearch": {
-    "meta": {
-      "title": "Deep Research - AI-Powered Research Intelligence",
-      "description": "Recherche alimentée par l'IA avec des requêtes sophistiquées et des tâches de recherche parallèles. Recherche Web en temps réel, vérification des sources et intégration contextuelle."
-    },
     "advanced": {
       "features": [
         {
@@ -1397,7 +1277,6 @@
       "title": "Capacités de recherche IA"
     },
     "cta": {
-      "description": "Des requêtes intelligentes aux insights synthétisés, intégrés à votre workflow de développement. C'est ainsi que la recherche devrait fonctionner - complète, intelligente, exploitable.",
       "links": {
         "planMode": "Voir la planification d'implémentation",
         "textImprovement": "Explorer l'amélioration de texte"
@@ -1554,7 +1433,7 @@
       }
     },
     "videoAnalysis": {
-      "description": "L'IA multimodale analyse le contenu audio et visuel pour extraire les exigences exploitables",
+      "description": "Multimodal ingestion of recordings with prompt-guided analysis summaries.",
       "slug": "/features/video-analysis",
       "title": "Analyse de réunions et enregistrements"
     },

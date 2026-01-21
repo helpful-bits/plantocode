@@ -48,12 +48,16 @@
         "q": "Wie funktionieren Merge-Instructions?"
       },
       "q12": {
-        "a": "Token-Schätzungen, Prompt-Vorschauen, Terminal-Health-Monitoring und persistente Sessions reduzieren Nacharbeit. Sie entscheiden, wann Commands ausgeführt werden und welchem Modell Sie vertrauen, während die App Orchestrierungs-Details handhabt.",
+        "a": "Prompt previews, model allowlists, token estimates, and terminal health checks surface issues before any command runs. Every job stores its inputs and outputs for review.",
         "q": "Warum nutzen Senior-Engineers dies?"
       },
       "q13": {
         "a": "Task beschreiben (Tippen oder Sprache) → File-Finder-Workflow ausführen → einen oder mehrere Implementierungspläne generieren → Pläne im Monaco-Editor bearbeiten oder mergen → das integrierte Terminal starten, um den Plan auszuführen und Logs zu überwachen. Sessions und Logs bleiben beim nächsten Öffnen der App verfügbar.",
         "q": "Wie sieht ein typischer Workflow aus?"
+      },
+      "q14": {
+        "a": "Ja. Das Repo ist source-available unter der Business Source License, und die Default-System-Prompts sind im Repo enthalten und in der App bearbeitbar.",
+        "q": "Sind Source Code und System-Prompts verfügbar?"
       },
       "q2": {
         "a": "Laden Sie Microsoft Teams Meeting-Aufzeichnungen oder Bildschirmaufnahmen in PlanToCode hoch. Fortgeschrittene multimodale Modelle analysieren sowohl Audio-Transkripte (inklusive Sprecher-Identifikation) als auch visuelle Inhalte (geteilte Bildschirme, Dokumente), um Spezifikationsanforderungen zu extrahieren. Sie prüfen die extrahierten Insights - Entscheidungen, Action Items, Diskussionspunkte - und integrieren sie in Implementierungspläne.",
@@ -80,7 +84,7 @@
         "q": "Was passiert mit meinem Quellcode?"
       },
       "q8": {
-        "a": "Das Terminal bootet dieselbe Shell, die Sie auf der Host-Maschine verwenden, und erkennt automatisch claude, cursor, codex und gemini Binaries. Sie können weiterhin jedes andere Tool manuell ausführen - die PTY-Session ist eine reguläre Shell mit verfügbarem Sprachdiktat, wenn Sie freihändige Eingabe benötigen.",
+        "a": "Each tab is a PTY session managed by the Rust backend. Output is streamed to the UI and stored in SQLite so you can review or resume later.",
         "q": "Welche CLI-Tools funktionieren im Terminal?"
       },
       "q9": {
@@ -149,47 +153,47 @@
   "governance": {
     "cards": {
       "filePlans": {
-        "description": "Implementierungspläne zerlegen Änderungen auf Datei-für-Datei-Basis mit exakten Repository-Pfaden und gewährleisten vollständige Transparenz darüber, was modifiziert wird.",
+        "description": "Implementierungspläne zerlegen Änderungen nach Datei und Operation, sodass der Umfang klar ist.",
         "title": "Datei-für-Datei-Pläne mit exakten Pfaden"
       },
       "handoff": {
-        "description": "Nach der Genehmigung werden Pläne sicher an Ihren gewählten Coding-Agent übermittelt oder Entwicklern zugewiesen, um Regressionen zu verhindern und Übereinstimmung mit Anforderungen sicherzustellen.",
-        "title": "Sichere Übergabe an Agents"
+        "description": "Genehmigte Pläne werden an Terminals oder Agent-CLIs mit vollem Kontext und Audit-Logs übergeben.",
+        "title": "Execution Handoff"
       },
       "workflow": {
-        "description": "Teamleiter und Stakeholder können vorgeschlagene Änderungen prüfen, Plan-Details direkt bearbeiten, Modifikationen anfordern und Pläne vor der Ausführung genehmigen.",
-        "title": "Review-, Edit- & Approve-Workflow"
+        "description": "Pläne können am Desktop oder mobil überarbeitet und genehmigt werden. Jede Revision bleibt erhalten.",
+        "title": "Review, Edit, Approve"
       }
     },
-    "subtitle": "Behalten Sie die volle Kontrolle über KI-generierte Implementierungspläne. Prüfen, bearbeiten, genehmigen und auditieren Sie jeden Schritt vor der Ausführung.",
-    "title": "Human-in-the-loop Governance"
+    "subtitle": "Plans are artifacts you can review, edit, and approve before any agent runs. Logs and history keep changes traceable.",
+    "title": "Plan-Review vor der Ausführung"
   },
   "hero": {
     "cta": {
-      "viewDemo": "Demo ansehen",
-      "howItWorks": "Laufzeitübersicht"
+      "viewDemo": "PlanToCode herunterladen",
+      "howItWorks": "Plan-Format ansehen"
     }
   },
   "integrations": {
     "cards": {
       "allIntegrations": {
-        "description": "Erkunden Sie alle unterstützten KI-Coding-Tools und Integrations-Patterns",
-        "link": "Integrationen anzeigen →",
-        "title": "Alle Integrationen"
+        "description": "Betreiben Sie den Server selbst, um Provider-Routing zu kontrollieren und eigene API-Keys zu nutzen.",
+        "link": "Server-Setup-Leitfaden ->",
+        "title": "Self-Hosting und BYOK"
       },
       "claudeCode": {
-        "description": "Claude Code in persistenten Terminals ausführen mit vollständiger Session-Aufzeichnung und Health-Monitoring",
-        "link": "Setup-Anleitung →",
-        "title": "Claude Code Integration"
+        "description": "Default-Prompts liegen im Repo und in der Server-Datenbank, damit Sie sie prüfen und bearbeiten können.",
+        "link": "Prompt-Typen Docs ->",
+        "title": "System-Prompts zum Nachlesen"
       },
       "cursor": {
-        "description": "Geben Sie Cursor Composer Architektur-Kontext und Datei-Discovery-Funktionen",
-        "link": "Setup-Anleitung →",
-        "title": "Cursor Enhancement"
+        "description": "Das gesamte System ist auf GitHub unter der Business Source License verfügbar, damit Sie die Architektur auditieren können.",
+        "link": "GitHub Repo ansehen ->",
+        "title": "Source available (BSL 1.1)"
       }
     },
-    "subtitle": "Erweitern Sie Claude Code, Cursor und Codex CLI mit Architektur-Planung",
-    "title": "Funktioniert mit Ihren bevorzugten KI-Tools"
+    "subtitle": "System-Prompts, Source Code und Self-Hosting sind sichtbar und dokumentiert.",
+    "title": "Transparenz und Kontrolle"
   },
   "meetings": {
     "cards": {
@@ -262,16 +266,16 @@
     "title": "Komplexe Entwicklungs-Herausforderungen lösen"
   },
   "gallery": {
-    "heading": "Systemarchitektur und Implementierungsübersicht",
-    "intro": "Jedes Panel zeigt die Zusammenarbeit zwischen Desktop-App und Backend: Tauri-Shell, Rust-Job-Prozessoren, SQLite-Persistenz und Modell-Orchestrierung für Planung und Ausführung.",
+    "heading": "Plan-Review-Workflow in der App",
+    "intro": "See how file discovery, multi-model planning, merge instructions, and execution handoff keep agent work transparent and traceable.",
     "video": {
-      "title": "System-Walkthrough-Video",
-      "description": "Ein kurzer, durchgehender Walkthrough der Planungspipeline: Aufgabeneingabe, Dateierkennungs-Jobs, Plangenerierung, Merge-Anweisungen und Ausführungsübergabe.",
+      "title": "Plan-First-Workflow Überblick",
+      "description": "Ein kurzer Walkthrough von der Aufgabenaufnahme bis zur Planprüfung, Merge-Instructions und Execution Handoff.",
       "bullets": [
-        "Tauri-Shell und React-UI präsentieren den Workflow",
-        "Rust-Hintergrundjobs streamen Fortschrittsaktualisierungen",
-        "SQLite speichert Sitzungen, Jobs und Protokolle",
-        "LLM-Pläne werden generiert und strukturiert zusammengeführt"
+        "Mehrere Planentwürfe mit demselben Dateikontext ausführen",
+        "Beste Ideen mit klaren Instructions mergen",
+        "Pläne am Desktop oder mobil prüfen und bearbeiten",
+        "An Claude Code oder ein lokales Terminal mit Logs übergeben"
       ]
     },
     "cards": {
@@ -286,7 +290,7 @@
         ]
       },
       "fileFinderWorkflow": {
-        "title": "Persistierter Dateikontext",
+        "title": "Plan history and logs",
         "description": "Jede Workflow-Phase schreibt Ergebnisse in background_jobs, sodass Dateisätze sitzungsübergreifend wiederverwendet und später überprüft werden können.",
         "features": [
           "Workflow-Phasen als Job-Einträge gespeichert",
@@ -296,13 +300,13 @@
         ]
       },
       "videoAnalysis": {
-        "title": "Video-Analyse-Erfassung",
-        "description": "Bildschirmaufnahmen werden an den Endpunkt `/api/llm/video/analyze` mit Prompts und FPS-Einstellungen gesendet, um strukturierte Zusammenfassungen zu generieren.",
+        "title": "Optional screen recording analysis",
+        "description": "Screen recordings can be sent to the /api/llm/video/analyze endpoint with a focus prompt and FPS hint to generate analysis summaries.",
         "features": [
-          "Multipart-Upload enthält duration_ms und framerate",
-          "Modellformat ist provider/model (google/* erforderlich)",
-          "Nutzung und Kosten werden in Server-Abrechnungsprotokollen erfasst",
-          "Zusammenfassung als Job-Metadaten-Artefakte gespeichert"
+          "Multipart upload includes durationMs and framerate",
+          "Model format is provider/model (google/* required)",
+          "Usage and cost recorded per job",
+          "Summary stored in background_jobs response and can be applied to the task description"
         ]
       },
       "implementationPlans": {
@@ -362,28 +366,31 @@
           "Pro-Job Token- und Kosten-Metadaten",
           "Anbieterabhängige Nutzungseinträge",
           "Abrechnungsendpunkte zeigen Nutzungszusammenfassungen",
-          "Prüfpfad für Modellausgaben"
+          "Usage history for model spend"
         ]
       }
     },
     "viewFullSize": "Vollbild anzeigen",
     "cta": {
-      "title": "Entdecken Sie die Architektur im Kontext",
-      "description": "Ordnen Sie jedes UI-Panel den zugrunde liegenden Prozessoren zu und tauchen Sie dann tiefer in die Architekturdokumentation und Build-Anleitungen ein.",
-      "primary": "Architekturübersicht",
-      "secondary": "Laufzeitübersicht"
+      "title": "Bereit, Pläne vor dem Agentenlauf zu prüfen?",
+      "description": "Laden Sie die Desktop-App herunter, um Multi-Model-Planung, Plan-Merge und Execution Handoff auszuprobieren.",
+      "primary": "PlanToCode herunterladen",
+      "secondary": "Plan-Format ansehen"
     }
   },
   "technicalLanding": {
-    "title": "PlanToCode: Technischer Systemüberblick",
-    "description": "Ein technischer Überblick über den Aufbau von PlanToCode, damit Sie die Architektur studieren, die Muster wiederverwenden oder eine ähnliche Planungspipeline entwickeln können. Die Desktop-App verwendet externe LLM-Anbieter, die mit Ihren API-Schlüsseln konfiguriert werden.",
+    "title": "PlanToCode: Implementierungspläne prüfen und zusammenführen",
+    "description": "PlanToCode verwandelt Aufgaben in strukturierte Implementierungspläne, die Sie vor jedem Agentenlauf lesen, vergleichen und bearbeiten können. Erstellen Sie mehrere Entwürfe, mergen Sie den besten Ansatz und geben Sie an Claude Code oder Ihr Terminal mit vollem Kontext und Logs weiter.",
+    "note": "Gehostet nutzt verwalteten Modellzugang; BYOK ist nur beim Self-Hosting verfügbar.",
+    "noteLink": "Self-Hosting Leitfaden",
     "walkthroughTitle": "Schritt für Schritt: Wie die Komponenten zusammenarbeiten",
     "walkthroughDescription": "Folgen Sie einer durchgehenden Anleitung, wie die Desktop-App, das Rust/Tauri-Backend, die SQLite-Datenbank und die LLM-Orchestrierungspipeline Aufgaben koordinieren und Ergebnisse an die Benutzeroberfläche zurückstreamen.",
     "tags": [
-      "Tauri",
-      "Rust",
-      "SQLite",
-      "LLM-Orchestrierung"
+      "Planprüfung",
+      "Multi-Model-Planung",
+      "Plan-Merge",
+      "Mobiler Plan-Reader",
+      "Source-available (BSL)"
     ]
   }
 }

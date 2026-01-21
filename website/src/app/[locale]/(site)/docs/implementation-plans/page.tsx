@@ -143,11 +143,11 @@ export default async function ImplementationPlansDocPage({ params }: { params: P
         ) : null}
         <DocsMediaBlock
           className="mb-12"
-          title={t['implementationPlans.visuals.planEditor.title']}
-          description={t['implementationPlans.visuals.planEditor.description']}
-          imageSrc={t['implementationPlans.visuals.planEditor.imageSrc']}
-          imageAlt={t['implementationPlans.visuals.planEditor.imageAlt']}
-          caption={t['implementationPlans.visuals.planEditor.caption']}
+          title={t['implementationPlans.visuals.structure.title']}
+          description={t['implementationPlans.visuals.structure.description']}
+          imageSrc={t['implementationPlans.visuals.structure.imageSrc']}
+          imageAlt={t['implementationPlans.visuals.structure.imageAlt']}
+          caption={t['implementationPlans.visuals.structure.caption']}
         />
         <GlassCard className="p-6 mb-10">
           <h2 className="text-xl font-semibold mb-3">{t['implementationPlans.plansOrigin.heading']}</h2>

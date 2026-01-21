@@ -87,7 +87,7 @@ export function PlatformDownloadSection({
           <WindowsStoreButton size={location === 'hero_section' || location === 'cta_section' || location === 'demo_screenshots' || location === 'pricing' ? 'medium' : 'small'} />
         </div>
         <div className="flex flex-col items-center gap-1 mt-2">
-          <span className="text-xs text-muted-foreground">Requires your own API keys • Local-first sessions</span>
+          <span className="text-xs text-muted-foreground">Hosted uses managed providers • BYOK only for self-host</span>
           <span className="text-xs text-muted-foreground">Local session history • Token usage visibility</span>
         </div>
       </div>

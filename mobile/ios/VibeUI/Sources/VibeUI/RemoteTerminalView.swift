@@ -529,8 +529,13 @@ public struct RemoteTerminalView: View {
                         }
                     }
 
-                    terminalController.onResize = { cols, rows in
+                    terminalController.onResize = { cols, rows, resizeId in
                         Task {
+                            defer {
+                                Task { @MainActor in
+                                    terminalController.finishResizeTransition(resizeId)
+                                }
+                            }
                             do {
                                 try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
 
@@ -686,7 +691,7 @@ public struct RemoteTerminalView: View {
 // MARK: - SwiftTerm Controller
 
 class SwiftTermController: NSObject, ObservableObject {
-    private static let clearScreenBytes: [UInt8] = [0x1b, 0x5b, 0x32, 0x4a, 0x1b, 0x5b, 0x48] // ESC[2J ESC[H
+    private static let clearScreenBytes: [UInt8] = [0x1b, 0x5b, 0x33, 0x4a, 0x1b, 0x5b, 0x32, 0x4a, 0x1b, 0x5b, 0x48] // ESC[3J ESC[2J ESC[H
     weak var terminalView: TerminalView? {
         didSet {
             guard let terminalView = terminalView else { return }
@@ -707,7 +712,7 @@ class SwiftTermController: NSObject, ObservableObject {
         }
     }
     var onSend: (([UInt8]) -> Void)?
-    var onResize: ((Int, Int) -> Void)?
+    var onResize: ((Int, Int, Int) -> Void)?
     var onResizeCompleted: ((Bool) -> Void)?
     var isFirstResize = true
     private var pendingData: [Data] = []
@@ -746,6 +751,10 @@ class SwiftTermController: NSObject, ObservableObject {
     private static let maxResizeBufferChunks = 30
     private static let resizeDebounceIdle: TimeInterval = 0.25  // 250ms when no active output
     private static let resizeDebounceActive: TimeInterval = 0.08  // 80ms when actively streaming
+    private var resizeSequence: Int = 0
+    private var activeResizeSequence: Int = 0
+    private var resizeCompletionWorkItem: DispatchWorkItem?
+    private var pendingResizeRequiresSnapshot: Bool = false
 
     // Scroll-following: only auto-scroll when user is near bottom
     private var followOutput: Bool = true
@@ -767,6 +776,11 @@ class SwiftTermController: NSObject, ObservableObject {
         isFeedingPaused = false
         isResizeInProgress = false
         didBufferDuringResize = false
+        resizeSequence = 0
+        activeResizeSequence = 0
+        resizeCompletionWorkItem?.cancel()
+        resizeCompletionWorkItem = nil
+        pendingResizeRequiresSnapshot = false
         lastSentCols = 0
         lastSentRows = 0
         terminalView = nil
@@ -1017,12 +1031,14 @@ extension SwiftTermController: TerminalViewDelegate {
             isFirstResize = false
             lastSentCols = newCols
             lastSentRows = newRows
-            onResize?(newCols, newRows)
+            onResize?(newCols, newRows, 0)
         } else {
+            let didChangeCols = newCols != lastSentCols
             // Start resize transition: buffer incoming data to avoid scroll corruption
             // from cursor positioning commands interpreted with wrong dimensions
             isResizeInProgress = true
             didBufferDuringResize = false
+            pendingResizeRequiresSnapshot = pendingResizeRequiresSnapshot || didChangeCols
 
             // Adaptive debounce: shorter when actively streaming (burstStartedAt != nil),
             // longer when idle to coalesce rapid keyboard show/hide cycles
@@ -1032,30 +1048,46 @@ extension SwiftTermController: TerminalViewDelegate {
             resizeDebouncer?.cancel()
             let capturedCols = newCols
             let capturedRows = newRows
+            resizeSequence += 1
+            let resizeId = resizeSequence
+            activeResizeSequence = resizeId
             resizeDebouncer = DispatchWorkItem { [weak self] in
                 guard let self = self else { return }
 
                 // Double-check dimensions still different before sending
                 guard capturedCols != self.lastSentCols || capturedRows != self.lastSentRows else {
-                    self.completeResizeTransition()
+                    self.finishResizeTransition(resizeId)
                     return
                 }
 
                 self.lastSentCols = capturedCols
                 self.lastSentRows = capturedRows
-                self.onResize?(capturedCols, capturedRows)
+                self.onResize?(capturedCols, capturedRows, resizeId)
 
-                // Complete resize transition after a brief delay to allow PTY to process
-                // the new size before we resume feeding data
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
-                    self?.completeResizeTransition()
-                }
+                // Fallback completion in case resize RPC stalls.
+                self.scheduleResizeCompletion(resizeId: resizeId, delay: 0.6)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: resizeDebouncer!)
         }
     }
 
     /// Complete resize transition: flush buffered data and reset scroll position
+    func finishResizeTransition(_ resizeId: Int) {
+        guard isResizeInProgress, resizeId == activeResizeSequence else { return }
+        resizeCompletionWorkItem?.cancel()
+        resizeCompletionWorkItem = nil
+        completeResizeTransition()
+    }
+
+    private func scheduleResizeCompletion(resizeId: Int, delay: TimeInterval) {
+        resizeCompletionWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.finishResizeTransition(resizeId)
+        }
+        resizeCompletionWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
+    }
+
     private func completeResizeTransition() {
         guard isResizeInProgress else { return }
         isResizeInProgress = false
@@ -1065,20 +1097,38 @@ extension SwiftTermController: TerminalViewDelegate {
             return
         }
 
-        resizeBuffer.removeAll()
+        let shouldSnapshot = pendingResizeRequiresSnapshot
+        pendingResizeRequiresSnapshot = false
 
-        // Clear local buffers and screen; rehydrate via snapshot after resize.
-        pendingData.removeAll(keepingCapacity: false)
-        batchBuffer.removeAll(keepingCapacity: false)
-        backgroundBuffer.removeAll(keepingCapacity: false)
-        needsFlush = false
+        if shouldSnapshot {
+            resizeBuffer.removeAll()
 
-        UIView.performWithoutAnimation { [self] in
-            let buffer = ArraySlice(Self.clearScreenBytes)
-            terminalView.feed(byteArray: buffer)
+            // Clear local buffers and screen; rehydrate via snapshot after resize.
+            pendingData.removeAll(keepingCapacity: false)
+            batchBuffer.removeAll(keepingCapacity: false)
+            backgroundBuffer.removeAll(keepingCapacity: false)
+            needsFlush = false
+
+            UIView.performWithoutAnimation { [self] in
+                let buffer = ArraySlice(Self.clearScreenBytes)
+                terminalView.feed(byteArray: buffer)
+            }
+
+            onResizeCompleted?(true)
+        } else if !resizeBuffer.isEmpty {
+            var consolidated = Data()
+            for chunk in resizeBuffer {
+                consolidated.append(chunk)
+            }
+            resizeBuffer.removeAll()
+            if !consolidated.isEmpty {
+                UIView.performWithoutAnimation { [self] in
+                    feedBytesImmediate(data: consolidated)
+                }
+            }
+        } else {
+            resizeBuffer.removeAll()
         }
-
-        onResizeCompleted?(true)
 
         // Let SwiftTerm handle scrolling naturally after resize
 

@@ -149,10 +149,10 @@ export default async function ServerApiDocPage({ params }: { params: Promise<{ l
       </section>
 
       <section className="space-y-6 mb-12">
-        <h2 className="text-2xl font-bold">{t['serverApi.storage.heading']}</h2>
+        <h2 className="text-2xl font-bold">{t['serverApi.serverStorage.heading']}</h2>
         <GlassCard className="p-6">
           <p className="text-muted-foreground leading-relaxed mb-4">
-            {t['serverApi.storage.description']}
+            {t['serverApi.serverStorage.description']}
           </p>
           <div className="mt-4 p-4 bg-muted/50 rounded-lg">
             <h4 className="text-sm font-semibold mb-2 text-foreground">Server-side storage:</h4>

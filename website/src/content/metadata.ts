@@ -252,7 +252,7 @@ export const COMMON_KEYWORDS = {
     'human-in-the-loop review',
     'plan governance',
     'approval workflow',
-    'audit trails',
+    'plan history',
   ],
   models: [
     'multi-model routing',

@@ -13,158 +13,76 @@
         "architecture": "Architecture overview"
       },
       "button": "PlanToCode 다운로드"
-    },
-    "description": "복잡한 코드 변경을 계획, 검토 및 실행하기 위한 포괄적인 도구. 파일 탐색에서 터미널 실행까지, 안전한 AI 지원 개발에 필요한 모든 것.",
-    "learnMore": "자세히 알아보기",
-    "title": "AI 개발 계획 기능"
-  },
-  "meetings": {
-    "meta": {
-      "title": "Meeting & Recording Ingestion - System Walkthrough",
-      "description": "How PlanToCode captures meetings and recordings, extracts requirements, and feeds them into planning workflows."
-    },
-    "badge": "Specification capture",
-    "title": "Meeting & Recording Ingestion",
-    "subtitle": "Multimodal pipeline that turns recorded discussions into structured requirements for planning. Analysis runs through the configured transcription and vision providers.",
-    "ariaLabel": "Meeting and recording ingestion features",
-    "cards": {
-      "multimodal": {
-        "title": "Multimodal extraction pipeline",
-        "description": "Audio and key frames are processed to produce transcripts, UI context, and requirement notes for task refinement.",
-        "link": "See video analysis"
-      },
-      "insights": {
-        "title": "Curated insights for planning",
-        "description": "Decisions, constraints, and action items are surfaced as selectable notes that feed the plan.",
-        "link": "See text improvement"
-      }
-    },
-    "benefits": {
-      "title": "What the system outputs",
-      "collaboration": {
-        "title": "Decision log",
-        "description": "Captures decisions and action items with timestamps for traceable planning."
-      },
-      "transcription": {
-        "title": "Speaker-aware transcript",
-        "description": "Transcribes audio with speaker segmentation so requirements keep attribution."
-      },
-      "visual": {
-        "title": "Visual context frames",
-        "description": "Summarizes screens and diagrams into notes used during task refinement."
-      }
-    },
-    "howItWorks": {
-      "title": "Pipeline steps",
-      "step1": {
-        "title": "Ingest recording",
-        "description": "Upload a Teams or Zoom recording or a screen capture; the system normalizes formats and indexes the media."
-      },
-      "step2": {
-        "title": "Multimodal analysis",
-        "description": "Audio transcript and key frames are analyzed to extract requirements, constraints, and UI state."
-      },
-      "step3": {
-        "title": "Attach to task",
-        "description": "Outputs are attached to the task as structured notes before planning and file discovery."
-      }
-    },
-    "relatedFeatures": {
-      "title": "Related components",
-      "videoAnalysis": {
-        "title": "Video Analysis",
-        "description": "Analyze screen recordings and capture UI context for planning."
-      },
-      "voiceTranscription": {
-        "title": "Voice Transcription",
-        "description": "Capture spoken requirements directly into the task input."
-      },
-      "textImprovement": {
-        "title": "Text Improvement",
-        "description": "Normalize raw notes into structured task descriptions."
-      },
-      "learnMore": "Learn more"
-    },
-    "cta": {
-      "title": "Continue the pipeline",
-      "description": "Follow the video analysis docs and the architecture overview to see how these notes flow into planning and execution.",
-      "links": {
-        "docs": "Video analysis docs",
-        "architecture": "Architecture overview"
-      }
     }
   },
   "fileDiscovery": {
     "benefits": {
       "costEffective": {
-        "description": "지능형 배치로 토큰 최적화 워크플로. 모든 단계에 비용 추적 기능 내장.",
-        "title": "비용 효율적인 운영"
+        "description": "Token-aware batching with cost tracking at each stage.",
+        "title": "Token budgeting"
       },
       "multiStage": {
-        "description": "정규식 필터링, 관련성 평가 및 경로 발견을 통해 가장 관련성 높은 파일을 식별하는 5단계 AI 워크플로.",
-        "title": "다단계 인텔리전스"
+        "description": "Four-stage workflow with regex filtering, relevance assessment, and relationship analysis to identify relevant files.",
+        "title": "Multi-stage pipeline"
       },
       "realTimeProgress": {
-        "description": "단계별 업데이트를 통한 실시간 진행 상황 추적. AI가 발견하는 내용을 정확히 확인하세요.",
-        "title": "실시간 진행 상황"
+        "description": "Stage-by-stage progress updates emitted by background jobs.",
+        "title": "Progress visibility"
       }
     },
     "capabilities": {
       "git": {
-        "description": "`git ls-files --cached --others --exclude-standard`를 실행하여 .gitignore 규칙을 준수합니다. 명령이 실패하면 git2 라이브러리로 폴백합니다.",
+        "description": "Executes `git ls-files --cached --others --exclude-standard` to respect .gitignore rules. Falls back to git2 library if command fails.",
         "features": [
-          ".gitignore를 준수하는 Git ls-files",
-          "바이너리 파일 감지 및 필터링",
-          "확장자 기반 제외 (97가지 유형)",
-          "바이너리 감지를 위한 콘텐츠 분석"
+          "Git ls-files with .gitignore respect",
+          "Binary file detection and filtering",
+          "Extension-based exclusion list for common binary types",
+          "Content analysis for binary detection"
         ],
-        "title": "Git 저장소 통합"
+        "title": "Git Repository Integration"
       },
       "planIntegration": {
-        "description": "발견된 파일이 구현 계획 시스템에 직접 입력됩니다. 컨텍스트가 보존되고 계획 생성에 최적화되어 포괄적이고 정확한 결과를 보장합니다.",
+        "description": "Discovered files feed directly into the implementation planning system. Context is preserved and reused across sessions.",
         "features": [
-          "원활한 계획 생성 통합",
-          "세션 간 컨텍스트 보존",
-          "다중 모델 계획 생성 지원",
-          "아키텍처 합성 준비"
+          "Plan generation handoff",
+          "Context preservation across sessions",
+          "Multiple plan drafts per task",
+          "Structured plan inputs"
         ],
-        "title": "구현 계획 통합"
+        "title": "Implementation Plan Integration"
       },
-      "title": "고급 탐색 기능",
+      "title": "Advanced Discovery Capabilities",
       "tokenManagement": {
-        "description": "콘텐츠 인식 토큰 추정이 배치를 최적화합니다. JSON/XML(5자/토큰), 코드(3자/토큰), 텍스트(4자/토큰)에 대해 다른 비율을 사용하여 효율적인 처리를 보장합니다.",
+        "description": "Content-aware token estimation drives batching. Ratios for JSON/XML (5 chars/token), code (3 chars/token), and text (4 chars/token) guide chunking.",
         "features": [
-          "파일 유형별 동적 청크 크기 조정",
-          "2000토큰 프롬프트 오버헤드 예약",
-          "배치 처리 (기본값 100개 파일)",
-          "30초 파일 캐싱 TTL"
+          "Dynamic chunk sizing per file type",
+          "2000-token prompt overhead reservation",
+          "Token-budgeted batching (size varies by content and limits)",
+          "Chunking based on estimated tokens, not fixed file counts"
         ],
-        "title": "스마트 토큰 관리"
+        "title": "Smart Token Management"
       },
       "workflow": {
-        "description": "WorkflowOrchestrator가 지연 초기화, 의존성 스케줄링 및 고아 작업 복구를 통해 라이프사이클을 관리합니다. 각 단계는 독립적인 백그라운드 작업으로 실행됩니다.",
+        "description": "WorkflowOrchestrator manages lifecycle with lazy initialization, dependency scheduling, and orphaned job recovery. Each stage runs as an independent background job.",
         "features": [
-          "단계 의존성 관리",
-          "Tauri를 통한 이벤트 기반 진행 상황 업데이트",
-          "WorkflowIntermediateData 영속성",
-          "지수 백오프 재시도 로직"
+          "Stage dependency management",
+          "Event-driven progress updates via Tauri",
+          "WorkflowIntermediateData persistence",
+          "Exponential backoff retry logic"
         ],
-        "title": "분산 워크플로 오케스트레이션"
+        "title": "Distributed Workflow Orchestration"
       }
     },
     "cta": {
-      "description": "AI가 코드베이스를 지능적으로 탐색하도록 하세요. 저장소 분석에서 구현 준비 완료 컨텍스트까지, 이것이 파일 탐색이 작동해야 하는 방식입니다 - 스마트하고, 효율적이며, 비용 효율적입니다.",
       "links": {
-        "docs": "기술 문서 읽기",
-        "buildYourOwn": "Build your own pipeline",
-        "planMode": "구현 계획 보기"
+        "docs": "Read file discovery docs"
       },
-      "title": "지능형 파일 탐색을 경험하세요"
+      "title": "Explore the internals"
     },
     "hero": {
-      "badge": "AI 기반 저장소 탐색",
-      "description": "PlanToCode는 실행하기 전에 영향을 받는 파일을 매핑합니다. 신뢰할 수 있는 집중된 컨텍스트를 얻을 수 있습니다.",
-      "title": "코드베이스에서 중요한 것을 자동으로 찾기"
+      "badge": "File discovery workflow",
+      "description": "PlanToCode stages file discovery as a Rust workflow that narrows, scores, and persists context before any plan generation.",
+      "title": "File Discovery Pipeline"
     },
     "pipeline": {
       "title": "How the File Discovery Pipeline Works",
@@ -186,60 +104,60 @@
     },
     "performance": {
       "accuracy": {
-        "description": "AI 기반 관련성 평가 및 관계 분석을 통한 다단계 개선.",
-        "title": "정확도",
-        "value": "높음"
+        "description": "Multi-stage refinement with relevance assessment and relationship analysis captured per job.",
+        "title": "Relevance Quality",
+        "value": "Traceable"
       },
       "cost": {
-        "description": "워크플로 실행당. 스마트 토큰 최적화로 비용을 최소화하면서 탐색 품질을 극대화합니다.",
-        "title": "일반적인 비용",
-        "value": "$0.10-0.15"
+        "description": "Token estimation and batching keep prompts small before LLM scoring.",
+        "title": "Token Budgeting",
+        "value": "Token-aware"
       },
       "speed": {
-        "description": "저장소 크기와 복잡성에 따라 다릅니다. 단계별 업데이트를 통한 실시간 진행 상황 추적.",
-        "title": "처리 시간",
-        "value": "가변적"
+        "description": "Stage-by-stage jobs stream updates without blocking the UI.",
+        "title": "Job Scheduling",
+        "value": "Staged"
       },
-      "title": "비용 효율적이고 빠름"
+      "title": "Operational Characteristics"
     },
     "workflow": {
       "stage1": {
-        "description": "AI가 디렉터리 구조(최대 2단계 깊이)를 분석하여 관련 프로젝트 영역을 식별합니다. 계층적 인텔리전스를 사용하여 상위 폴더 대 하위 디렉터리를 선택합니다.",
+        "description": "Analyzes the directory structure (up to 2 levels deep) to identify candidate project areas and select parent folders vs. subdirectories.",
         "features": [
-          "계층적 디렉터리 분석",
-          "스마트 상위/하위 디렉터리 선택",
-          "중복된 중첩 선택 방지"
+          "Hierarchical directory analysis",
+          "Parent/subdirectory selection heuristics",
+          "Avoids redundant nested selections"
         ],
-        "title": "루트 폴더 선택"
+        "title": "Root Folder Selection"
       },
       "stage2": {
-        "description": "지능형 정규식 패턴을 생성하고 초기 파일 필터링을 수행합니다. git과 통합하여 .gitignore 규칙을 준수하고 바이너리 파일을 필터링합니다.",
+        "description": "Generates regex patterns and performs initial file filtering. Integrates with git to respect .gitignore rules and filter binary files.",
         "features": [
-          "동적 정규식 패턴 생성",
-          "Git ls-files 통합",
-          "바이너리 파일 감지 및 제외"
+          "Dynamic regex pattern creation",
+          "Git ls-files integration",
+          "Binary file detection and exclusion"
         ],
-        "title": "정규식 패턴 생성 및 필터링"
+        "title": "Regex Pattern Generation & Filtering"
       },
       "stage3": {
-        "description": "LLM을 사용한 심층 콘텐츠 분석으로 작업에 대한 파일 관련성을 평가합니다. 최적 처리를 위해 콘텐츠 인식 토큰 추정을 사용한 지능형 배치를 사용합니다.",
+        "description": "LLM-based relevance scoring to assess file relevance to the task. Uses token-aware batching with content-aware estimation.",
         "features": [
-          "콘텐츠 기반 관련성 점수",
-          "지능형 토큰 인식 배치",
-          "2000토큰 오버헤드 관리"
+          "Content-based relevance scoring",
+          "Token-aware batching",
+          "2000-token overhead management"
         ],
-        "title": "AI 파일 관련성 평가"
+        "title": "File Relevance Assessment"
       },
       "stage4": {
-        "description": "관계 분석을 통해 컨텍스트적으로 관련된 추가 파일을 발견합니다. 임포트, 구성 및 프로젝트 구조를 분석하여 관련 파일을 찾습니다.",
+        "description": "Discovers additional contextually relevant files through relationship analysis. Analyzes imports, configurations, and project structure to find related files.",
         "features": [
-          "임포트 문 분석",
-          "의존성 그래프 순회",
-          "구성 파일 발견"
+          "Import statement analysis",
+          "Dependency graph traversal",
+          "Configuration file discovery"
         ],
-        "title": "확장 경로 발견"
+        "title": "Extended Path Discovery"
       },
-      "title": "5단계 탐색 프로세스"
+      "title": "The 4-Stage Discovery Workflow"
     }
   },
   "mergeInstructions": {
@@ -364,7 +282,7 @@
         "title": "프론트엔드 컴포넌트"
       },
       "metadata": {
-        "description": "완전한 감사 추적 및 디버깅 기능.",
+        "description": "Full job history for traceability and debugging.",
         "features": [
           "소스 작업 ID 보존",
           "디버깅을 위한 전체 프롬프트 저장",
@@ -439,7 +357,7 @@
     "copyButtons": {
       "examples": {
         "serverConfigured": {
-          "button": "Button: \"Parallel agent workflows\"",
+          "button": "Button: \"Parallel Claude Coding Agents\"",
           "hint": "+ Custom instructions...",
           "template": "Template: \"{{IMPLEMENTATION_PLAN}}\""
         },
@@ -450,22 +368,22 @@
         }
       },
       "serverConfigured": {
-        "description": "템플릿 플레이스홀더로 서버 측 구성된 동적 복사 버튼.",
-        "title": "서버 구성 버튼"
+        "description": "Server-configured copy buttons with template placeholders.",
+        "title": "Server-Configured Buttons"
       },
       "stepExtraction": {
-        "description": "자동 콘텐츠 추출로 개별 단계 또는 전체 계획 복사.",
-        "title": "스마트 단계 추출"
+        "description": "Copy individual steps or full plans using the structured plan format.",
+        "title": "Structured Step Extraction"
       },
-      "title": "구성 가능한 복사 버튼 시스템"
+      "title": "Configurable Copy Button System"
     },
     "cta": {
-      "description": "AI 기반 생성에서 인간 검토, 제어된 실행까지. 이것이 기업 팀이 AI 코딩 에이전트를 자신 있게 채택하는 방법입니다 - 인간 참여 거버넌스, 파일별 세분성 및 모든 단계에서의 완전한 제어.",
+      "description": "Follow how plans are generated, reviewed, merged, and handed off to execution, with job history for each step.",
       "links": {
-        "mergePlans": "아키텍처 합성에 대해 알아보기",
-        "terminal": "터미널 통합 보기"
+        "mergePlans": "Merge pipeline",
+        "terminal": "Terminal sessions"
       },
-      "title": "안전하고 인간이 제어하는 AI 개발을 경험하세요"
+      "title": "Trace the plan pipeline"
     },
     "editing": {
       "monaco": {
@@ -681,10 +599,8 @@
       "title": "주요 기능"
     },
     "cta": {
-      "description": "모호한 요구사항으로 고민하지 마세요. 음성으로 아이디어를 캡처하고, AI 프롬프트로 개선하며, 개발 팀이 자신 있게 구현할 수 있는 명세를 만드세요.",
       "links": {
         "docs": "Text improvement docs",
-        "architecture": "Architecture overview",
         "demo": "데모 보기",
         "voice": "음성 기능 보기"
       },
@@ -794,84 +710,81 @@
   },
   "voiceTranscription": {
     "accuracy": {
-      "bottomLine": "결론: 적은 오류는 모호한 티켓과 재작업을 줄입니다. gpt-4o-transcribe는 팀이 첫 번째 시도에서 정확하고 구현 준비가 된 명세를 캡처하는 데 도움이 됩니다.",
-      "about": "About the evaluation context",
+      "bottomLine": "Summary: Audio quality and the configured model drive accuracy. Review transcribed text before planning.",
+      "about": "About transcription quality",
       "models": {
-        "aws": "AWS Transcribe — Amazon Web Services의 관리형 음성 인식.",
-        "google": "Google Speech-to-Text v2 — Google의 클라우드 음성 인식.",
-        "gpt": "OpenAI gpt-4o-transcribe — 정확성과 지연 시간에 최적화된 고급 다국어 음성 모델.",
-        "whisper": "Whisper large-v2 — 비교를 위한 오픈 소스 대규모 모델 기준."
+        "aws": "Transcription runs through the configured provider; there is no offline or on-device mode.",
+        "google": "Additional providers can be enabled by self-hosted admins via the allowlist.",
+        "gpt": "Primary transcription model is configured per project from the server allowlist.",
+        "whisper": "No diarization or speaker labels are produced in the current pipeline."
       },
-      "title": "정확도 벤치마크"
+      "title": "Accuracy factors"
     },
     "capabilities": {
       "multiLanguage": {
-        "description": "OpenAI 전사는 여러 언어를 지원합니다.",
-        "title": "다국어 지원"
+        "description": "The configured transcription provider supports multiple languages. Project settings select the default language.",
+        "title": "Multiple Language Support"
       },
       "perProject": {
-        "description": "프로젝트 기본값을 설정합니다. 팀이 합리적인 기본값을 공유합니다.",
-        "title": "프로젝트별 구성"
+        "description": "Set project defaults for language, temperature, and transcription model. Integrates with text_improvement and task_refinement prompts.",
+        "title": "Per-Project Configuration"
       },
       "terminalDictation": {
-        "description": "터미널 세션에 명령을 직접 받아쓰기합니다.",
-        "title": "터미널 받아쓰기"
+        "description": "Dictate commands into the active PTY session; the transcript is inserted into the terminal input buffer.",
+        "title": "Terminal Dictation (Stage 5)"
       },
-      "title": "주요 기능"
+      "title": "Key Capabilities"
     },
     "cta": {
-      "description": "음성에서 개선된 명세까지 원활하게. 요구사항을 핸즈프리로 캡처한 다음 AI 프롬프트로 개선합니다. 이것이 기업 팀이 요구사항을 캡처하고 명확히 해야 하는 방식입니다.",
       "links": {
-        "docs": "Voice transcription docs",
-        "textImprovement": "텍스트 개선 살펴보기",
-        "terminal": "터미널 통합 보기"
+        "docs": "Voice transcription docs"
       },
-      "title": "음성으로 명세 캡처 시작하기"
+      "title": "Voice transcription in the pipeline"
     },
     "example": {
       "competitor": {
-        "label": "경쟁사 모델",
-        "text": "2개의 CPU, 8GB RAM으로 us-east에 Postgres 복제본을 생성하고 복제를 활성화합니다. wal 수준을 논리적으로 설정하고 최대 발신자를 10으로 설정합니다."
+        "label": "Baseline transcription",
+        "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
       },
       "comparisonTitle": "Token-level comparison",
       "errorSummary": "Errors — Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
       "impact": "Impact: Mishearing \"read-replica\" as \"replica\", dropping region suffix \"-1\", or changing \"wal_level=logical\" can lead to incorrect deployments or data flows.",
       "primaryBadge": "reference-aligned",
       "primaryLabel": "Primary transcription model",
-      "gpt": "2 vCPU, 8GB RAM으로 us-east-1에 Postgres 읽기 복제본을 생성하고 논리적 복제를 활성화합니다. wal_level=logical 및 max_wal_senders=10을 설정합니다.",
-      "reference": "2 vCPU, 8GB RAM으로 us-east-1에 Postgres 읽기 복제본을 생성하고 논리적 복제를 활성화합니다. wal_level=logical 및 max_wal_senders=10을 설정합니다.",
-      "title": "예시: 명세 캡처"
+      "gpt": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8 GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "reference": "Create a Postgres read-replica in us-east-1 with 2 vCPU, 8GB RAM, and enable logical replication; set wal_level=logical and max_wal_senders=10.",
+      "title": "Transcription comparison"
     },
     "faq": {
       "customize": {
-        "answer": "예. 각 프로젝트에 대해 언어 및 모델 설정을 구성할 수 있습니다. 설정은 프로젝트 구성에 저장되고 팀 구성원 간에 공유됩니다.",
-        "question": "프로젝트별로 전사 설정을 커스터마이징할 수 있나요?"
+        "answer": "Yes. You can configure language and model settings per project. Settings persist across sessions and are reused by transcription jobs.",
+        "question": "Can I customize transcription settings per project?"
       },
       "languages": {
-        "answer": "OpenAI 전사는 여러 언어를 지원합니다. 프로젝트별로 기본 언어를 설정할 수 있습니다.",
-        "question": "음성 전사에 어떤 언어가 지원되나요?"
+        "answer": "Supported languages depend on the configured transcription provider. You can set a default language per project.",
+        "question": "Which languages are supported for voice transcription?"
       },
       "model": {
-        "answer": "정확한 결과를 위해 OpenAI 전사를 사용합니다.",
-        "question": "전사에 어떤 AI 모델이 사용되나요?"
+        "answer": "The transcription model is configured per project from the provider allowlist.",
+        "question": "Which model is used for transcription?"
       },
       "offline": {
-        "answer": "아니요, 음성 전사는 OpenAI gpt-4o-transcribe API에 오디오를 전송하기 위해 인터넷 연결이 필요합니다. 전사는 최소한의 지연 시간으로 실시간으로 발생합니다.",
-        "question": "음성 전사가 오프라인에서 작동하나요?"
+        "answer": "No. Voice transcription requires an internet connection to send audio to the configured provider.",
+        "question": "Does voice transcription work offline?"
       },
       "whereToUse": {
-        "answer": "음성 전사는 두 곳에서 작동합니다: (1) 작업 설명 패널 - 구현 요구사항을 받아쓰기하고, (2) 터미널 모달 - 활성 셸 세션에 추가되는 명령을 받아쓰기합니다.",
-        "question": "앱에서 음성 전사를 어디에서 사용할 수 있나요?"
+        "answer": "Voice transcription works in two places: (1) Task description panel - dictate implementation requirements (Stage 1), and (2) Terminal modal - dictate commands that are appended to your active shell session (Stage 5).",
+        "question": "Where can I use voice transcription in the app?"
       }
     },
     "hero": {
-      "badge": "개발자를 위한 음성 전사",
-      "description": "요구사항과 아이디어를 자연스럽게 말하세요. 이것이 명세 워크플로의 첫 번째 단계입니다: 음성으로 아이디어를 빠르게 캡처한 다음 AI 기반 프롬프트로 수동으로 개선합니다. 개선 전에 초기 명세를 캡처하는 가장 빠른 방법.",
-      "title": "음성으로 신속한 명세 캡처"
+      "badge": "Stage 1 & Stage 5 Voice Input",
+      "description": "Dictate tasks and commands; audio is sent to the configured transcription provider and inserted into the task description or PTY input. Voice transcription respects per-project settings and feeds text_improvement and task_refinement jobs.",
+      "title": "Voice transcription for specification capture and terminal control"
     },
     "workflow": {
       "stage1": {
-        "description": "Dictate tasks to capture constraints, context, and intent; transcripts become inputs for refinement jobs.",
+        "description": "Dictate tasks to capture constraints, context, and intent; transcribed text becomes input for refinement jobs.",
         "title": "Stage 1: Dictating Tasks"
       },
       "stage5": {
@@ -879,61 +792,61 @@
         "title": "Stage 5: Terminal Voice Control"
       },
       "integration": {
-        "description": "Voice respects per-project language and temperature settings. Transcripts feed into text_improvement for grammar polish and task_refinement for completeness expansion.",
+        "description": "Voice respects per-project language and temperature settings. Transcribed text feeds into text_improvement for grammar polish and task_refinement for completeness expansion.",
         "title": "Integration with Text Enhancement Prompts"
       },
       "title": "Voice Transcription Across Stages"
     },
     "nextSteps": {
-      "description": "음성 전사는 명세 캡처 워크플로의 첫 번째 단계입니다. 요구사항을 캡처한 후 AI 기반 프롬프트를 사용하여 초안 전사를 명확하고 구현 준비가 된 명세로 변환하세요.",
-      "link": "명세 캡처 모드에 대해 알아보기",
+      "description": "Voice transcription is Stage 1 input in the planning pipeline. After capturing dictated text, text_improvement cleans grammar and task_refinement expands completeness, preparing specs for Stage 2 file discovery.",
+      "link": "Learn about text_improvement and task_refinement",
       "taskRefinement": {
-        "description": "암시된 요구사항, 엣지 케이스 및 기술적 고려사항으로 설명을 확장합니다.",
-        "title": "작업 개선"
+        "description": "Expand descriptions with implied requirements, edge cases, and technical considerations. Prepares specs for FileFinderWorkflow.",
+        "title": "Task Refinement (Stage 1 → 2)"
       },
       "textEnhancement": {
-        "description": "원래 의도를 보존하면서 문법을 다듬고 명확성을 개선하며 가독성을 향상시킵니다.",
-        "title": "텍스트 개선"
+        "description": "Polish grammar, improve clarity, and preserve intent for review.",
+        "title": "Text Enhancement (Stage 1)"
       },
-      "title": "캡처한 명세 개선"
+      "title": "Refine Dictated Text Before File Discovery"
     },
     "painPoints": {
       "captureIdeas": {
-        "description": "이해관계자는 타이핑하는 것보다 빠르게 생각합니다. 손가락이 따라잡는 동안 요구사항과 컨텍스트가 손실됩니다. 음성을 사용하면 중요한 세부사항이 사라지기 전에 완전한 명세를 캡처할 수 있습니다.",
-        "title": "사라지기 전에 아이디어 캡처"
+        "description": "Dictation preserves context at discovery time and creates clean text inputs for refinement jobs.",
+        "title": "Capture context at discovery time"
       },
       "contextSwitching": {
-        "description": "하던 일을 멈추고 메모 앱을 열고, 타이핑하고, 돌아갑니다. 모든 전환이 집중력을 깨뜨립니다. 음성은 동일한 작업 공간에 머무릅니다.",
-        "title": "컨텍스트 전환이 모멘텀을 죽임"
+        "description": "Dictation writes directly into the active task or terminal field so the session context stays intact.",
+        "title": "Keep input in the active surface"
       },
       "handsBusy": {
-        "description": "코드를 검토하나요? 디버깅하나요? 아키텍처 다이어그램을 그리나요? 손이 바쁘지만 작업을 기록해야 합니다. 음성 전사가 플로우를 유지합니다.",
-        "title": "손이 바쁠 때 설명하기 어려움"
+        "description": "Voice capture keeps input flowing during code review, debugging, or sketching; dictated text stays in the task or session.",
+        "title": "Hands-free input during active review"
       },
-      "title": "음성이 명세 캡처를 가속화하는 이유"
+      "title": "Why voice capture exists in intake"
     },
     "useCases": {
       "codeReview": {
-        "outcome": "완전한 컨텍스트로 작업이 생성되었습니다. 타이핑 없음, 컨텍스트 전환 없음.",
-        "scenario": "코드 검토에서 리팩터링 기회가 드러납니다. 손은 diff에, 눈은 화면에 있습니다. 음성이 작업 설명을 캡처합니다.",
-        "title": "코드를 검토하면서 받아쓰기"
+        "outcome": "Transcribed text is ready for text_improvement and task_refinement.",
+        "scenario": "While reviewing a diff, dictate refactor requirements into the task panel; the dictated text is stored in the task description.",
+        "title": "Dictate refactor notes during review (Stage 1)"
       },
       "fasterEntry": {
-        "outcome": "10배 빠른 작업 입력. QA 피드백이 시간이 아닌 분 단위로 처리됩니다.",
-        "scenario": "QA 테스트 후 기록할 유사한 버그가 10개 있습니다. 각각을 타이핑하는 데 2분이 걸립니다. 음성 전사는 20초가 걸립니다.",
-        "title": "반복 작업을 위한 더 빠른 작업 입력"
+        "outcome": "Dictated notes are queued for task_refinement to normalize into specs.",
+        "scenario": "After QA, dictate multiple bug reports; each dictation becomes task input you can refine.",
+        "title": "Batch capture for repeated reports"
       },
       "handsFree": {
-        "outcome": "아이디어가 즉시 기록됩니다. 플로우를 깨지 않고 디버깅으로 돌아갑니다.",
-        "scenario": "디버깅 세션에 깊이 빠져 있습니다. 수정이 필요한 세 가지 관련 문제를 발견합니다. 터미널을 떠나지 않고 음성 녹음기에 말합니다.",
-        "title": "핸즈프리로 아이디어 캡처"
+        "outcome": "Captured text is stored as task input and can be refined later.",
+        "scenario": "During a debugging session, dictate related issues without leaving the terminal or editor.",
+        "title": "Capture issues during debug (Stage 1)"
       },
       "terminalCommands": {
-        "outcome": "명령이 올바르게 입력되었습니다. 문서를 찾아보는 것보다 빠릅니다.",
-        "scenario": "항상 잊어버리는 플래그가 있는 복잡한 git 명령이 필요합니다. 자연스럽게 받아쓰기하고 전사가 구문을 처리하도록 합니다.",
-        "title": "구문을 외우지 않고 터미널 명령"
+        "outcome": "The command and output are logged to the session history.",
+        "scenario": "While monitoring output, dictate a command into the active PTY input buffer.",
+        "title": "Dictated commands in PTY (Stage 5)"
       },
-      "title": "실제 사용 사례"
+      "title": "Pipeline examples"
     }
   },
   "integratedTerminal": {
@@ -972,238 +885,233 @@
   },
   "videoAnalysis": {
     "meta": {
-      "title": "Meeting & Recording Analysis - Multimodal AI",
-      "description": "Multimodal AI analyzes audio and visual content to extract actionable requirements from Microsoft Teams meetings and screen recordings."
+      "title": "Video Analysis Pipeline - PlanToCode",
+      "description": "Adaptive analysis of screen recordings guided by system prompts and your focus prompt."
     },
     "capabilities": {
       "fileUpload": {
-        "description": "기존 녹화, 고객 버그 보고서 또는 데모 비디오를 업로드합니다. 모든 일반 비디오 형식을 지원합니다.",
+        "description": "Upload existing recordings or capture new ones for analysis.",
         "features": [
-          "MP4, WebM, MOV, AVI 형식",
-          "드래그 앤 드롭 인터페이스",
-          "여러 비디오를 위한 배치 업로드"
+          "MP4, WebM, MOV, AVI support",
+          "Local recording stored before upload",
+          "Long recordings split into chunks"
         ],
-        "title": "파일 업로드 지원"
+        "title": "Recording upload"
       },
       "fpsControl": {
-        "description": "프레임 추출 속도를 조정하여 분석 세부사항과 비용의 균형을 맞춥니다. 상세한 상호작용을 위해 높은 FPS, 비용 최적화를 위해 낮은 FPS.",
+        "description": "FPS is a sampling hint that trades detail for cost; for large files the provider may ignore it.",
         "features": [
-          "1-2 FPS: 비용 효율적인 개요",
-          "3-5 FPS: 균형 잡힌 분석",
-          "6-10 FPS: 상세한 UI 상태 캡처"
+          "0.1 to 20 FPS selection in the UI",
+          "Lower FPS reduces token usage",
+          "Long recordings may be chunked for analysis"
         ],
-        "title": "FPS 제어 (1-10 FPS)"
+        "title": "Frame rate hint"
       },
       "gemini": {
-        "description": "고급 비전 이해를 위해 Google Gemini 3 Pro 또는 Flash로 구동됩니다. 오류, 패턴을 추출하고 제안을 제공합니다.",
+        "description": "Video analysis uses Google Gemini video models configured per project; usage is tracked with job metadata.",
         "features": [
-          "오류 메시지 추출",
-          "UI 상태 감지 및 전환",
-          "패턴 인식 및 제안"
+          "Allowed models set by server config",
+          "Per-project model defaults",
+          "Usage and cost tracking"
         ],
-        "title": "Gemini 비전 분석"
+        "title": "Model selection"
       },
       "screenRecording": {
-        "description": "앱에서 직접 버그, UI 상호작용 또는 데모 흐름을 캡처합니다. 외부 녹화 도구나 컨텍스트 전환이 필요 없습니다.",
+        "description": "Local capture with synchronized audio and video stored alongside the task.",
         "features": [
-          "원클릭 화면 캡처",
-          "전체 화면 또는 특정 창 녹화",
-          "자동 형식 최적화"
+          "Full screen or window capture",
+          "Audio and video sync",
+          "Stored with the task id"
         ],
-        "title": "내장 화면 녹화"
+        "title": "Screen recording"
       },
-      "title": "강력한 분석 기능"
+      "title": "Pipeline controls"
     },
     "cta": {
-      "description": "Teams 회의에서 구현 계획까지. 시간 단위 통화에서 요구사항을 잃지 마세요. 멀티모달 AI가 모든 결정, 작업 항목 및 시각적 컨텍스트를 자동으로 추출하도록 하세요.",
+      "description": "Connect video artifacts to the rest of the planning pipeline: deep research and file discovery.",
       "links": {
-        "fileDiscovery": "파일 탐색 살펴보기",
-        "research": "AI 연구 기능 보기"
+        "fileDiscovery": "File discovery pipeline",
+        "research": "Deep research stage"
       },
-      "title": "회의 메모를 실행 가능한 요구사항으로 전환"
+      "title": "Continue in the pipeline"
     },
     "faq": {
       "formats": {
-        "answer": "PlanToCode는 MP4, WebM, MOV 및 AVI 비디오 형식을 지원합니다. 비디오는 로컬에서 처리되고 FPS 설정에 따라 프레임이 추출된 후 분석을 위해 Gemini Vision으로 전송됩니다. 대부분의 화면 녹화 도구는 기본적으로 호환 가능한 형식을 출력합니다.",
-        "question": "어떤 비디오 형식이 지원되나요?"
+        "answer": "MP4, WebM, MOV, and AVI are supported. Other formats may work but are not guaranteed.",
+        "question": "Which video formats are supported?"
       },
       "fps": {
-        "answer": "사용 사례에 따른 FPS 권장사항: 일반 버그 보고서, 긴 녹화 및 비용 최적화를 위한 1-2 FPS - 과도한 프레임 없이 주요 순간을 캡처합니다. 대부분의 사용 사례에 대한 균형 잡힌 분석을 위한 3-5 FPS - UI 연습 및 표준 버그 캡처에 적합합니다. 상세한 UI 상호작용, 애니메이션 문제 및 빠른 상태 변경을 위한 6-10 FPS - 비용이 높지만 더 포괄적입니다.",
-        "question": "어떤 FPS 설정을 사용해야 하나요?"
+        "answer": "FPS is a sampling hint. Higher FPS can increase cost; for very large files the provider may sample at a fixed rate, and long recordings may be chunked.",
+        "question": "What FPS settings should I use?"
       },
       "model": {
-        "answer": "속도와 비용이 중요한 간단한 버그 캡처, 빠른 UI 데모 및 문서화를 위해 Gemini 3 Flash를 사용하세요. 복잡한 UI 문제, 상세한 패턴 분석 및 더 깊은 컨텍스트 이해가 필요할 때 Gemini 3 Pro를 선택하세요. Pro는 더 미묘한 인사이트를 제공하지만 프레임당 비용이 더 많이 듭니다.",
-        "question": "어떤 AI 모델을 선택해야 하나요?"
+        "answer": "Video analysis uses Google Gemini video models. The default model is configured per project from the server allowlist.",
+        "question": "Which model should I choose?"
       },
       "optimization": {
-        "answer": "비용 최적화 전략: 더 긴 비디오 또는 간단한 분석을 위해 낮은 FPS 설정(1-2 FPS)을 사용합니다. 상세한 분석이 중요하지 않을 때 Gemini Pro 대신 Flash를 선택합니다. 업로드하기 전에 비디오를 관련 섹션만으로 자릅니다. 긴 녹화를 업로드하는 대신 필요한 상호작용만 캡처하기 위해 화면 녹화를 사용합니다.",
-        "question": "분석 비용을 어떻게 최적화할 수 있나요?"
+        "answer": "Trim to relevant segments, keep the focus prompt specific, and use lower FPS when high visual detail is not required.",
+        "question": "How can I optimize analysis costs?"
       }
     },
     "hero": {
-      "badge": "멀티모달 회의 및 녹화 분석",
-      "description": "Microsoft Teams 회의를 녹화하거나 화면 프레젠테이션을 캡처하세요. 멀티모달 AI가 오디오 전사 및 시각적 콘텐츠를 분석하여 실행 가능한 요구사항 및 결정을 추출합니다.",
-      "title": "요구사항 추출을 위한 회의 및 프레젠테이션 캡처"
+      "badge": "Stage 1 input: Screen recording analysis",
+      "description": "Record or upload a screen recording, add a focus prompt, and let the video analysis system prompt guide a Gemini model to extract what matters. Results are stored as a job response you can attach to the task.",
+      "title": "Multimodal video analysis for requirements capture"
     },
     "howItWorks": {
       "steps": [
         {
-          "title": "회의 녹화 또는 업로드",
-          "description": "Microsoft Teams 회의를 캡처하고, Jira 또는 유사한 기업 도구에서 작업을 제시하면서 화면 프레젠테이션을 녹화하거나, 기존 녹화를 업로드합니다. 기업 회의 도구와의 최대 호환성을 위해 MP4, WebM, MOV 및 AVI 형식을 지원합니다."
+          "title": "Capture or upload video",
+          "description": "Record your screen (with optional audio) or pick an existing file. Recordings stay local until analysis starts."
         },
         {
-          "title": "Gemini Vision이 프레임 분석",
-          "description": "비디오가 선택한 FPS(1-10)로 처리되고 프레임이 Gemini 3 Pro 또는 Flash에 의해 분석됩니다. AI가 오류, UI 상태, 사용자 상호작용 및 시각적 패턴을 식별합니다."
+          "title": "Set a focus prompt",
+          "description": "Your task description and optional focus prompt are wrapped in <description> and <video_attention_prompt> tags."
         },
         {
-          "title": "실행 가능한 세부사항 추출",
-          "description": "AI가 오류 메시지, UI 상태 전환, 상호작용 패턴을 추출하고 타임스탬프와 함께 개선 제안을 생성합니다."
+          "title": "Run adaptive analysis",
+          "description": "The default video analysis system prompt tells the model to focus on what you show and say and to quote visible text when relevant."
         },
         {
-          "title": "작업 설명에 자동 첨부",
-          "description": "완전한 분석이 포맷되어 작업 설명에 자동으로 첨부되어 구현 계획 또는 버그 수정에 바로 사용할 수 있습니다."
+          "title": "Attach to the task pipeline",
+          "description": "The analysis summary is stored in the job record and can be appended to the task description."
         }
       ],
-      "title": "회의 분석 작동 방식"
+      "title": "How the pipeline runs"
     },
     "insights": {
       "actionItems": {
-        "description": "소유자 및 암시적 의존성이 식별된 구체적인 작업 항목",
-        "title": "작업 항목"
+        "description": "Action items and suggested fixes based on what was shown and said.",
+        "title": "Action items"
       },
       "decisions": {
-        "description": "컨텍스트와 함께 추출되고 특정 발언자에게 귀속된 주요 결정",
-        "title": "요약된 결정"
+        "description": "Decisions or open questions captured from the recording.",
+        "title": "Decisions"
       },
-      "description": "회의 녹화를 처리한 후 시스템은 오디오 전사와 시각적 콘텐츠(공유 화면, 문서, 주요 순간)를 모두 분석하여 실행 가능한 인사이트를 추출합니다. 추출된 인사이트 - 요약된 결정, 작업 항목 및 주요 토론 포인트 - 는 팀 리더가 검토, 선택 및 실행 가능한 구현 계획에 통합할 수 있는 직관적인 인터페이스에 표시됩니다.",
+      "description": "Analysis results are stored in the job response and can be applied to the task description for refinement and planning.",
       "discussionPoints": {
-        "description": "중요한 컨텍스트, 제기된 우려사항 및 논의된 대안적 접근 방식",
-        "title": "토론 포인트"
+        "description": "UI issues, design tradeoffs, or bugs worth following up.",
+        "title": "Discussion points"
       },
-      "title": "실행 가능한 인사이트 추출"
+      "title": "Structured outputs"
     },
     "models": {
       "flash": {
-        "description": "간단한 버그 캡처 및 문서화를 위한 빠르고 비용 효율적인 분석. 대량 사용에 이상적입니다.",
+        "description": "Lower cost and latency for straightforward UI flows and documentation.",
         "features": [
-          "프레임당 비용 낮음",
-          "더 빠른 처리 시간",
-          "간단한 UI 분석에 적합"
+          "Fast turnaround",
+          "Lower cost for straightforward recordings",
+          "Good for simple flows"
         ],
-        "title": "Gemini 3 Flash"
+        "title": "Fast analysis model"
       },
       "pro": {
-        "description": "더 깊은 인사이트를 제공하는 포괄적인 분석. 복잡한 UI 문제, 상세한 패턴 인식 및 고급 디버깅에 최적입니다.",
+        "description": "Deeper context for complex UI issues and nuanced workflows.",
         "features": [
-          "고급 패턴 인식",
-          "더 깊은 컨텍스트 이해",
-          "복잡한 UI 흐름에 더 나음"
+          "Richer reasoning",
+          "Better for complex flows",
+          "Higher cost for complex recordings"
         ],
-        "title": "Gemini 3 Pro"
+        "title": "Deep analysis model"
       },
-      "title": "분석 모델 선택"
+      "title": "Model tradeoffs"
     },
     "multimodal": {
       "audioTranscript": {
-        "description": "회의 토론의 완전한 오디오 전사. 회의 오디오에서 주요 요구사항, 결정 및 작업 항목을 추출합니다.",
+        "description": "The model analyzes the audio track directly; the app does not generate a separate transcript.",
         "features": [
-          "완전한 오디오 전사",
-          "결정 포인트 추출",
-          "작업 항목 식별"
+          "Narration guides what to focus on",
+          "Spoken intent and errors inform the summary",
+          "No standalone transcript file produced"
         ],
-        "title": "오디오 전사 분석"
+        "title": "Audio and narration context"
       },
-      "title": "회의의 멀티모달 분석",
+      "title": "Audio and visual extraction",
       "visualContent": {
-        "description": "AI가 공유 화면, 제시된 문서 및 주요 시각적 순간을 분석합니다. 요구사항에 중요한 UI 목업, 아키텍처 다이어그램 및 기타 시각적 컨텍스트를 캡처합니다.",
+        "description": "The model analyzes what is visible in the video and can quote on-screen text when it is clear.",
         "features": [
-          "화면 공유 콘텐츠 추출",
-          "문서 및 다이어그램 분석",
-          "주요 순간 식별"
+          "UI flows and state changes from what is visible",
+          "Best-effort quotes of logs, errors, and labels",
+          "No local frame export or OCR pipeline"
         ],
-        "title": "시각적 콘텐츠 분석"
+        "title": "Visual context from the recording"
       }
     },
     "painPoints": {
       "incompleteNotes": {
-        "description": "메모 작성자는 모든 것을 캡처할 수 없습니다 - 누가 무엇을 말했는지, 화면에 무엇이 표시되었는지, 미묘한 요구사항 변경. 중요한 컨텍스트가 회의와 구현 사이에서 손실됩니다.",
-        "title": "수동 회의 메모는 불완전함"
+        "description": "Screenshare changes and error dialogs are easy to miss in notes; recordings preserve that context.",
+        "title": "Manual notes omit frame references"
       },
       "requirementsLost": {
-        "description": "회의에서 논의된 중요한 결정 및 요구사항이 잊혀지거나 잘못 해석됩니다. 수동 메모 작성은 컨텍스트, 발언자 의도 및 시각적 참조를 놓칩니다.",
-        "title": "회의에서 요구사항이 손실됨"
+        "description": "Text notes miss on-screen state and timing; recordings keep the visual context intact.",
+        "title": "UI state lives in recordings"
       },
       "reviewTime": {
-        "description": "팀이 주요 결정을 추출하기 위해 회의 녹화를 수동으로 검토하는 데 몇 시간을 소비합니다. 시간 단위 통화에 묻혀 있는 요구사항을 찾고 문서화하기 어렵습니다.",
-        "title": "검토 시간이 팀 리소스 낭비"
+        "description": "Long recordings are hard to review; a focused summary highlights what matters.",
+        "title": "Raw recordings are expensive to review"
       },
-      "title": "기업 팀에게 회의 분석이 중요한 이유"
+      "title": "Why multimodal ingestion exists"
     },
     "useCases": {
       "bugCapture": {
-        "description": "발생하는 대로 버그를 녹화합니다. AI가 오류 메시지를 추출하고, 문제 전후의 UI 상태를 식별하며, 버그로 이어지는 상호작용 패턴을 캡처합니다.",
-        "title": "전체 컨텍스트를 갖춘 버그 캡처"
+        "description": "Summarize reproduction steps and visible errors from a recording.",
+        "title": "Bug timeline artifacts"
       },
       "onboarding": {
-        "description": "기능 연습을 녹화하고 자동 문서를 생성합니다. AI가 녹화에서 스크린샷 및 설명과 함께 단계별 가이드를 생성합니다.",
-        "title": "온보딩 문서"
+        "description": "Produce walkthrough notes from a screen recording.",
+        "title": "Walkthrough summaries"
       },
-      "title": "실제 사용 사례",
+      "title": "Example outputs",
       "uiDemo": {
-        "description": "고객 데모, 사용자 세션 녹화 또는 디자인 연습을 분석합니다. UI 패턴, 사용자 행동 인사이트 및 개선 기회를 추출합니다.",
-        "title": "UI 데모 분석"
+        "description": "Capture UI states and flows shown in the recording.",
+        "title": "UI state capture"
       }
     }
   },
   "copyButtons": {
-    "meta": {
-      "title": "복사 버튼 - 프롬프트를 워크플로우로 전환",
-      "description": "구성 가능한 복사 버튼으로 프롬프트를 재사용 가능한 워크플로우로 전환합니다."
-    },
     "concept": {
       "dragDrop": {
-        "description": "@dnd-kit 통합을 활용한 시각적 워크플로 관리. 프로세스에 맞춰 버튼 순서를 재배열할 수 있습니다.",
-        "title": "드래그 앤 드롭 재정렬"
+        "description": "Drag-and-drop ordering for button sets. Organize buttons by execution stage or priority.",
+        "title": "Drag-and-drop ordering"
       },
       "serverConfigured": {
-        "description": "플레이스홀더 치환 기능을 갖춘 동적 버튼. 통합 프롬프트 처리를 통한 프로젝트별 재정의.",
-        "title": "서버 구성 템플릿"
+        "description": "Template prompts with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{STEP_CONTENT}}. Server defaults with project-level overrides.",
+        "title": "Template Placeholders"
       },
       "terminal": {
-        "description": "영구 터미널 세션에서 원클릭 실행. 대용량 콘텐츠를 위한 청크 전송.",
-        "title": "터미널 통합"
+        "description": "Send templated content to persistent terminal sessions (Stage 5). Large content is chunked when writing to the PTY.",
+        "title": "Terminal integration (Stage 5)"
       }
     },
     "configuration": {
       "projectSettings": {
-        "description": "복사 버튼은 작업 설정에 저장되며 프로젝트 수준 재정의 및 서버 측 기본값을 지원합니다.",
+        "description": "Copy buttons are stored in per-project task settings in key_value_store and merged with server defaults.",
         "features": [
-          "SQLite 데이터베이스 영속성",
-          "서버 관리 기본 구성",
-          "프로젝트 디렉터리 범위 지정",
-          "실시간 구성 업데이트"
+          "Key-value storage in SQLite",
+          "Server-managed default configurations",
+          "Project directory scoping",
+          "Settings sync across desktop and mobile"
         ],
-        "title": "프로젝트별 설정"
+        "title": "Project-Specific Settings"
       },
-      "title": "구성 및 관리",
+      "title": "Configuration & Management",
       "visualUI": {
-        "description": "드래그 앤 드롭 재정렬, 디바운스 입력 처리 및 실시간 미리보기를 갖춘 직관적인 편집기.",
+        "description": "Configuration editor with drag-drop reordering and debounced inputs for labels and templates.",
         "features": [
-          "시각적 재정렬을 위한 드래그 핸들",
-          "300ms 디바운스 입력 처리",
-          "시스템 버튼용 읽기 전용 모드",
-          "커스터마이징 워크플로 지원"
+          "Drag handles for visual reordering",
+          "300ms debounced input processing",
+          "Read-only mode for system buttons",
+          "Template ordering support"
         ],
-        "title": "시각적 구성 UI"
+        "title": "Visual Configuration UI"
       }
     },
     "cta": {
-      "description": "모든 프롬프트를 버튼으로 전환하세요. 플레이스홀더를 활용한 스마트 템플릿. 복잡한 워크플로를 즉시 실행. 당신의 최고의 기술을 항상 준비 상태로.",
       "links": {
-        "planMode": "구현 계획 보기",
-        "terminal": "터미널 통합 살펴보기"
+        "planMode": "See Stage 3 planning & Stage 4 merge",
+        "terminal": "Explore Stage 5 terminal integration"
       },
-      "title": "프롬프트를 워크플로로 전환하세요"
+      "title": "Template-driven execution handoff"
     },
     "exampleConfig": {
       "title": "Example button configuration:",
@@ -1220,18 +1128,18 @@
     },
     "exampleValues": {
       "investigationButton": "\"Investigate Results\"",
-      "investigationPurpose": "Thorough validation workflows",
-      "parallelButton": "\"Parallel agent template\"",
-      "parallelPurpose": "Complex multi-agent setup instructions",
-      "projectContextTemplate": "{{PROJECT_CONTEXT}}",
-      "projectDynamic": "Project-aware instructions",
+      "investigationPurpose": "Validation and review workflows",
+      "parallelButton": "\"Parallel Claude Coding Agents\"",
+      "parallelPurpose": "Parallel agent instruction templates",
+      "projectContextTemplate": "{{TASK_DESCRIPTION}}",
+      "projectDynamic": "Task-aware instructions",
       "stepResult": "Focused step execution",
       "stepTemplate": "{{STEP_CONTENT}}"
     },
     "hero": {
-      "badge": "구성 가능한 워크플로 자동화 시스템",
-      "description": "최고의 프롬프트를 버튼으로 저장하세요. 계획 콘텐츠를 치환하고 터미널에서 실행하세요.",
-      "title": "워크플로. 클릭 한 번."
+      "badge": "Template handoff",
+      "description": "Copy buttons insert {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and {{STEP_CONTENT}} into predefined templates.",
+      "title": "Template prompts with plan substitution"
     },
     "technical": {
       "architecture": {
@@ -1243,97 +1151,69 @@
           "storage": "## 1. Configuration storage",
           "ui": "## 3. UI integration"
         },
-        "execution": "버튼 클릭이 템플릿 처리를 트리거 → 계획 콘텐츠로 플레이스홀더 치환 → 터미널 세션 검증 → 청크 단위 콘텐츠 전송",
-        "processing": "정규식 기반 플레이스홀더 매칭 → 동적 콘텐츠 치환 → 컨텍스트 인식 데이터 추출 → 정의되지 않은 값에 대한 오류 처리",
-        "storage": "작업 설정의 CopyButtonConfig[] → 프로젝트별 데이터베이스 저장소 → 서버 측 기본 구성 → 실시간 동기화",
-        "ui": "구현 계획 카드 → 콘텐츠 보기 모달 → 터미널 인터페이스 헤더 → 드래그 앤 드롭 구성 편집기"
+        "execution": "Button click triggers template processing -> clipboard copy or PTY write (chunked)",
+        "processing": "Regex placeholder matching -> substitution with plan, step, and task text -> missing values become empty strings",
+        "storage": "CopyButtonConfig[] stored in per-project task settings (key_value_store) plus server-side defaults",
+        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
       },
-      "title": "기술 구현"
+      "title": "Technical Implementation"
     },
     "templateSystem": {
       "placeholders": {
-        "description": "{{PLACEHOLDER}} 구문을 사용한 동적 콘텐츠 치환. 구현 계획과 함께 컨텍스트 인식 처리.",
+        "description": "Template prompts with {{PLACEHOLDER}} substitution. Supported placeholders include plan content, step content, and task description.",
         "examples": [
-          "{{IMPLEMENTATION_PLAN}} - 전체 계획 콘텐츠",
-          "{{STEP_CONTENT}} - 선택된 단계 콘텐츠",
-          "{{PROJECT_CONTEXT}} - 프로젝트별 컨텍스트",
-          "확장성을 위한 커스텀 플레이스홀더"
+          "{{IMPLEMENTATION_PLAN}} - Full plan content",
+          "{{STEP_CONTENT}} - Selected step content",
+          "{{TASK_DESCRIPTION}} - Task requirements"
         ],
-        "title": "플레이스홀더 치환"
+        "title": "Placeholder Substitution"
       },
       "processor": {
-        "description": "조건부 섹션, XML 포맷팅 및 지능형 정리 기능을 갖춘 고급 템플릿 엔진.",
+        "description": "Template processor injects XML plans, task descriptions, and governance constraints into predefined prompts.",
         "features": [
-          "정규식 기반 플레이스홀더 매칭",
-          "이스케이프 문자 처리",
-          "여러 줄 콘텐츠 지원",
-          "정의되지 않은 값의 우아한 처리"
+          "Regex-based placeholder matching",
+          "XML plan formatting and escaping",
+          "Multi-line governance instruction support",
+          "Graceful undefined handling"
         ],
-        "title": "통합 프롬프트 처리"
+        "title": "Unified Prompt Processing"
       },
-      "title": "스마트 템플릿 시스템"
+      "title": "Template system"
     },
     "terminalIntegration": {
       "oneClick": {
-        "description": "복사 버튼이 터미널 세션과 직접 통합되어 즉시 실행됩니다. 스마트 콘텐츠 처리가 터미널 오버플로를 방지합니다.",
+        "description": "Copy buttons integrate with Stage 5 terminal sessions and insert plan context into the active PTY with logging.",
         "features": [
-          "활성 터미널에 자동 붙여넣기",
-          "대용량 콘텐츠를 위한 청크 전송",
-          "세션 상태 모니터링",
-          "안전을 위한 클립보드 폴백"
+          "Automatic paste to active terminal session",
+          "Chunked sending for large XML plans",
+          "Session health monitoring",
+          "Clipboard fallback for safety"
         ],
-        "title": "원클릭 자동화"
+        "title": "Stage 5 execution handoff"
       },
-      "title": "원활한 터미널 실행"
+      "title": "Stage 5 Terminal Execution"
     },
     "useCases": {
       "customTeam": {
-        "description": "프로젝트 컨텍스트 및 코딩 표준을 포함한 팀별 프로세스.",
-        "title": "커스텀 팀 워크플로"
+        "description": "Team-specific governance constraints with {{PROJECT_CONTEXT}} and coding standards.",
+        "title": "Team governance templates"
       },
       "investigation": {
-        "description": "구현 계획 결과를 위한 표준화된 검토 프로세스.",
-        "title": "조사 및 검토"
+        "description": "Standardized review prompts for Stage 3 implementation plan results.",
+        "title": "Investigation and review"
       },
       "parallel": {
-        "description": "사전 구성된 지침으로 여러 Claude 코딩 에이전트를 동시에 실행.",
-        "title": "병렬 에이전트 워크플로"
+        "description": "Example button: \"Parallel agent template\" inserts the plan XML and governance instructions.",
+        "title": "Parallel agent templates"
       },
       "stepByStep": {
-        "description": "컨텍스트와 함께 개별 구현 단계를 추출하고 실행.",
-        "title": "단계별 실행"
+        "description": "Extract individual implementation steps with {{STEP_CONTENT}}. Execute step-by-step with full plan context.",
+        "title": "Step-by-step execution"
       },
-      "title": "실제 사용 사례"
-    },
-    "comparison": {
-      "plantocode": {
-        "items": [
-          "원클릭 자동화",
-          "동적 콘텐츠 치환",
-          "스마트 플레이스홀더 시스템",
-          "컨텍스트 인식 처리",
-          "영구적이고 재사용 가능한 워크플로"
-        ],
-        "title": "PlanToCode 복사 버튼"
-      },
-      "title": "차별화 요소",
-      "traditional": {
-        "items": [
-          "수동 복사-붙여넣기 워크플로",
-          "정적이고 변경 불가능한 템플릿",
-          "컨텍스트 인식 부재",
-          "오류가 발생하기 쉬운 수동 편집",
-          "시간이 지나면서 사라지는 워크플로"
-        ],
-        "title": "전통적인 복사-붙여넣기"
-      }
+      "title": "Example configurations"
     }
   },
   "deepResearch": {
-    "meta": {
-      "title": "Deep Research - AI-Powered Research Intelligence",
-      "description": "정교한 쿼리 및 병렬 연구 작업을 갖춘 AI 기반 연구. 실시간 웹 검색, 소스 검증 및 컨텍스트 통합."
-    },
     "advanced": {
       "features": [
         {
@@ -1397,7 +1277,6 @@
       "title": "AI 연구 기능"
     },
     "cta": {
-      "description": "지능형 쿼리에서 합성된 인사이트까지, 개발 워크플로와 통합됩니다. 이것이 연구가 작동해야 하는 방식입니다 - 포괄적이고, 지능적이며, 실행 가능합니다.",
       "links": {
         "planMode": "구현 계획 보기",
         "textImprovement": "텍스트 개선 살펴보기"
@@ -1554,7 +1433,7 @@
       }
     },
     "videoAnalysis": {
-      "description": "멀티모달 AI가 오디오 및 시각적 콘텐츠를 분석하여 실행 가능한 요구사항 추출",
+      "description": "Multimodal ingestion of recordings with prompt-guided analysis summaries.",
       "slug": "/features/video-analysis",
       "title": "회의 및 녹화 분석"
     },

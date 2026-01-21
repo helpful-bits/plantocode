@@ -84,7 +84,7 @@
       },
       "gettingStarted": {
         "step1": {
-          "description": "macOS, Windows 또는 Linux용으로 설치하세요. 선호하는 AI 모델(Claude, GPT-4, Gemini 또는 로컬 모델)에 연결하세요. 시작하는 데 API 키가 필요하지 않습니다.",
+          "description": "macOS, Windows 또는 Linux용으로 설치하세요. 선호하는 AI 모델(Claude, GPT-4, Gemini 또는 로컬 모델)에 연결하세요. 호스팅은 API 키가 필요 없고 셀프호스팅은 자체 키를 사용합니다.",
           "title": "PlanToCode 다운로드"
         },
         "step2": {

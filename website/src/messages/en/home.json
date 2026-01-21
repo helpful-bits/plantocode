@@ -1,27 +1,30 @@
 {
   "technicalLanding": {
-    "title": "PlanToCode: Technical System Walkthrough",
-    "description": "A technical walk-through of how PlanToCode is built so you can study the architecture, reuse the patterns, or build a similar planning pipeline. The desktop app relies on external LLM providers configured with your API keys.",
+    "title": "PlanToCode: Review and merge implementation plans",
+    "description": "PlanToCode turns tasks into structured implementation plans you can read, compare, and edit before any agent runs. Generate multiple drafts, merge the best approach, and hand off to Claude Code or your terminal with full context while logs stay in PlanToCode.",
+    "note": "Hosted uses managed model access; BYOK is available only for self-hosting.",
+    "noteLink": "Self-hosting guide",
     "walkthroughTitle": "Step-by-step: how the pieces work together",
     "walkthroughDescription": "Follow an end-to-end walkthrough of how the desktop app, Rust/Tauri backend, SQLite database, and LLM orchestration pipeline coordinate tasks and stream results back to the UI.",
     "tags": [
-      "Tauri",
-      "Rust",
-      "SQLite",
-      "LLM orchestration"
+      "Plan review",
+      "Multi-model planning",
+      "Plan merge",
+      "Mobile plan reader",
+      "Source available (BSL)"
     ]
   },
   "gallery": {
-    "heading": "System Architecture and Implementation Walkthrough",
-    "intro": "Each panel below shows the desktop app and backend collaborating: Tauri shell, Rust job processors, SQLite persistence, and model orchestration coordinating planning and execution.",
+    "heading": "Plan review workflow in the app",
+    "intro": "See how file discovery, multi-model planning, merge instructions, and execution handoff keep agent work transparent and traceable.",
     "video": {
-      "title": "System Walkthrough Video",
-      "description": "A short, end-to-end walkthrough of the planning pipeline: task input, file discovery jobs, plan generation, merge instructions, and execution handoff.",
+      "title": "Plan-first workflow overview",
+      "description": "A short walkthrough from task intake to plan review, merge instructions, and execution handoff.",
       "bullets": [
-        "Tauri shell and React UI surface the workflow",
-        "Rust background jobs stream progress updates",
-        "SQLite stores sessions, jobs, and logs",
-        "LLM plans are generated and merged with structure"
+        "Run multiple plan drafts against the same file context",
+        "Merge the best ideas with explicit instructions",
+        "Review and edit plans on desktop or mobile",
+        "Hand off to Claude Code or a local terminal while logs stay in PlanToCode"
       ]
     },
     "cards": {
@@ -36,31 +39,32 @@
         ]
       },
       "fileFinderWorkflow": {
-        "title": "Persisted File Context",
-        "description": "Each workflow stage writes results to background_jobs so file sets can be reused across sessions and inspected later.",
+        "title": "Plan history and logs",
+        "description": "Plans, merge drafts, and job outputs are stored in SQLite so you can review what happened before and after execution.",
         "features": [
           "Workflow stages stored as job records",
-          "Selected file lists persisted as JSON responses",
-          "Session included_files reused across jobs",
-          "SQLite history survives restarts"
+          "Plan drafts and merges persisted per session",
+          "Terminal output logged alongside plan artifacts",
+          "Session history survives restarts"
         ]
       },
       "videoAnalysis": {
-        "title": "Video Analysis Ingestion",
-        "description": "Screen recordings are sent to the `/api/llm/video/analyze` endpoint with prompts and FPS settings to generate structured summaries.",
+        "title": "Optional screen recording analysis",
+        "description": "Screen recordings can be sent to the /api/llm/video/analyze endpoint with a focus prompt and FPS hint to generate analysis summaries.",
         "features": [
-          "Multipart upload includes duration_ms and framerate",
+          "Multipart upload includes durationMs and framerate",
           "Model format is provider/model (google/* required)",
-          "Usage and cost tracked in server billing logs",
-          "Summary stored as job metadata artifacts"
+          "Usage and cost recorded per job",
+          "Summary stored in background_jobs response and can be applied to the task description"
         ]
       },
       "implementationPlans": {
-        "title": "Multi-Model Plan Generation",
-        "description": "ImplementationPlanProcessor streams plan drafts from full file contents; merge jobs consolidate multiple drafts into one plan.",
+        "title": "Multi-model plan drafts",
+        "description": "Run the same task through multiple models and compare drafts before merging or execution.",
         "features": [
           "Plan jobs include selected file contents + directory tree",
-          "Structured plan metadata captured per job",
+          "Explicit file operations with exact paths",
+          "Structured plan metadata captured per draft",
           "Merge prompt uses <source_plans> and <user_instructions>",
           "Final plan stored alongside source drafts"
         ]
@@ -76,8 +80,8 @@
         ]
       },
       "settingsPrompts": {
-        "title": "Prompt and Model Configuration",
-        "description": "Runtime model settings are fetched from `/api/config/desktop-runtime-config`; prompt overrides are stored in SQLite.",
+        "title": "System prompts and model control",
+        "description": "See and edit system prompts, choose models per task, and understand exactly what is sent.",
         "features": [
           "Per-task allowed models and defaults",
           "System prompts served by the server API",
@@ -86,23 +90,24 @@
         ]
       },
       "terminalVoiceRecording": {
-        "title": "Workflow Automation Buttons",
-        "description": "Copy buttons insert templated prompts with task context for handoff into terminals or external tools.",
+        "title": "Claude Code handoff",
+        "description": "Copy buttons format plan context for Claude Code, Cursor, or custom CLIs so execution stays grounded in the current plan.",
         "features": [
           "Templates sourced from task model config",
           "Placeholders resolved against the active plan",
-          "Handoff to PTY sessions or clipboard",
-          "Actions tied to job metadata for audit"
+          "Preferred CLI settings include Claude Code, Cursor, Codex, Gemini, or custom",
+          "Actions keep handoff consistent with the active plan"
         ]
       },
       "mergeInstructionsWorkflow": {
-        "title": "Plan Merge Instructions",
-        "description": "ImplementationPlanMergeProcessor merges multiple plan drafts using XML-tagged source plans and optional instructions.",
+        "title": "Plan merge instructions",
+        "description": "Provide merge guidance, keep source traceability, and store the merged plan alongside its inputs.",
         "features": [
           "Source plans pulled by job ID",
           "Merge instructions stored in metadata",
           "File contents + directory tree add context",
-          "Merged plan stored alongside inputs"
+          "Merged plan stored alongside inputs",
+          "Mobile voice dictation for merge instructions"
         ]
       },
       "billingTransactions": {
@@ -112,82 +117,86 @@
           "Per-job token and cost metadata",
           "Provider-aware usage entries",
           "Billing endpoints expose usage summaries",
-          "Audit trail for model spend"
+          "Usage history for model spend"
         ]
       }
     },
     "viewFullSize": "View full size",
     "cta": {
-      "title": "Explore the architecture in context",
-      "description": "Map each UI panel to the underlying processors, then dive deeper into the architecture docs and build guides.",
-      "primary": "Architecture overview",
-      "secondary": "Runtime walkthrough"
+      "title": "Ready to review plans before agents run?",
+      "description": "Download the desktop app to try multi-model planning, plan merge, and execution handoff.",
+      "primary": "Download PlanToCode",
+      "secondary": "See the plan format"
     }
   },
   "governance": {
     "cards": {
       "filePlans": {
-        "description": "Implementation plans break down changes by file and operation, making scope and impact explicit.",
+        "description": "Implementation plans break down changes by file and operation so scope is explicit.",
         "title": "File-by-file plans with exact paths"
       },
       "handoff": {
-        "description": "Approved plans are handed to terminals or external tools with full context and audit logs.",
+        "description": "Approved plans are handed to terminals or agent CLIs with full context while logs stay in PlanToCode.",
         "title": "Execution handoff"
       },
       "workflow": {
-        "description": "Plans can be revised, annotated, and approved before execution. Every revision is preserved.",
+        "description": "Plans can be revised, annotated, and approved on desktop or mobile. Every revision is preserved.",
         "title": "Review, edit, approve"
       }
     },
-    "subtitle": "Plans are stored as artifacts you can review, edit, and approve before any command is run.",
-    "title": "Plan Review and Execution Gates"
+    "subtitle": "Plans are artifacts you can review, edit, and approve before any agent runs. Logs and history keep changes traceable.",
+    "title": "Plan review before execution"
   },
   "integrations": {
     "cards": {
       "allIntegrations": {
-        "description": "How PTY sessions are created, logged, and resumed across restarts.",
-        "link": "Terminal session docs \u2192",
-        "title": "Terminal session internals"
+        "description": "Run the server yourself to control provider routing and supply your own API keys.",
+        "link": "Server setup guide ->",
+        "title": "Self-hosting and BYOK"
       },
       "claudeCode": {
-        "description": "Requests are normalized and streamed through the server layer so provider behavior stays consistent.",
-        "link": "Architecture notes \u2192",
-        "title": "Provider routing layer"
+        "description": "Default prompts are stored in the repo and server database so you can inspect them and override per project in the app.",
+        "link": "Prompt types docs ->",
+        "title": "System prompts you can read"
       },
       "cursor": {
-        "description": "Export plans to external tools or run them in the integrated terminal with full context and logs.",
-        "link": "Implementation plan docs \u2192",
-        "title": "Execution handoff"
+        "description": "The full system is on GitHub under the Business Source License so you can audit the architecture.",
+        "link": "View GitHub repo ->",
+        "title": "Source available (BSL 1.1)"
       }
     },
-    "subtitle": "How the system connects to terminals, editors, and model providers.",
-    "title": "External interfaces"
+    "subtitle": "System prompts, source code, and self-hosting details are visible and documented.",
+    "title": "Transparency and control"
   },
   "faq": {
     "items": {
       "q1": {
         "q": "Do I need an external LLM provider?",
-        "a": "Yes. PlanToCode orchestrates planning, transcription, and analysis jobs by sending prompts to external LLM providers. You must configure your own API keys for those providers."
+        "a": "Yes. Planning, merge, transcription, and analysis run through LLM providers. The hosted app uses managed provider access; self-hosting lets you supply your own keys."
       },
       "q10": {
         "q": "Can I edit plans before execution?",
-        "a": "Yes. Plans open in a Monaco editor with structured steps and copy helpers. You can revise content and rerun generation without leaving the session."
+        "a": "Yes. Plans open in a Monaco editor on desktop and render as Markdown on mobile so you can edit, comment, and rerun generation."
       },
       "q11": {
         "q": "How do merge instructions work?",
-        "a": "Multiple plan drafts can be merged by providing guidance. The merge processor aligns structured steps, resolves conflicts, and stores the merged result alongside the originals."
+        "a": "Select two or more plan drafts, add merge guidance (typing or voice on mobile), and the merge processor stores the merged result alongside the originals."
       },
       "q12": {
         "q": "What guardrails exist before execution?",
-        "a": "Token estimates, prompt previews, model allowlists, and terminal health checks surface issues before any command runs. Every job records its inputs and outputs."
+        "a": "Prompt previews, model allowlists, token estimates, and terminal health checks surface issues before any command runs. Every job stores its inputs and outputs for review."
       },
       "q13": {
         "q": "What does a typical workflow look like?",
-        "a": "Describe the task \u2192 run file discovery \u2192 generate one or more plans \u2192 review or merge \u2192 execute in the integrated terminal or export to another tool. Each step is tracked as a job with stored artifacts."
+        "a": "Describe the task -> run file discovery -> generate multiple plans -> review or merge -> hand off to Claude Code or the integrated terminal. Each step is tracked as a job with stored artifacts."
+      },
+      "q14": {
+        "q": "Is the source code and system prompts available?",
+        "a": "Yes. The repo is source-available under the Business Source License, and the default system prompts are shipped in the repo and editable in the app."
       },
       "q2": {
         "q": "What gets sent to LLM providers?",
-        "a": "Only the prompts you approve plus the files or excerpts you select are sent. Local project state, terminal logs, and plan drafts remain in the SQLite database unless you explicitly export them."
+        "a": "Only the task prompt and the files or excerpts you select are sent. Local project state, terminal logs, and plan drafts remain in the SQLite database unless you explicitly export them."
       },
       "q3": {
         "q": "Do plans map to exact files in the repo?",
@@ -195,15 +204,15 @@
       },
       "q4": {
         "q": "How is this different from chat-based coding agents?",
-        "a": "Chat tools produce a single response. PlanToCode separates planning from execution: file discovery, plan generation, plan review, and terminal execution are tracked as discrete jobs with stored artifacts."
+        "a": "Chat tools produce a single response. PlanToCode separates planning from execution: file discovery, multi-model plans, review and merge, then handoff to terminals or agent CLIs with stored artifacts."
       },
       "q5": {
         "q": "Can I run it without an LLM provider?",
-        "a": "Only limited UI flows work without a provider. Planning, transcription, and analysis rely on external LLM APIs, so the app is not useful without configured providers."
+        "a": "Not for planning or analysis. Hosted includes managed provider access; self-hosting requires your own keys."
       },
       "q6": {
         "q": "Which models are supported?",
-        "a": "The allowed models come from your server configuration and per-task settings. You choose which providers and models are available for planning and analysis."
+        "a": "Models are configured on the server and per task. You can run multiple plan drafts across the allowed models and choose what to merge or execute."
       },
       "q7": {
         "q": "Where is project state stored?",
@@ -211,7 +220,7 @@
       },
       "q8": {
         "q": "How does the integrated terminal work?",
-        "a": "Each tab is a PTY session managed by the Rust backend. Output is streamed to the UI and stored in SQLite so you can audit or resume later."
+        "a": "Each tab is a PTY session managed by the Rust backend. Output is streamed to the UI and stored in SQLite so you can review or resume later."
       },
       "q9": {
         "q": "How does it handle large codebases?",
@@ -223,8 +232,8 @@
   },
   "hero": {
     "cta": {
-      "viewDemo": "View walkthrough",
-      "howItWorks": "Runtime walkthrough"
+      "viewDemo": "Download PlanToCode",
+      "howItWorks": "See plan format"
     }
   }
 }

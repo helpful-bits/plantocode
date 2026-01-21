@@ -2,8 +2,9 @@ import type { Metadata } from 'next';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { MacDownloadButton } from '@/components/ui/MacDownloadButton';
 import { WindowsStoreButton } from '@/components/ui/WindowsStoreButton';
+import { AppStoreButton } from '@/components/ui/AppStoreButton';
 import { LinkWithArrow } from '@/components/ui/LinkWithArrow';
-import { CheckCircle2, Shield } from 'lucide-react';
+import { CheckCircle2, Shield, Smartphone, Tablet } from 'lucide-react';
 import { Header } from '@/components/landing/Header';
 import { cdnUrl } from '@/lib/cdn';
 
@@ -190,6 +191,68 @@ export default async function DownloadPage({ params }: { params: Promise<{ local
 
                       <div className="flex justify-center">
                         <WindowsStoreButton size="large" />
+                      </div>
+                    </div>
+                </GlassCard>
+
+                {/* Mobile App - iOS */}
+                <GlassCard>
+                    <div className="p-8 sm:p-12">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-gradient-to-br from-gray-500 via-gray-600 to-gray-700">
+                          <div className="flex gap-2">
+                            <Smartphone className="w-6 h-6 text-white" />
+                            <Tablet className="w-6 h-6 text-white" />
+                          </div>
+                        </div>
+                        <div>
+                          <h2 className="text-2xl sm:text-3xl font-bold text-foreground">{t['downloads.mobile.title']}</h2>
+                          <p className="text-foreground/60">{t['downloads.mobile.subtitle']}</p>
+                        </div>
+                      </div>
+
+                      <div className="mb-8">
+                        <h3 className="text-lg font-semibold mb-4 text-foreground">{t['downloads.mobile.features.title']}</h3>
+                        <ul className="space-y-2 text-foreground/80">
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>{t['downloads.mobile.features.review']}</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>{t['downloads.mobile.features.voice']}</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>{t['downloads.mobile.features.monitor']}</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>{t['downloads.mobile.features.sync']}</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <CheckCircle2 className="w-4 h-4 text-primary/70 flex-shrink-0" />
+                            <span>{t['downloads.mobile.features.design']}</span>
+                          </li>
+                        </ul>
+                      </div>
+
+                      <div className="mb-8">
+                        <GlassCard className="bg-primary/5 border-primary/20">
+                          <div className="p-4 flex items-start gap-3">
+                            <Shield className="w-5 h-5 text-primary/70 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="font-semibold text-foreground mb-1">{t['downloads.mobile.connected.title']}</h4>
+                              <p className="text-sm text-foreground/80 leading-relaxed">
+                                {t['downloads.mobile.connected.description']}
+                              </p>
+                            </div>
+                          </div>
+                        </GlassCard>
+                      </div>
+
+                      <div className="flex justify-center">
+                        <AppStoreButton size="large" />
                       </div>
                     </div>
                 </GlassCard>

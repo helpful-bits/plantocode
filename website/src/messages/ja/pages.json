@@ -87,12 +87,6 @@
       "title": "私たちが構築したもの"
     }
   },
-  "architecture": {
-    "meta": {
-      "title": "System Architecture - PlanToCode",
-      "description": "Detailed overview of the PlanToCode architecture: Tauri shell, Rust backend, SQLite persistence, and multi-model LLM orchestration."
-    }
-  },
   "evolution": {
     "meta": {
       "title": "System Evolution and Tradeoffs - PlanToCode",
@@ -120,12 +114,12 @@
   "architecturePage": {
     "hero": {
       "title": "Architecture Overview",
-      "description": "PlanToCode is a Tauri desktop application with a Rust backend, a React/Next.js frontend, and a SQLite-backed local database. Planning and analysis depend on external LLM providers configured with your API keys. This page explains how those pieces fit together so you can reason about or adapt the design."
+      "description": "PlanToCodeはTauriデスクトップアプリで、Rustバックエンド、React/Next.jsフロントエンド、SQLiteローカルDBで構成されます。計画と分析はサーバーで管理されるLLMプロバイダーを利用し、セルフホストでは独自キーに対応します。このページでは構成のつながりを説明します。"
     },
     "visuals": {
       "systemMap": {
         "title": "System map snapshot",
-        "description": "This diagram depicts the PlanToCode system architecture as four interconnected layers arranged vertically. Top Layer - Desktop Frontend: A React/Next.js box containing components (Plan Viewer, Terminal Panel, Session Manager) connected via labeled arrows 'invoke()' and 'listen()' to Tauri IPC Bridge. Second Layer - Rust Backend: Contains WorkflowOrchestrator (scheduling multi-stage jobs), TerminalSessionManager (PTY lifecycle), and JobProcessors (FileDiscovery, PlanGeneration, TextImprovement, DeepResearch). Arrows show 'spawn()' to job threads and 'emit()' events back to UI. Third Layer - Persistence: SQLite database cylinder showing tables: sessions, background_jobs, terminal_output, project_settings, key_value_store. Bidirectional arrows labeled 'read/write' connect to Rust services. Fourth Layer - External Services: Server box with Auth (/api/auth), LLM Proxy (/api/llm/*), and Usage Tracking; arrows point outward to Provider icons (OpenAI, Anthropic, Google, OpenRouter) with 'route()' labels. Data flows: Task input flows down through layers; LLM responses stream back up via SSE; job status updates propagate via Tauri events. Key labels include 'HTTPS/WSS' on server connections, 'SQLite' on persistence, and 'FFI' on Rust-to-system calls.",
+        "description": "This diagram depicts the PlanToCode system architecture as four interconnected layers arranged vertically. Top Layer - Desktop Frontend: A React/Next.js box containing components (Plan Viewer, Terminal Panel, Session Manager) connected via labeled arrows \"invoke()\" and \"listen()\" to Tauri IPC Bridge. Second Layer - Rust Backend: Contains WorkflowOrchestrator (scheduling multi-stage jobs), TerminalSessionManager (PTY lifecycle), and JobProcessors (FileDiscovery, PlanGeneration, TextImprovement, DeepResearch). Arrows show \"spawn()\" to job threads and \"emit()\" events back to UI. Third Layer - Persistence: SQLite database cylinder showing tables: sessions, background_jobs, terminal_sessions. Bidirectional arrows labeled \"read/write\" connect to Rust services. Fourth Layer - External Services: Server box with Auth (/api/auth), LLM Proxy (/api/llm/*), and Usage Tracking; arrows point outward to Provider icons (OpenAI, Anthropic, Google, OpenRouter) with \"route()\" labels. Data flows: Task input flows down through layers; LLM responses stream back up via SSE; job status updates propagate via Tauri events. Key labels include \"HTTPS/WSS\" on server connections, \"SQLite\" on persistence, and \"FFI\" on Rust-to-system calls.",
         "imageSrc": "/images/architecture/system-map.svg",
         "imageAlt": "Diagram showing PlanToCode system map",
         "caption": "Four-layer architecture with data flowing down and events streaming back up."
@@ -138,7 +132,7 @@
       },
       "core": {
         "title": "Rust Core and SQLite Persistence",
-        "description": "The Rust core manages background jobs, PTY sessions, and durable state. SQLite stores sessions, job history, and terminal output, acting as a local append-only record of what the system has done."
+        "description": "The Rust core manages background jobs, PTY sessions, and durable state. SQLite stores sessions, job history, and terminal session logs as the local record of work."
       },
       "jobs": {
         "title": "Background Job Orchestration",
@@ -151,8 +145,12 @@
     },
     "communication": {
       "title": "How the Pieces Communicate",
-      "description": "Commands flow from the React UI into Tauri, which invokes Rust functions. Long-running work is executed as background jobs that stream updates (including partial LLM tokens) back to the UI. SQLite acts as both a cache and a durable log so sessions and terminal history can be replayed or resumed.",
+      "description": "Commands flow from the React UI into Tauri, which invokes Rust functions. Long-running work is executed as background jobs that stream updates (including partial LLM tokens) back to the UI. SQLite is the durable local store so sessions and terminal history can be replayed or resumed.",
       "followup": "For a deeper dive, read the architecture documentation and the build-your-own guides that map these concepts to code modules."
+    },
+    "meta": {
+      "title": "System Architecture - PlanToCode",
+      "description": "Detailed overview of the PlanToCode architecture: Tauri shell, Rust backend, SQLite persistence, and multi-model LLM orchestration."
     }
   },
   "evolutionPage": {
@@ -182,7 +180,7 @@
         },
         {
           "title": "SQLite as the local source of truth:",
-          "description": "A file-based database is easy to ship, snapshot, and inspect. It stores sessions, job metadata, and terminal history so workflows can be resumed or audited."
+          "description": "A file-based database is easy to ship, snapshot, and inspect. It stores sessions, job metadata, and terminal history so workflows can be resumed or reviewed."
         },
         {
           "title": "Multi-provider LLM routing:",
@@ -358,7 +356,7 @@
     },
     "keyFeatures": {
       "deploy": {
-        "description": "制御するインフラストラクチャでリクエストを保持する必要がある場合は、独自のAPIキーで含まれているRustプロキシサーバーを使用してください。",
+        "description": "リクエストを自社インフラに保持する必要がある場合は、Rustプロキシサーバーをセルフホストして独自のAPIキーを使用してください。ホスト版は管理されたモデルアクセスを利用します。",
         "title": "あなたの条件でデプロイ"
       },
       "governance": {
@@ -378,24 +376,24 @@
     "workflow": {
       "exampleMergeInstructions": "Example merge instructions:",
       "step1": {
-        "description": "複数のソースから初期要件をキャプチャすることから始めます。マルチモーダル分析のためにMicrosoft Teams会議録画をアップロードし、画面プレゼンテーションを記録して視覚的コンテキストをキャプチャするか、迅速なアイデアキャプチャのために音声ディクテーションを使用します。すべての入力方法は同じ改善ワークフローに供給されます。",
+        "description": "Capture requirements from recordings, screen captures, or voice notes. Screen recordings are analyzed by the video analysis job and produce a summary you can attach to the task.",
         "meetings": {
-          "description": "Teamsミーティングをアップロードします。マルチモーダルAIは、音声トランスクリプト(話者識別付き)と視覚的コンテンツ(共有画面、ドキュメント)を分析して、要件、決定、アクションアイテムを抽出します。",
-          "title": "会議録音"
+          "description": "Upload meeting recordings or design reviews. The analysis uses video and audio to summarize decisions, issues, and UI context.",
+          "title": "Meeting Recordings"
         },
         "links": {
           "meeting": "Meeting ingestion details",
           "voice": "Voice transcription details"
         },
         "screen": {
-          "description": "ワークフロー、バグ、またはUIプレゼンテーションを記録します。Gemini Visionは音声ナレーションと視覚的コンテンツの両方を分析して、要件収集のための完全なコンテキストをキャプチャします。",
-          "title": "画面録画"
+          "description": "Record workflows, bugs, or UI walkthroughs. The analysis summary can be attached to the task description.",
+          "title": "Screen Recordings"
         },
-        "subtitle": "会議録音、画面キャプチャ、音声ディクテーション",
-        "title": "アイデアとコンテキストをキャプチャ",
+        "subtitle": "Stage 1: Voice, video, notes become specifications",
+        "title": "Capture Ideas and Context",
         "voice": {
-          "description": "要件を自然に話します。OpenAI gpt-4o-transcribeは、迅速な仕様キャプチャのためのスマートテキスト挿入と話者識別で文字起こしします。",
-          "title": "音声ディクテーション"
+          "description": "Dictate requirements directly into the task input. Speech-to-text runs through the configured provider and inserts text into the active field.",
+          "title": "Voice Dictation"
         }
       },
       "step2": {
@@ -433,14 +431,14 @@
       },
       "step4": {
         "capabilities": {
-          "approve": "実行のために承認または監査証跡で拒否",
+          "approve": "Approve before execution",
           "editing": "すべてのプランステップと詳細の直接編集",
           "editor": "構文ハイライト付きプロフェッショナルMonacoエディタ",
           "merge": "カスタム指示で複数のプランを統合",
           "modifications": "変更または代替アプローチを要求",
           "visibility": "提案された変更への完全な可視性"
         },
-        "description": "プランは包括的なレビューのためにMonacoエディタで開きます。チームリーダーは提案されたすべての変更を検査し、ステップを直接編集し、カスタム指示で複数のアプローチを統合するか、プランを完全に拒否します。明示的な人間の承認なしにコード変更は発生しません - 企業要件とチームワークフローとの整合性を保証します。",
+        "description": "Plans open in Monaco for review. You can edit steps directly, merge drafts with custom guidance, or delete drafts you do not want to keep. No code changes occur without explicit human approval, keeping scope and dependencies explicit.",
         "links": {
           "governance": "Review and governance",
           "merge": "Plan merging details"
@@ -457,7 +455,7 @@
         "subtitle": "開発者またはコーディングエージェントへの安全な引き渡し",
         "title": "自信を持って実行",
         "tools": {
-          "audit": "実行の完全な監査証跡",
+          "audit": "Execution history stored in SQLite",
           "claude": "プランモードサポート付きClaude Code CLI",
           "codex": "OpenAI Codex CLI実行",
           "cursor": "Cursor CLI統合",
@@ -910,169 +908,6 @@
     "meta": {
       "description": "PlanToCodeがコード変更をどのように計画し実行するかをご覧ください。",
       "title": "インタラクティブデモ"
-    }
-  },
-  "planMode": {
-    "capabilities": {
-      "architect": {
-        "capability": "AIアーキテクトがあなたのガイダンスでプランを統合",
-        "details": "アーキテクチャ要件で統合をガイドします。AIは複数の実行からの補完的な詳細を1つの包括的なプランに統合します"
-      },
-      "execution": {
-        "capability": "完全な制御での実行",
-        "details": "プランをレビューし、スコープを確認してから実行します。またはIDEのチャットに貼り付けます。"
-      },
-      "know": {
-        "capability": "変更が発生する前に何が変更されるかを知る",
-        "details": "ファイル検出は正確な影響を示します。各プランがどのファイルに触れるかを確認します。驚きはありません。",
-        "link": "仕組みを見る"
-      },
-      "prompts": {
-        "capability": "機能するワンクリックプロンプト",
-        "details": "実証済みのプロンプト用のコピーボタン。「型安全にする」を20回再入力する必要はありません。"
-      },
-      "title": "実際に得られるもの"
-    },
-    "circumstances": {
-      "footer": "これらは「痛点」ではありません。アプローチにコミットする前に可視性と制御が必要な瞬間です。それが私たちが構築したものです。",
-      "items": {
-        "breaks": {
-          "moment": "変更が3つのダウンストリームサービスを壊し、本番環境で発見された",
-          "progress": "ファイル検出はすべての依存関係を事前にマッピングし、影響を早期に捉えます"
-        },
-        "drift": {
-          "moment": "AIが要件から外れ、あなたが欲しいと思うものを構築する",
-          "progress": "AIアーキテクトはプランを実際の目標に合わせて保ち、ドリフトなし"
-        },
-        "plans": {
-          "moment": "1つのプランがエッジケースを捉え、別のプランがエラー状態を処理し、3番目が型を追加",
-          "progress": "AIアーキテクトは補完的な洞察を完全な実装に統合"
-        },
-        "symptom": {
-          "moment": "AIが/componentsの症状を修正し、/configの原因を見逃す",
-          "progress": "ファイル検出で正しい抽象化レイヤーにガイド"
-        }
-      },
-      "title": "AIがアーキテクチャコンテキストを必要とするとき"
-    },
-    "cta": {
-      "book": "アーキテクトセッションを予約",
-      "demo": "最初にインタラクティブデモを試す",
-      "pricing": "従量課金制クレジット。新規ユーザー向けに$5の無料プロモ。サブスクリプションなし。",
-      "subtitle": "明確性、追跡可能性、運用信頼性を持って大きな変更を出荷する開発者に参加してください。",
-      "title": "アーキテクトを雇う準備はできましたか?"
-    },
-    "faq": {
-      "q1": {
-        "answer": "PlanToCodeは、Codex、Claude Code、またはCursorを使用する**前に**アーキテクチャの事前計画を提供します。これらのツールの実行フェーズを補完するファイル検出、マルチモデル統合、マージ指示を追加します。",
-        "question": "Codex CLIまたはClaude Codeとどう違いますか?"
-      },
-      "q2": {
-        "answer": "はい。PlanToCodeはCodex CLI、Claude Code、Cursor、Windsurfと並行して動作します。PlanToCodeでプランを生成してから、完全なコンテキストで好みのツールで実行します。",
-        "question": "既存のAIコーディングツールと一緒に使用できますか?"
-      },
-      "q3": {
-        "answer": "異なるAIモデルで同じタスクを複数回実行します。各実行は異なる実装の詳細を表面化します。PlanToCodeはそれらをソース帰属で1つの包括的なプランに統合します。",
-        "question": "マルチモデル統合とはどういう意味ですか?"
-      },
-      "title": "よくある質問"
-    },
-    "hero": {
-      "badge": "実行前にレビューする開発者向け",
-      "credits": "$5の無料クレジット • 従量課金制 • あらゆるAIコーディングツールと連携",
-      "guidance": "完全なスコープを確認し、正しいファイルにガイドし、システムに適したアプローチを選択します。",
-      "insight": "最新で最も高度なモデルはコードに優れていますが、アーキテクチャには盲目です。",
-      "install": "PlanToCodeをインストール",
-      "subtitle": "その1つの関数に依存するすべてのwebhook、キャッシュ、バックグラウンドジョブ、APIコンシューマーについて言及することは不可能です。それがリグレッションが忍び込む方法です。",
-      "title": "Codex CLI、Claude Code、Cursor向けアーキテクチャ計画"
-    },
-    "integrations": {
-      "claude": {
-        "description": "マルチモデル統合、ファイル検出、マージ指示でClaude Codeのネイティブプランモードを強化します。",
-        "link": "Claude Code計画ワークフローガイドを開く",
-        "title": "Claude Code計画ワークフロー"
-      },
-      "codex": {
-        "description": "すべての依存関係をマッピングし、マルチモデルプランをマージしてから、安全な反復のためにCodex承認モードで実行します。",
-        "link": "Codex CLI計画ワークフローガイドを開く",
-        "title": "Codex CLI計画ワークフロー"
-      },
-      "cursor": {
-        "description": "WSLフレンドリーな実行ガードレールを備えた完全なアーキテクチャコンテキストをCursor ComposerとAgentモードに提供します。",
-        "link": "Cursor計画ワークフローガイドを開く",
-        "title": "Cursor計画ワークフロー"
-      },
-      "title": "CLI計画ワークフローを選択"
-    },
-    "meta": {
-      "description": "コーディング前にソフトウェア変更を計画します。ファイルごとの実装仕様を生成し、チームでレビューしてから、完全な可視性とガバナンスで実行します。",
-      "title": "コーディング前に計画 - レビュー可能な仕様"
-    },
-    "progress": {
-      "execute": {
-        "description": "実行前に正確なスコープを確認。統合ターミナルまたはIDEに貼り付け",
-        "title": "完全な可視性で実行"
-      },
-      "guide": {
-        "description": "好きなもの、避けるべきものをAIに伝えます。驚くほどあなたのアーキテクチャ決定に従います",
-        "title": "専門知識で統合をガイド"
-      },
-      "quote": "AIがコードを生成します。あなたがソリューションをアーキテクトします。",
-      "ship": {
-        "description": "AIアーキテクトは複数のプランからの補完的な洞察を完全な実装に統合します",
-        "title": "自信を持って複雑な機能を出荷"
-      },
-      "title": "実際に達成する進歩"
-    },
-    "users": {
-      "cli": {
-        "quote": "私のCLIエージェントはエッジケースを見逃したり、既存の機能を壊したりしていました。今ではAIアーキテクトがコードベースに到達する前にプランのギャップとリグレッションを捉えます。",
-        "title": "CLIエージェントユーザー"
-      },
-      "ide": {
-        "quote": "IDEエージェントにはアーキテクチャコンテキストがありません。今では私のAIアーキテクトがすべてのシステム影響を考慮して正しいアプローチを事前計画します。それから検証されたプランをCursorに貼り付けます。",
-        "title": "CursorとWindsurfユーザー"
-      },
-      "senior": {
-        "quote": "AIは症状を修正し続け、原因を修正しませんでした。今では最初に正しい抽象化レイヤーにガイドします。ファイル検出は、コードが書かれる前に実際のアーキテクチャを示します。",
-        "title": "シニアエンジニア"
-      },
-      "title": "誰が使用しているか"
-    },
-    "whyNow": {
-      "ide": {
-        "detail": "人気のあるAIコーディングツールはマイクロレベルで優れています。マクロを見るものが必要です。",
-        "reason": "すべてのIDEに今AIがあります"
-      },
-      "models": {
-        "detail": "最新のモデルは有能です。しかし、彼らは**あなたの**アーキテクチャ、**あなたの**パターン、**あなたの**制約を知りません。",
-        "reason": "AIモデルは優れたコードを書きます"
-      },
-      "systems": {
-        "detail": "ユーザーサービスを変更し、モバイルアプリを壊します。このインターフェースを更新し、3つのマイクロサービスに影響を与えます。AIはこれらの接続を見ません。",
-        "reason": "コードベースは相互接続されたシステムです"
-      },
-      "title": "今これが重要な理由"
-    },
-    "workflow": {
-      "discovery": {
-        "description": "複数段階のワークフローは計画前に正しいファイルを表面化",
-        "step": "ファイル検出"
-      },
-      "execute": {
-        "description": "ターミナルで実行またはAIコーディングツールに貼り付け",
-        "step": "実行"
-      },
-      "generate": {
-        "description": "異なる視点とトークンガードレールで複数のモデルを実行",
-        "step": "プランを生成"
-      },
-      "link": "詳細なワークフローを見る",
-      "merge": {
-        "description": "マージ指示を提供し、AIが複数の実行からの補完的な詳細を統合",
-        "step": "AIが統合 + あなたがガイド"
-      },
-      "title": "仕組み"
     }
   },
   "schedule": {

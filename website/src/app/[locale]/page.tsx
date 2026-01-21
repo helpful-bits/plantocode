@@ -5,6 +5,10 @@ import type { Metadata } from 'next';
 import { LOCALES } from '@/i18n/config';
 import { StructuredData } from '@/components/seo/StructuredData';
 import { Header } from '@/components/landing/Header';
+import { GovernanceSection } from '@/components/landing/GovernanceSection';
+import { IntegrationsSection } from '@/components/landing/IntegrationsSection';
+import { FAQ } from '@/components/landing/FAQ';
+import { Footer } from '@/components/landing/Footer';
 import { cdnUrl } from '@/lib/cdn';
 import type { SoftwareApplication, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
@@ -65,7 +69,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
         url: cdnUrl('/images/og-image.png'),
         width: 1200,
         height: 630,
-        alt: 'PlanToCode - Technical walkthrough of the system',
+        alt: 'PlanToCode - Review plans before agents run',
         type: 'image/png',
       }],
       locale: ogLocale,
@@ -78,7 +82,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       description,
       images: [{
         url: cdnUrl('/images/og-image.png'),
-        alt: 'PlanToCode - Technical walkthrough of the system',
+        alt: 'PlanToCode - Review plans before agents run',
         width: 1200,
         height: 630,
       }],
@@ -106,6 +110,12 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
     : '';
   const heroDescription = typeof t['technicalLanding.description'] === 'string'
     ? t['technicalLanding.description']
+    : '';
+  const heroNote = typeof t['technicalLanding.note'] === 'string'
+    ? t['technicalLanding.note']
+    : '';
+  const heroNoteLink = typeof t['technicalLanding.noteLink'] === 'string'
+    ? t['technicalLanding.noteLink']
     : '';
   const walkthroughTitle = typeof t['gallery.video.title'] === 'string'
     ? t['gallery.video.title']
@@ -162,7 +172,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
     '@type': 'WebSite',
     name: 'PlanToCode',
     url: 'https://www.plantocode.com',
-    description: 'Technical walkthroughs of the PlanToCode architecture, workflows, and implementation tradeoffs.',
+    description: 'Plan-first workspace for reviewing, merging, and handing off implementation plans before agents run.',
     inLanguage: 'en-US',
     potentialAction: {
       '@type': 'SearchAction',
@@ -181,12 +191,12 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
     applicationCategory: 'DeveloperApplication',
     operatingSystem: ['Windows 10+', 'macOS 11.0+'],
     url: 'https://www.plantocode.com',
-    description: 'Tauri desktop app with Rust orchestration, SQLite persistence, and multi-model LLM planning pipelines.',
+    description: 'Desktop planning workspace with multi-model plans, review gates, and execution handoff.',
     offers: {
       '@type': 'Offer',
       price: 0,
       priceCurrency: 'USD',
-      description: 'Desktop app for planning workflows; requires external LLM providers with your API keys.',
+      description: 'Hosted app uses managed providers; self-hosting supports bring-your-own-key.',
     },
     downloadUrl: 'https://www.plantocode.com/downloads',
     softwareVersion: '1.0.23',
@@ -373,14 +383,22 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                       <div className="flex flex-wrap items-center gap-3">
                         {heroPrimaryCta ? (
                           <Button asChild size="lg" variant="cta">
-                            <a href="#walkthrough">{heroPrimaryCta}</a>
+                            <Link href="/downloads">{heroPrimaryCta}</Link>
                           </Button>
                         ) : null}
                         {heroSecondaryCta ? (
                           <Button asChild size="lg" variant="outline">
-                            <Link href="/docs/runtime-walkthrough">{heroSecondaryCta}</Link>
+                            <Link href="/docs/implementation-plans">{heroSecondaryCta}</Link>
                           </Button>
                         ) : null}
+                      </div>
+                    ) : null}
+                    {(heroNote && heroNoteLink) ? (
+                      <div className="text-xs text-muted-foreground">
+                        <span>{heroNote} </span>
+                        <Link href="/docs/server-setup" className="underline decoration-dashed underline-offset-4 hover:text-foreground">
+                          {heroNoteLink}
+                        </Link>
                       </div>
                     ) : null}
                     {Array.isArray(t['technicalLanding.tags']) ? (
@@ -426,12 +444,24 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
             </section>
             <SectionDividerMesh />
 
+            <section className="py-12 lg:py-16">
+              <GovernanceSection />
+            </section>
+            <SectionDividerMesh />
+
             <section id="walkthrough" className="py-12 lg:py-16">
               <div className="container mx-auto max-w-6xl">
                 <ScreenshotGallery />
               </div>
             </section>
+            <SectionDividerMesh />
+
+            <IntegrationsSection />
+            <SectionDividerMesh />
+
+            <FAQ />
           </main>
+          <Footer />
         </div>
       </HomePageClient>
     </>

@@ -386,17 +386,18 @@ public class TerminalDataService: ObservableObject {
     }
 
     /// Send large text to terminal in chunks to avoid overwhelming the PTY
-    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = MOBILE_TERMINAL_INPUT_CHUNK_BYTES) async throws {
+    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = 0) async throws {
         guard !text.isEmpty else { return }
 
         let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
+        let effectiveChunkSize = chunkSize > 0 ? chunkSize : MOBILE_TERMINAL_INPUT_CHUNK_BYTES
 
         // Send the text content (without carriage return embedded)
         let data = Data(text.utf8)
 
         var offset = 0
         while offset < data.count {
-            let endIndex = min(offset + chunkSize, data.count)
+            let endIndex = min(offset + effectiveChunkSize, data.count)
             let chunk = data[offset..<endIndex]
 
             try await self.writeViaRelay(session: session, data: Data(chunk))

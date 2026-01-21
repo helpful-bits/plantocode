@@ -3,6 +3,7 @@
 import { GlassCard } from '@/components/ui/GlassCard';
 import { useMessages } from '@/components/i18n/useMessages';
 import { Link } from '@/i18n/navigation';
+import { GITHUB_REPO_URL } from '@/lib/brand';
 
 export function IntegrationsSection() {
   const { t } = useMessages();
@@ -24,7 +25,7 @@ export function IntegrationsSection() {
             <p className="text-foreground/80 mb-4 text-sm">
               {t('integrations.cards.claudeCode.description')}
             </p>
-            <Link href="/docs/architecture" className="text-primary hover:underline text-sm font-medium">
+            <Link href="/docs/prompt-types" className="text-primary hover:underline text-sm font-medium">
               {t('integrations.cards.claudeCode.link')}
             </Link>
           </GlassCard>
@@ -36,9 +37,14 @@ export function IntegrationsSection() {
             <p className="text-foreground/80 mb-4 text-sm">
               {t('integrations.cards.cursor.description')}
             </p>
-            <Link href="/docs/implementation-plans" className="text-primary hover:underline text-sm font-medium">
+            <a
+              href={GITHUB_REPO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline text-sm font-medium"
+            >
               {t('integrations.cards.cursor.link')}
-            </Link>
+            </a>
           </GlassCard>
 
           <GlassCard className="p-6">
@@ -48,7 +54,7 @@ export function IntegrationsSection() {
             <p className="text-foreground/80 mb-4 text-sm">
               {t('integrations.cards.allIntegrations.description')}
             </p>
-            <Link href="/docs/terminal-sessions" className="text-primary hover:underline text-sm font-medium">
+            <Link href="/docs/server-setup" className="text-primary hover:underline text-sm font-medium">
               {t('integrations.cards.allIntegrations.link')}
             </Link>
           </GlassCard>

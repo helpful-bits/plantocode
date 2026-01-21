@@ -19,6 +19,9 @@ use std::{
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
+use std::sync::atomic::AtomicU64;
+#[cfg(windows)]
+use std::sync::atomic::Ordering;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -29,6 +32,8 @@ const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
 const WINDOWS_WRITE_CHUNK_BYTES: usize = 8 * 1024;
 #[cfg(windows)]
 const WINDOWS_EXIT_POLL_INTERVAL_MS: u64 = 250;
+#[cfg(windows)]
+const WINDOWS_RESIZE_DEBOUNCE_MS: u64 = 150;
 
 enum TerminalState {
     Initializing,
@@ -67,6 +72,8 @@ struct SessionHandle {
     subscribers: Mutex<Vec<Channel<Vec<u8>>>>,
     state: Mutex<TerminalState>,
     last_requested_size: Mutex<Option<(u16, u16)>>,
+    last_applied_size: Mutex<Option<(u16, u16)>>,
+    resize_sequence: AtomicU64,
     started_at: i64,
     working_dir: Option<String>,
     last_flushed_len: Mutex<usize>,
@@ -188,10 +195,12 @@ impl TerminalManager {
             .await?;
 
         let pty = native_pty_system();
+        let initial_rows = rows.unwrap_or(24).max(1);
+        let initial_cols = cols.unwrap_or(80).max(1);
         let pair = pty
             .openpty(PtySize {
-                rows: rows.unwrap_or(24),
-                cols: cols.unwrap_or(80),
+                rows: initial_rows,
+                cols: initial_cols,
                 pixel_width: 0,
                 pixel_height: 0,
             })
@@ -330,7 +339,9 @@ impl TerminalManager {
                 pty: pair.master,
                 child,
             }),
-            last_requested_size: Mutex::new(None),
+            last_requested_size: Mutex::new(Some((initial_cols, initial_rows))),
+            last_applied_size: Mutex::new(Some((initial_cols, initial_rows))),
+            resize_sequence: AtomicU64::new(0),
             started_at: now,
             working_dir,
             last_flushed_len: Mutex::new(0),
@@ -550,22 +561,59 @@ impl TerminalManager {
     }
 
     pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> AppResult<()> {
+        if cols == 0 || rows == 0 {
+            return Ok(());
+        }
         if let Some(h) = self.sessions.get(session_id) {
             // Store requested size for coalescing
             *h.last_requested_size.lock().unwrap() = Some((cols, rows));
 
-            let mut state_guard = h.state.lock().unwrap();
-            if let TerminalState::Running { pty, .. } = &mut *state_guard {
-                pty.resize(PtySize {
-                    rows,
-                    cols,
-                    pixel_width: 0,
-                    pixel_height: 0,
-                })
-                .map_err(|e| {
-                    AppError::ExternalServiceError(format!("Failed to resize terminal: {}", e))
-                })?;
+            #[cfg(windows)]
+            {
+                let sequence = h.resize_sequence.fetch_add(1, Ordering::SeqCst) + 1;
+                let handle = h.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(
+                        WINDOWS_RESIZE_DEBOUNCE_MS,
+                    ))
+                    .await;
+                    if handle.resize_sequence.load(Ordering::SeqCst) != sequence {
+                        return;
+                    }
+                    if let Some((cols, rows)) = *handle.last_requested_size.lock().unwrap() {
+                        if let Err(e) = TerminalManager::apply_resize_for_handle(&handle, cols, rows) {
+                            log::warn!("Failed to resize terminal (debounced): {}", e);
+                        }
+                    }
+                });
             }
+
+            #[cfg(not(windows))]
+            {
+                Self::apply_resize_for_handle(&h, cols, rows)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_resize_for_handle(handle: &SessionHandle, cols: u16, rows: u16) -> AppResult<()> {
+        {
+            let mut last_applied = handle.last_applied_size.lock().unwrap();
+            if *last_applied == Some((cols, rows)) {
+                return Ok(());
+            }
+            *last_applied = Some((cols, rows));
+        }
+
+        let mut state_guard = handle.state.lock().unwrap();
+        if let TerminalState::Running { pty, .. } = &mut *state_guard {
+            pty.resize(PtySize {
+                rows,
+                cols,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| AppError::ExternalServiceError(format!("Failed to resize terminal: {}", e)))?;
         }
         Ok(())
     }
@@ -835,6 +883,8 @@ impl TerminalManager {
                     exit_code,
                 }),
                 last_requested_size: Mutex::new(None),
+                last_applied_size: Mutex::new(None),
+                resize_sequence: AtomicU64::new(0),
                 started_at: session.created_at,
                 working_dir: session.working_directory,
                 last_flushed_len: Mutex::new(restored_len),

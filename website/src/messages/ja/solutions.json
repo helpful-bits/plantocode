@@ -84,7 +84,7 @@
       },
       "gettingStarted": {
         "step1": {
-          "description": "macOS、Windows、またはLinux用にインストールします。お好みのAIモデル(Claude、GPT-4、Gemini、またはローカルモデル)に接続します。開始するためにAPIキーは必要ありません。",
+          "description": "macOS、Windows、またはLinux用にインストールします。お好みのAIモデル(Claude、GPT-4、Gemini、またはローカルモデル)に接続します。ホスト版はAPIキー不要で、セルフホストでは独自キーを使用します。",
           "title": "PlanToCodeをダウンロード"
         },
         "step2": {

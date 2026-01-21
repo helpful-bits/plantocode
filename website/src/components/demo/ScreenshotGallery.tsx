@@ -44,6 +44,33 @@ interface ScreenshotDefinition {
 
 const screenshotDefinitions: ScreenshotDefinition[] = [
   {
+    id: 'implementation-plans',
+    titleKey: 'gallery.cards.implementationPlans.title',
+    descriptionKey: 'gallery.cards.implementationPlans.description',
+    featuresKey: 'gallery.cards.implementationPlans.features',
+    image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
+    icon: <FileText className="w-5 h-5" />,
+    aspectRatio: '1714/1574',
+  },
+  {
+    id: 'merge-instructions-workflow',
+    titleKey: 'gallery.cards.mergeInstructionsWorkflow.title',
+    descriptionKey: 'gallery.cards.mergeInstructionsWorkflow.description',
+    featuresKey: 'gallery.cards.mergeInstructionsWorkflow.features',
+    image: cdnUrl('/assets/images/demo-merge-instructions-panel.jpg'),
+    icon: <FileText className="w-5 h-5" />,
+    aspectRatio: '1420/790',
+  },
+  {
+    id: 'terminal-voice-recording',
+    titleKey: 'gallery.cards.terminalVoiceRecording.title',
+    descriptionKey: 'gallery.cards.terminalVoiceRecording.description',
+    featuresKey: 'gallery.cards.terminalVoiceRecording.features',
+    image: cdnUrl('/assets/images/demo-terminal-voice-recording.jpg'),
+    icon: <Copy className="w-5 h-5" />,
+    aspectRatio: '1478/820',
+  },
+  {
     id: 'file-finder',
     titleKey: 'gallery.cards.fileFinder.title',
     descriptionKey: 'gallery.cards.fileFinder.description',
@@ -62,22 +89,13 @@ const screenshotDefinitions: ScreenshotDefinition[] = [
     aspectRatio: '608/980',
   },
   {
-    id: 'video-analysis',
-    titleKey: 'gallery.cards.videoAnalysis.title',
-    descriptionKey: 'gallery.cards.videoAnalysis.description',
-    featuresKey: 'gallery.cards.videoAnalysis.features',
-    image: cdnUrl('/assets/images/demo-video-analysis.jpg'),
-    icon: <Video className="w-5 h-5" />,
-    aspectRatio: '1024/1366',
-  },
-  {
-    id: 'implementation-plans',
-    titleKey: 'gallery.cards.implementationPlans.title',
-    descriptionKey: 'gallery.cards.implementationPlans.description',
-    featuresKey: 'gallery.cards.implementationPlans.features',
-    image: cdnUrl('/assets/images/demo-implementation-plans.jpg'),
-    icon: <FileText className="w-5 h-5" />,
-    aspectRatio: '1714/1574',
+    id: 'settings-prompts',
+    titleKey: 'gallery.cards.settingsPrompts.title',
+    descriptionKey: 'gallery.cards.settingsPrompts.description',
+    featuresKey: 'gallery.cards.settingsPrompts.features',
+    image: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
+    icon: <Settings className="w-5 h-5" />,
+    aspectRatio: '1838/1626',
   },
   {
     id: 'background-tasks',
@@ -89,31 +107,13 @@ const screenshotDefinitions: ScreenshotDefinition[] = [
     aspectRatio: '642/1654',
   },
   {
-    id: 'settings-prompts',
-    titleKey: 'gallery.cards.settingsPrompts.title',
-    descriptionKey: 'gallery.cards.settingsPrompts.description',
-    featuresKey: 'gallery.cards.settingsPrompts.features',
-    image: cdnUrl('/assets/images/demo-settings-prompts.jpg'),
-    icon: <Settings className="w-5 h-5" />,
-    aspectRatio: '1838/1626',
-  },
-  {
-    id: 'terminal-voice-recording',
-    titleKey: 'gallery.cards.terminalVoiceRecording.title',
-    descriptionKey: 'gallery.cards.terminalVoiceRecording.description',
-    featuresKey: 'gallery.cards.terminalVoiceRecording.features',
-    image: cdnUrl('/assets/images/demo-terminal-voice-recording.jpg'),
-    icon: <Copy className="w-5 h-5" />,
-    aspectRatio: '1478/820',
-  },
-  {
-    id: 'merge-instructions-workflow',
-    titleKey: 'gallery.cards.mergeInstructionsWorkflow.title',
-    descriptionKey: 'gallery.cards.mergeInstructionsWorkflow.description',
-    featuresKey: 'gallery.cards.mergeInstructionsWorkflow.features',
-    image: cdnUrl('/assets/images/demo-merge-instructions-panel.jpg'),
-    icon: <FileText className="w-5 h-5" />,
-    aspectRatio: '1420/790',
+    id: 'video-analysis',
+    titleKey: 'gallery.cards.videoAnalysis.title',
+    descriptionKey: 'gallery.cards.videoAnalysis.description',
+    featuresKey: 'gallery.cards.videoAnalysis.features',
+    image: cdnUrl('/assets/images/demo-video-analysis.jpg'),
+    icon: <Video className="w-5 h-5" />,
+    aspectRatio: '1024/1366',
   },
   {
     id: 'billing-transactions',
@@ -347,7 +347,7 @@ export function ScreenshotGallery() {
                 className="flex items-center"
               >
                 <Button asChild size="lg" variant="cta">
-                  <Link href="/architecture">
+                  <Link href="/downloads">
                     {t('gallery.cta.primary')}
                   </Link>
                 </Button>
@@ -358,7 +358,7 @@ export function ScreenshotGallery() {
                 className="flex items-center"
               >
                 <Button asChild size="lg" variant="outline">
-                  <Link href="/docs/runtime-walkthrough">
+                  <Link href="/docs/implementation-plans">
                     {t('gallery.cta.secondary')}
                   </Link>
                 </Button>

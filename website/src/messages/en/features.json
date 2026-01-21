@@ -12,85 +12,6 @@
         "docs": "Open docs",
         "architecture": "Architecture overview"
       }
-    },
-    "description": "Component-level documentation for each subsystem, with pointers to the job processors, storage tables, and UI surfaces that drive behavior. Most stages rely on external LLM providers configured with your API keys.",
-    "learnMore": "Open component",
-    "title": "Component Documentation"
-  },
-  "meetings": {
-    "meta": {
-      "title": "Meeting & Recording Ingestion - System Walkthrough",
-      "description": "How PlanToCode captures meetings and recordings, extracts requirements, and feeds them into planning workflows."
-    },
-    "badge": "Specification capture",
-    "title": "Meeting & Recording Ingestion",
-    "subtitle": "Multimodal pipeline that turns recorded discussions into structured requirements for planning. Analysis runs through the configured transcription and vision providers.",
-    "ariaLabel": "Meeting and recording ingestion features",
-    "cards": {
-      "multimodal": {
-        "title": "Multimodal extraction pipeline",
-        "description": "Audio and key frames are processed to produce transcripts, UI context, and requirement notes for task refinement.",
-        "link": "See video analysis"
-      },
-      "insights": {
-        "title": "Curated insights for planning",
-        "description": "Decisions, constraints, and action items are surfaced as selectable notes that feed the plan.",
-        "link": "See text improvement"
-      }
-    },
-    "benefits": {
-      "title": "What the system outputs",
-      "collaboration": {
-        "title": "Decision log",
-        "description": "Captures decisions and action items with timestamps for traceable planning."
-      },
-      "transcription": {
-        "title": "Speaker-aware transcript",
-        "description": "Transcribes audio with speaker segmentation so requirements keep attribution."
-      },
-      "visual": {
-        "title": "Visual context frames",
-        "description": "Summarizes screens and diagrams into notes used during task refinement."
-      }
-    },
-    "howItWorks": {
-      "title": "Pipeline steps",
-      "step1": {
-        "title": "Ingest recording",
-        "description": "Upload a Teams or Zoom recording or a screen capture; the system normalizes formats and indexes the media."
-      },
-      "step2": {
-        "title": "Multimodal analysis",
-        "description": "Audio transcript and key frames are analyzed to extract requirements, constraints, and UI state."
-      },
-      "step3": {
-        "title": "Attach to task",
-        "description": "Outputs are attached to the task as structured notes before planning and file discovery."
-      }
-    },
-    "relatedFeatures": {
-      "title": "Related components",
-      "videoAnalysis": {
-        "title": "Video Analysis",
-        "description": "Analyze screen recordings and capture UI context for planning."
-      },
-      "voiceTranscription": {
-        "title": "Voice Transcription",
-        "description": "Capture spoken requirements directly into the task input."
-      },
-      "textImprovement": {
-        "title": "Text Improvement",
-        "description": "Normalize raw notes into structured task descriptions."
-      },
-      "learnMore": "Learn more"
-    },
-    "cta": {
-      "title": "Continue the pipeline",
-      "description": "Follow the video analysis docs and the architecture overview to see how these notes flow into planning and execution.",
-      "links": {
-        "docs": "Video analysis docs",
-        "architecture": "Architecture overview"
-      }
     }
   },
   "fileDiscovery": {
@@ -114,7 +35,7 @@
         "features": [
           "Git ls-files with .gitignore respect",
           "Binary file detection and filtering",
-          "Extension-based exclusion (97 types)",
+          "Extension-based exclusion list for common binary types",
           "Content analysis for binary detection"
         ],
         "title": "Git Repository Integration"
@@ -135,8 +56,8 @@
         "features": [
           "Dynamic chunk sizing per file type",
           "2000-token prompt overhead reservation",
-          "Batch processing (100 files default)",
-          "30-second file caching TTL"
+          "Token-budgeted batching (size varies by content and limits)",
+          "Chunking based on estimated tokens, not fixed file counts"
         ],
         "title": "Smart Token Management"
       },
@@ -152,10 +73,8 @@
       }
     },
     "cta": {
-      "description": "Dive deeper into the file discovery internals, from orchestration to relevance scoring, and map the pipeline to the codebase.",
       "links": {
-        "docs": "Read file discovery docs",
-        "buildYourOwn": "Build your own pipeline"
+        "docs": "Read file discovery docs"
       },
       "title": "Explore the internals"
     },
@@ -361,7 +280,7 @@
         "title": "Frontend Components"
       },
       "metadata": {
-        "description": "Complete audit trail and debugging capability.",
+        "description": "Full job history for traceability and debugging.",
         "features": [
           "Source job IDs preserved",
           "Full prompt stored for debugging",
@@ -436,7 +355,7 @@
     "copyButtons": {
       "examples": {
         "serverConfigured": {
-          "button": "Button: \"Parallel agent workflows\"",
+          "button": "Button: \"Parallel Claude Coding Agents\"",
           "hint": "+ Custom instructions...",
           "template": "Template: \"{{IMPLEMENTATION_PLAN}}\""
         },
@@ -447,7 +366,7 @@
         }
       },
       "serverConfigured": {
-        "description": "Dynamic copy buttons configured server-side with template placeholders.",
+        "description": "Server-configured copy buttons with template placeholders.",
         "title": "Server-Configured Buttons"
       },
       "stepExtraction": {
@@ -457,7 +376,7 @@
       "title": "Configurable Copy Button System"
     },
     "cta": {
-      "description": "Follow how plans are generated, reviewed, merged, and handed off to execution, with audit trails for each step.",
+      "description": "Follow how plans are generated, reviewed, merged, and handed off to execution, with job history for each step.",
       "links": {
         "mergePlans": "Merge pipeline",
         "terminal": "Terminal sessions"
@@ -581,7 +500,7 @@
     },
     "hero": {
       "badge": "Implementation plan pipeline",
-      "description": "Plan generation and merging rely on external LLM providers configured with your API keys; review and execution remain local.",
+      "description": "Plan generation and merging rely on external LLM providers managed by the server; review and execution remain local.",
       "title": "Implementation planning pipeline"
     },
     "humanInLoop": {
@@ -678,10 +597,8 @@
       "title": "Core mechanics"
     },
     "cta": {
-      "description": "See the prompt templates, payload fields, and how outputs feed the planning pipeline.",
       "links": {
-        "docs": "Text improvement docs",
-        "architecture": "Architecture overview"
+        "docs": "Text improvement docs"
       },
       "title": "Continue in the docs"
     },
@@ -789,15 +706,15 @@
   },
   "voiceTranscription": {
     "accuracy": {
-      "bottomLine": "Summary: Accuracy and latency directly affect how much cleanup is needed before refinement jobs.",
-      "about": "About the evaluation context",
+      "bottomLine": "Summary: Audio quality and the configured model drive accuracy. Review transcribed text before planning.",
+      "about": "About transcription quality",
       "models": {
-        "aws": "Language coverage and diarization settings stored with job metadata.",
-        "google": "Latency and word-error-rate tracked per run.",
-        "gpt": "Primary speech-to-text provider configured per project.",
-        "whisper": "Optional baseline model used for comparison when enabled."
+        "aws": "Transcription runs through the configured provider; there is no offline or on-device mode.",
+        "google": "Additional providers can be enabled by self-hosted admins via the allowlist.",
+        "gpt": "Primary transcription model is configured per project from the server allowlist.",
+        "whisper": "No diarization or speaker labels are produced in the current pipeline."
       },
-      "title": "Accuracy Benchmarks"
+      "title": "Accuracy factors"
     },
     "capabilities": {
       "multiLanguage": {
@@ -815,10 +732,8 @@
       "title": "Key Capabilities"
     },
     "cta": {
-      "description": "Stage 1 captures requirements by voice; Stage 5 lets you dictate commands into PTY sessions. The docs walk through the job flow and storage model.",
       "links": {
-        "docs": "Voice transcription docs",
-        "textImprovement": "Text enhancement and refinement"
+        "docs": "Voice transcription docs"
       },
       "title": "Voice transcription in the pipeline"
     },
@@ -828,7 +743,7 @@
         "text": "Create a Postgres replica in us-east with 2 CPUs, 8GB RAM, and enable replication; set wal level logical and max senders equals ten."
       },
       "comparisonTitle": "Token-level comparison",
-      "errorSummary": "Errors \u2014 Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
+      "errorSummary": "Errors — Substitutions: {sub}, Deletions: {del}, Insertions: {ins}. Small errors can flip units or flags.",
       "impact": "Impact: Mishearing \"read-replica\" as \"replica\", dropping region suffix \"-1\", or changing \"wal_level=logical\" can lead to incorrect deployments or data flows.",
       "primaryBadge": "reference-aligned",
       "primaryLabel": "Primary transcription model",
@@ -860,12 +775,12 @@
     },
     "hero": {
       "badge": "Stage 1 & Stage 5 Voice Input",
-      "description": "Dictate tasks and commands; audio is sent to the configured transcription provider and stored as task artifacts or PTY input. Voice transcription respects per-project settings and feeds text_improvement and task_refinement jobs.",
+      "description": "Dictate tasks and commands; audio is sent to the configured transcription provider and inserted into the task description or PTY input. Voice transcription respects per-project settings and feeds text_improvement and task_refinement jobs.",
       "title": "Voice transcription for specification capture and terminal control"
     },
     "workflow": {
       "stage1": {
-        "description": "Dictate tasks to capture constraints, context, and intent; transcripts become inputs for refinement jobs.",
+        "description": "Dictate tasks to capture constraints, context, and intent; transcribed text becomes input for refinement jobs.",
         "title": "Stage 1: Dictating Tasks"
       },
       "stage5": {
@@ -873,27 +788,27 @@
         "title": "Stage 5: Terminal Voice Control"
       },
       "integration": {
-        "description": "Voice respects per-project language and temperature settings. Transcripts feed into text_improvement for grammar polish and task_refinement for completeness expansion.",
+        "description": "Voice respects per-project language and temperature settings. Transcribed text feeds into text_improvement for grammar polish and task_refinement for completeness expansion.",
         "title": "Integration with Text Enhancement Prompts"
       },
       "title": "Voice Transcription Across Stages"
     },
     "nextSteps": {
-      "description": "Voice transcription is Stage 1 input in the planning pipeline. After capturing raw thoughts, text_improvement cleans grammar and task_refinement expands completeness, preparing specs for Stage 2 file discovery.",
+      "description": "Voice transcription is Stage 1 input in the planning pipeline. After capturing dictated text, text_improvement cleans grammar and task_refinement expands completeness, preparing specs for Stage 2 file discovery.",
       "link": "Learn about text_improvement and task_refinement",
       "taskRefinement": {
         "description": "Expand descriptions with implied requirements, edge cases, and technical considerations. Prepares specs for FileFinderWorkflow.",
-        "title": "Task Refinement (Stage 1 \u2192 2)"
+        "title": "Task Refinement (Stage 1 → 2)"
       },
       "textEnhancement": {
         "description": "Polish grammar, improve clarity, and preserve intent for review.",
         "title": "Text Enhancement (Stage 1)"
       },
-      "title": "Refine Voice Transcripts Before File Discovery"
+      "title": "Refine Dictated Text Before File Discovery"
     },
     "painPoints": {
       "captureIdeas": {
-        "description": "Dictation preserves context at discovery time and creates transcript artifacts for refinement jobs.",
+        "description": "Dictation preserves context at discovery time and creates clean text inputs for refinement jobs.",
         "title": "Capture context at discovery time"
       },
       "contextSwitching": {
@@ -901,20 +816,20 @@
         "title": "Keep input in the active surface"
       },
       "handsBusy": {
-        "description": "Voice capture keeps input flowing during code review, debugging, or sketching; transcripts stay linked to the task or session.",
+        "description": "Voice capture keeps input flowing during code review, debugging, or sketching; dictated text stays in the task or session.",
         "title": "Hands-free input during active review"
       },
       "title": "Why voice capture exists in intake"
     },
     "useCases": {
       "codeReview": {
-        "outcome": "Transcript artifacts are ready for text_improvement and task_refinement.",
-        "scenario": "While reviewing a diff, dictate refactor requirements into the task panel; the transcript is stored with the task.",
+        "outcome": "Transcribed text is ready for text_improvement and task_refinement.",
+        "scenario": "While reviewing a diff, dictate refactor requirements into the task panel; the dictated text is stored in the task description.",
         "title": "Dictate refactor notes during review (Stage 1)"
       },
       "fasterEntry": {
-        "outcome": "Notes are queued for task_refinement to normalize into specs.",
-        "scenario": "After QA, dictate multiple bug reports; each transcript is stored as a task note.",
+        "outcome": "Dictated notes are queued for task_refinement to normalize into specs.",
+        "scenario": "After QA, dictate multiple bug reports; each dictation becomes task input you can refine.",
         "title": "Batch capture for repeated reports"
       },
       "handsFree": {
@@ -963,33 +878,33 @@
   "videoAnalysis": {
     "meta": {
       "title": "Video Analysis Pipeline - PlanToCode",
-      "description": "Multimodal ingestion pipeline for recordings: frame extraction, transcript analysis, and structured task artifacts."
+      "description": "Adaptive analysis of screen recordings guided by system prompts and your focus prompt."
     },
     "capabilities": {
       "fileUpload": {
-        "description": "Upload existing recordings and normalize formats for analysis.",
+        "description": "Upload existing recordings or capture new ones for analysis.",
         "features": [
           "MP4, WebM, MOV, AVI support",
-          "Drag-and-drop upload",
-          "Chunked processing"
+          "Local recording stored before upload",
+          "Long recordings split into chunks"
         ],
         "title": "Recording upload"
       },
       "fpsControl": {
-        "description": "Tune FPS to balance detail, cost, and latency; settings can be stored per project.",
+        "description": "FPS is a sampling hint that trades detail for cost; for large files the provider may ignore it.",
         "features": [
-          "1-2 FPS for long recordings",
-          "3-5 FPS for most recordings",
-          "6-10 FPS for rapid UI changes"
+          "0.1 to 20 FPS selection in the UI",
+          "Lower FPS reduces token usage",
+          "Long recordings may be chunked for analysis"
         ],
-        "title": "Frame extraction control"
+        "title": "Frame rate hint"
       },
       "gemini": {
-        "description": "Select model for cost vs depth; usage is tracked with the job metadata.",
+        "description": "Video analysis uses Google Gemini video models configured per project; usage is tracked with job metadata.",
         "features": [
-          "Model selection per run",
-          "Usage and cost tracking",
-          "Consistent structured outputs"
+          "Allowed models set by server config",
+          "Per-project model defaults",
+          "Usage and cost tracking"
         ],
         "title": "Model selection"
       },
@@ -1012,62 +927,62 @@
       },
       "title": "Continue in the pipeline"
     },
-      "faq": {
-        "formats": {
-          "answer": "MP4, WebM, MOV, and AVI are supported. Frames are extracted locally based on your FPS setting before analysis.",
-          "question": "Which video formats are supported?"
-        },
-        "fps": {
-          "answer": "1-2 FPS for long recordings, 3-5 FPS for most recordings, 6-10 FPS for rapid UI changes. Higher FPS increases cost and detail.",
-          "question": "What FPS settings should I use?"
-        },
-        "model": {
-          "answer": "Fast models trade depth for cost and latency; deep models capture more context for complex flows. Choose per run based on the task.",
-          "question": "Which model should I choose?"
-        },
+    "faq": {
+      "formats": {
+        "answer": "MP4, WebM, MOV, and AVI are supported. Other formats may work but are not guaranteed.",
+        "question": "Which video formats are supported?"
+      },
+      "fps": {
+        "answer": "FPS is a sampling hint. Higher FPS can increase cost; for very large files the provider may sample at a fixed rate, and long recordings may be chunked.",
+        "question": "What FPS settings should I use?"
+      },
+      "model": {
+        "answer": "Video analysis uses Google Gemini video models. The default model is configured per project from the server allowlist.",
+        "question": "Which model should I choose?"
+      },
       "optimization": {
-        "answer": "Lower FPS, trim to relevant segments, and choose fast analysis when deep context is not required.",
+        "answer": "Trim to relevant segments, keep the focus prompt specific, and use lower FPS when high visual detail is not required.",
         "question": "How can I optimize analysis costs?"
       }
     },
     "hero": {
-      "badge": "Stage 1 input: Video and audio ingestion",
-      "description": "Ingest screen recordings or meeting videos, extract frames and transcripts, run multimodal analysis through configured providers, and store structured task artifacts for planning.",
+      "badge": "Stage 1 input: Screen recording analysis",
+      "description": "Record or upload a screen recording, add a focus prompt, and let the video analysis system prompt guide a Gemini model to extract what matters. Results are stored as a job response you can attach to the task.",
       "title": "Multimodal video analysis for requirements capture"
     },
     "howItWorks": {
       "steps": [
         {
           "title": "Capture or upload video",
-          "description": "Record in-app or upload MP4/WebM/MOV/AVI files. Videos are stored locally before analysis."
+          "description": "Record your screen (with optional audio) or pick an existing file. Recordings stay local until analysis starts."
         },
         {
-          "title": "Extract frames and transcript",
-          "description": "Frame extraction runs at the configured FPS and audio is transcribed with timestamps."
+          "title": "Set a focus prompt",
+          "description": "Your task description and optional focus prompt are wrapped in <description> and <video_attention_prompt> tags."
         },
         {
-          "title": "Run multimodal analysis",
-          "description": "The analysis prompt combines transcript + frames to produce structured outputs."
+          "title": "Run adaptive analysis",
+          "description": "The default video analysis system prompt tells the model to focus on what you show and say and to quote visible text when relevant."
         },
         {
           "title": "Attach to the task pipeline",
-          "description": "Artifacts are attached to the task and feed task_refinement and file discovery."
+          "description": "The analysis summary is stored in the job record and can be appended to the task description."
         }
       ],
       "title": "How the pipeline runs"
     },
     "insights": {
       "actionItems": {
-        "description": "Action items with owners, dependencies, and links to timestamps and frames.",
+        "description": "Action items and suggested fixes based on what was shown and said.",
         "title": "Action items"
       },
       "decisions": {
-        "description": "Decisions captured with context and source timestamps.",
+        "description": "Decisions or open questions captured from the recording.",
         "title": "Decisions"
       },
-      "description": "Analysis results are stored as structured artifacts with references to timestamps and frames so reviewers can promote them into plan inputs.",
+      "description": "Analysis results are stored in the job response and can be applied to the task description for refinement and planning.",
       "discussionPoints": {
-        "description": "Open questions and alternatives linked to the original segment.",
+        "description": "UI issues, design tradeoffs, or bugs worth following up.",
         "title": "Discussion points"
       },
       "title": "Structured outputs"
@@ -1077,7 +992,7 @@
         "description": "Lower cost and latency for straightforward UI flows and documentation.",
         "features": [
           "Fast turnaround",
-          "Lower cost per frame",
+          "Lower cost for straightforward recordings",
           "Good for simple flows"
         ],
         "title": "Fast analysis model"
@@ -1087,7 +1002,7 @@
         "features": [
           "Richer reasoning",
           "Better for complex flows",
-          "Higher cost per frame"
+          "Higher cost for complex recordings"
         ],
         "title": "Deep analysis model"
       },
@@ -1095,89 +1010,85 @@
     },
     "multimodal": {
       "audioTranscript": {
-        "description": "Transcribe audio with timestamps and speaker cues, then feed the transcript into analysis prompts.",
+        "description": "The model analyzes the audio track directly; the app does not generate a separate transcript.",
         "features": [
-          "Timestamped transcript",
-          "Speaker markers when available",
-          "Links to frame ranges"
+          "Narration guides what to focus on",
+          "Spoken intent and errors inform the summary",
+          "No standalone transcript file produced"
         ],
-        "title": "Audio transcript extraction"
+        "title": "Audio and narration context"
       },
       "title": "Audio and visual extraction",
       "visualContent": {
-        "description": "Sample frames at configurable FPS and extract on-screen text, UI states, and key moments.",
+        "description": "The model analyzes what is visible in the video and can quote on-screen text when it is clear.",
         "features": [
-          "Frame sampling and keyframe selection",
-          "OCR and UI state capture",
-          "Frame ids linked to insights"
+          "UI flows and state changes from what is visible",
+          "Best-effort quotes of logs, errors, and labels",
+          "No local frame export or OCR pipeline"
         ],
-        "title": "Visual frame analysis"
+        "title": "Visual context from the recording"
       }
     },
     "painPoints": {
       "incompleteNotes": {
-        "description": "Screenshare changes, error dialogs, and diagrams rarely make it into structured artifacts without frame references.",
+        "description": "Screenshare changes and error dialogs are easy to miss in notes; recordings preserve that context.",
         "title": "Manual notes omit frame references"
       },
       "requirementsLost": {
-        "description": "Text notes miss on-screen context, timing, and the exact UI state; frame extraction preserves that context.",
+        "description": "Text notes miss on-screen state and timing; recordings keep the visual context intact.",
         "title": "UI state lives in recordings"
       },
       "reviewTime": {
-        "description": "Long recordings are condensed into timestamped artifacts with frame references.",
+        "description": "Long recordings are hard to review; a focused summary highlights what matters.",
         "title": "Raw recordings are expensive to review"
       },
       "title": "Why multimodal ingestion exists"
     },
     "useCases": {
       "bugCapture": {
-        "description": "Extract error states, UI transitions, and reproduction steps with timestamps.",
+        "description": "Summarize reproduction steps and visible errors from a recording.",
         "title": "Bug timeline artifacts"
       },
       "onboarding": {
-        "description": "Generate structured walkthrough notes with referenced frames.",
+        "description": "Produce walkthrough notes from a screen recording.",
         "title": "Walkthrough summaries"
       },
       "title": "Example outputs",
       "uiDemo": {
-        "description": "Capture UI patterns and states with linked timestamps and frames.",
+        "description": "Capture UI states and flows shown in the recording.",
         "title": "UI state capture"
       }
     }
   },
   "copyButtons": {
-    "meta": {
-      "title": "Copy Buttons - Template Handoff",
-      "description": "Copy buttons apply prompt templates with placeholders like {{IMPLEMENTATION_PLAN}} and {{TASK_DESCRIPTION}} to standardize execution handoff."
-    },
     "concept": {
       "dragDrop": {
         "description": "Drag-and-drop ordering for button sets. Organize buttons by execution stage or priority.",
         "title": "Drag-and-drop ordering"
       },
       "serverConfigured": {
-        "description": "Template prompts with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{PROJECT_CONTEXT}}. Server-side defaults with project-specific overrides.",
+        "description": "Template prompts with placeholders: {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, {{STEP_CONTENT}}. Server defaults with project-level overrides.",
         "title": "Template Placeholders"
       },
       "terminal": {
-        "description": "Send templated commands to persistent terminal sessions (Stage 5). Chunked sending for large XML plans.",
+        "description": "Send templated content to persistent terminal sessions (Stage 5). Large content is chunked when writing to the PTY.",
         "title": "Terminal integration (Stage 5)"
       }
     },
     "configuration": {
       "projectSettings": {
-        "description": "Copy buttons stored in task settings with project-level overrides and server-side defaults.",
+        "description": "Copy buttons are stored in per-project task settings in key_value_store and merged with server defaults.",
         "features": [
-          "SQLite database persistence",
+          "Key-value storage in SQLite",
           "Server-managed default configurations",
           "Project directory scoping",
-          "Configuration updates"
+          "Settings sync across desktop and mobile"
         ],
         "title": "Project-Specific Settings"
       },
       "title": "Configuration & Management",
       "visualUI": {
-        "description": "Configuration editor with drag-drop reordering, debounced input handling, and preview.",
+        "description": "Configuration editor with drag-drop reordering and debounced inputs for labels and templates.",
         "features": [
           "Drag handles for visual reordering",
           "300ms debounced input processing",
@@ -1188,7 +1099,6 @@
       }
     },
     "cta": {
-      "description": "Copy buttons insert structured plan content into templated prompts for consistent execution handoff.",
       "links": {
         "planMode": "See Stage 3 planning & Stage 4 merge",
         "terminal": "Explore Stage 5 terminal integration"
@@ -1197,7 +1107,7 @@
     },
     "exampleConfig": {
       "title": "Example button configuration:",
-      "footer": "\u2192 Button runs the configured template",
+      "footer": "→ Button runs the configured template",
       "templateBody": "{{IMPLEMENTATION_PLAN}}\n\nReview the plan. Read the files mentioned, understand them and launch parallel coding agents that run at the same time..."
     },
     "exampleLabels": {
@@ -1210,17 +1120,17 @@
     },
     "exampleValues": {
       "investigationButton": "\"Investigate Results\"",
-      "investigationPurpose": "Thorough validation workflows",
-      "parallelButton": "\"Parallel agent template\"",
-      "parallelPurpose": "Complex multi-agent setup instructions",
-      "projectContextTemplate": "{{PROJECT_CONTEXT}}",
-      "projectDynamic": "Project-aware instructions",
+      "investigationPurpose": "Validation and review workflows",
+      "parallelButton": "\"Parallel Claude Coding Agents\"",
+      "parallelPurpose": "Parallel agent instruction templates",
+      "projectContextTemplate": "{{TASK_DESCRIPTION}}",
+      "projectDynamic": "Task-aware instructions",
       "stepResult": "Focused step execution",
       "stepTemplate": "{{STEP_CONTENT}}"
     },
     "hero": {
       "badge": "Template handoff",
-      "description": "Copy buttons insert {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and path context into predefined templates.",
+      "description": "Copy buttons insert {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and {{STEP_CONTENT}} into predefined templates.",
       "title": "Template prompts with plan substitution"
     },
     "technical": {
@@ -1233,21 +1143,20 @@
           "storage": "## 1. Configuration storage",
           "ui": "## 3. UI integration"
         },
-        "execution": "Button click triggers template processing \u2192 Placeholder substitution with plan content \u2192 Terminal session validation \u2192 Chunked content transmission",
-        "processing": "Regex-based placeholder matching \u2192 Dynamic content substitution \u2192 Context-aware data extraction \u2192 Error handling for undefined values",
-        "storage": "CopyButtonConfig[] in task settings \u2192 Project-specific database storage \u2192 Server-side default configurations \u2192 Configuration synchronization",
-        "ui": "Implementation plan cards \u2192 Content viewing modals \u2192 Terminal interface headers \u2192 Drag-drop configuration editor"
+        "execution": "Button click triggers template processing -> clipboard copy or PTY write (chunked)",
+        "processing": "Regex placeholder matching -> substitution with plan, step, and task text -> missing values become empty strings",
+        "storage": "CopyButtonConfig[] stored in per-project task settings (key_value_store) plus server-side defaults",
+        "ui": "Implementation plan cards → Content viewing modals → Terminal interface headers → Drag-drop configuration editor"
       },
       "title": "Technical Implementation"
     },
     "templateSystem": {
       "placeholders": {
-        "description": "Template prompts with {{PLACEHOLDER}} substitution. Context-aware processing with implementation plans from Stage 3/4.",
+        "description": "Template prompts with {{PLACEHOLDER}} substitution. Supported placeholders include plan content, step content, and task description.",
         "examples": [
-          "{{IMPLEMENTATION_PLAN}} - Full merged plan XML",
+          "{{IMPLEMENTATION_PLAN}} - Full plan content",
           "{{STEP_CONTENT}} - Selected step content",
-          "{{TASK_DESCRIPTION}} - Stage 1 requirements",
-          "{{PROJECT_CONTEXT}} - File paths, structure"
+          "{{TASK_DESCRIPTION}} - Task requirements"
         ],
         "title": "Placeholder Substitution"
       },
@@ -1297,15 +1206,11 @@
     }
   },
   "deepResearch": {
-    "meta": {
-      "title": "Deep Research - Web Search Pipeline",
-      "description": "Background research jobs fetch migration guides and API docs, then attach summaries to tasks and plans when additional context is needed."
-    },
     "advanced": {
       "features": [
         {
           "title": "Migration guide retrieval",
-          "description": "Fetches official migration guides and breaking changes for framework upgrades (e.g., Next.js 14 \u2192 15 or React 17 \u2192 18)."
+          "description": "Fetches official migration guides and breaking changes for framework upgrades (e.g., Next.js 14 → 15 or React 17 → 18)."
         },
         {
           "title": "API documentation retrieval",
@@ -1364,7 +1269,6 @@
       "title": "Research job controls"
     },
     "cta": {
-      "description": "Use this stage for migrations or complex upgrades. Background jobs fetch sources, summarize findings, and attach notes to tasks and plans.",
       "links": {
         "planMode": "See Stage 3 implementation planning",
         "textImprovement": "Explore Stage 1 text enhancement"
@@ -1521,7 +1425,7 @@
       }
     },
     "videoAnalysis": {
-      "description": "Multimodal ingestion of recordings with frame extraction, transcripts, and structured task artifacts.",
+      "description": "Multimodal ingestion of recordings with prompt-guided analysis summaries.",
       "slug": "/docs/video-analysis",
       "title": "Video Analysis Pipeline"
     },

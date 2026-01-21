@@ -44,6 +44,35 @@
     "dataFlows": {
       "heading": "Datenflüsse",
       "description": "Aufgaben, Pläne, Jobs und Sitzungen fließen zwischen Komponenten: (1) Aufgabenverfeinerung: React-UI → TextImprovementPopover → Tauri-Befehl → WorkflowOrchestrator → text_improvement Prompt → SQLite → React-Provider ersetzt Text. (2) Dateisuche: Implementierungspläne-Panel → Tauri-Befehl → 4 sequenzielle Jobs → Fortschrittsereignisse → SQLite → UI-Anzeige. (3) Implementierungspläne: Dateisuche → Plan generieren → Tauri-Befehl → LLM-Streaming → SQLite → Monaco-Viewer → Überprüfung/Genehmigung → Export. (4) Terminal-Ausführung: PTY-Sitzung → SQLite → Befehlsausführung → Ausgabe-Streaming → Sprachtranskriptions-Injektion → Agenten-Aufmerksamkeitserkennung → Audit-Protokolle."
+    },
+    "visuals": {
+      "systemMap": {
+        "title": "System map snapshot",
+        "description": "This diagram depicts the PlanToCode system architecture as four interconnected layers arranged vertically. Top Layer - Desktop Frontend: A React/Next.js box containing components (Plan Viewer, Terminal Panel, Session Manager) connected via labeled arrows \"invoke()\" and \"listen()\" to the Tauri IPC bridge. Second Layer - Rust Backend: WorkflowOrchestrator (scheduling multi-stage jobs), TerminalSessionManager (PTY lifecycle), and job processors (FileDiscovery, PlanGeneration, TextImprovement, DeepResearch). Third Layer - Persistence: SQLite tables for sessions, background_jobs, and terminal_sessions with read/write arrows. Fourth Layer - External Services: Server routes under /api/llm/* and /api/auth with provider icons (OpenAI, Anthropic, Google, OpenRouter). Data flows run down through the layers; streaming responses and job events flow back up to the UI.",
+        "imageSrc": "/images/architecture/system-map.svg",
+        "imageAlt": "Diagram showing PlanToCode system map",
+        "caption": "Four-layer architecture with data flowing down and events streaming back up."
+      }
+    },
+    "ipcBridge": {
+      "heading": "IPC bridge and event streaming",
+      "description": "The desktop UI calls Rust commands through the Tauri IPC bridge for workflows, terminal sessions, token estimation, and configuration updates.",
+      "details": "Commands are invoked from React and results stream back via event listeners so the UI can update job progress, terminal output, and session state in real time."
+    },
+    "workflowOrchestrator": {
+      "heading": "Workflow orchestrator",
+      "description": "Multi-stage workflows (file discovery, research, plan generation) are defined in JSON and executed by the Workflow Orchestrator.",
+      "details": "Each stage maps to a Rust processor; intermediate results are persisted to SQLite and forwarded to the next stage with progress events emitted to the UI."
+    },
+    "stateSync": {
+      "heading": "State synchronization",
+      "description": "React providers treat SQLite as the source of truth for plans, jobs, and terminal sessions, rehydrating state on startup.",
+      "details": "Tauri events update in-memory state as jobs run, while repositories ensure plan history and session output survive restarts."
+    },
+    "llmRouting": {
+      "heading": "LLM routing and provider normalization",
+      "description": "Model requests are sent to the server proxy, which routes by provider prefix and normalizes payloads and streaming responses.",
+      "details": "The proxy tracks usage, cost, and rate limits per user or project and can fail over across providers when configured."
     }
   },
   "deepResearch": {
@@ -225,166 +254,166 @@
   },
   "fileDiscovery": {
     "meta": {
-      "title": "Dateisuche-Workflow - PlanToCode",
-      "description": "Umfassende technische Anleitung zum 4-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert."
+      "title": "File discovery workflow - PlanToCode",
+      "description": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution."
     },
     "apiUsage": {
-      "heading": "API-Verwendungsbeispiele",
-      "monitoring": "Fortschrittsüberwachung",
-      "retrieving": "Ergebnisse abrufen",
-      "starting": "Einen Workflow starten"
+      "heading": "API Usage Examples",
+      "monitoring": "Monitoring Progress",
+      "retrieving": "Retrieving Results",
+      "starting": "Starting a Workflow"
     },
     "architecture": {
-      "caching": "Zwischenspeicherung von Zwischenergebnissen zur Leistungsoptimierung",
-      "costTracking": "Kostenverfolgung und Timeout-Verwaltung für KI-Operationen",
-      "distributed": "Das System verwendet eine verteilte Job-Architektur, bei der jede Stufe als unabhängiger Hintergrundjob läuft, was Abbruch, Wiederholungslogik und detaillierte Fortschrittsverfolgung ermöglicht. Echtzeit-Ereignisse werden während der Ausführung veröffentlicht, um sofortiges Feedback an die Benutzeroberfläche zu liefern.",
-      "errorHandling": "Umfassende Fehlerbehandlung mit automatischen Wiederholungsmechanismen",
-      "eventDriven": "Ereignisgesteuerte Fortschrittsberichte mit WebSocket-ähnlichen Updates",
-      "featuresHeading": "Wichtige Architekturmerkmale:",
-      "gitIntegration": "Git-Integration mit Fallback zur Verzeichnisdurchquerung",
-      "heading": "Workflow-Architektur",
-      "overview": "Der Workflow arbeitet als orchestriertes Hintergrundjob-System mit vier verschiedenen Stufen, die sequenziell ausgeführt werden. Jede Stufe baut auf der Ausgabe der vorherigen Stufe auf und verfeinert die Dateiauswahl progressiv basierend auf den Aufgabenanforderungen."
+      "caching": "Intermediate results are persisted in SQLite job records for reuse and debugging.",
+      "costTracking": "Cost tracking and timeout management for AI operations",
+      "distributed": "The system uses a distributed job architecture where each stage runs as an independent background job, enabling cancellation, retry logic, and detailed progress tracking. Real-time events are published throughout execution to provide immediate feedback to the user interface.",
+      "errorHandling": "Comprehensive error handling with automatic retry mechanisms",
+      "eventDriven": "Event-driven progress reporting with WebSocket-like updates",
+      "featuresHeading": "Key Architecture Features:",
+      "gitIntegration": "Git integration with fallback to directory traversal",
+      "heading": "Workflow Architecture",
+      "overview": "The workflow operates as an orchestrated background job system with four distinct stages that execute sequentially. Each stage builds upon the previous stage's output, progressively refining the file selection based on task requirements."
     },
-    "category": "Technische Anleitung",
+    "category": "Technical Guide",
     "configuration": {
       "exclusion": {
-        "description": "Definieren Sie Verzeichnisse und Dateimuster, die vom Suchprozess ausgeschlossen werden sollen.",
-        "heading": "Ausschlussmuster"
+        "description": "Define directories and file patterns to exclude from the discovery process.",
+        "heading": "Exclusion Patterns"
       },
-      "heading": "Konfigurationsoptionen",
+      "heading": "Configuration Options",
       "retry": {
-        "description": "Legen Sie maximale Wiederholungsversuche für fehlgeschlagene Stufen mit exponentiellem Backoff fest.",
-        "heading": "Wiederholungskonfiguration"
+        "description": "Set maximum retry attempts for failed stages with exponential backoff.",
+        "heading": "Retry Configuration"
       },
       "timeout": {
-        "description": "Konfigurieren Sie die maximale Ausführungszeit für den gesamten Workflow oder einzelne Stufen, um unendliches Hängen zu verhindern.",
-        "heading": "Timeout-Verwaltung"
+        "description": "Configure maximum execution time for the entire workflow or individual stages to prevent indefinite hanging.",
+        "heading": "Timeout Management"
       },
-      "workflowConfig": "Workflow-Konfiguration"
+      "workflowConfig": "Workflow Configuration"
     },
     "cta": {
-      "description": "Der Dateisuche-Workflow läuft im Desktop-Client neben Implementierungsplanung und Terminal-Sitzungen.",
-      "heading": "Benötigen Sie die Desktop-App?",
+      "description": "The file discovery workflow runs inside the desktop client alongside implementation planning and terminal sessions.",
+      "heading": "Need the desktop app?",
       "links": {
-        "architecture": "Mehr über Architektur erfahren",
-        "buildYourOwn": "Eigene Pipeline erstellen"
+        "architecture": "Learn about architecture",
+        "buildYourOwn": "Build your own pipeline"
       }
     },
     "date": "2025-09-21",
-    "description": "Umfassende technische Anleitung zum 4-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
+    "description": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution.",
     "errorHandling": {
       "commonIssues": {
-        "binaryDetection": "Binärdatei-Erkennung: Verwendet sowohl erweiterungsbasierte als auch inhaltsbasierte Binärdatei-Erkennung",
-        "gitNotFound": "Git-Repository nicht gefunden: Fallback zur Verzeichnisdurchquerung mit Standardausschlüssen",
-        "heading": "Häufige Probleme",
-        "networkTimeout": "Netzwerk-Timeouts: Automatische Wiederholung mit exponentiellem Backoff für vorübergehende Fehler",
-        "tokenLimit": "Token-Limit überschritten: Implementiert intelligente Batchverarbeitung und liefert klare Fehlermeldungen"
+        "binaryDetection": "Binary file detection: Uses both extension-based and content-based binary detection",
+        "gitNotFound": "Git repository not found: Falls back to directory traversal with standard exclusions",
+        "heading": "Common Issues",
+        "networkTimeout": "Network timeouts: Automatic retry with exponential backoff for transient failures",
+        "tokenLimit": "Token limit exceeded: Implements intelligent batching and provides clear error messages"
       },
       "debugging": {
-        "description": "Der Workflow bietet umfassende Protokollierung, Leistungsmetrik-Export und detaillierten Fehlerkontext einschließlich Stufeninformationen, Wiederholungsversuchen und Zwischendaten zur Fehlerbehebung.",
-        "heading": "Debugging-Werkzeuge"
+        "description": "The workflow provides comprehensive logging, performance metrics export, and detailed error context including stage information, retry attempts, and intermediate data for troubleshooting.",
+        "heading": "Debugging Tools"
       },
       "errorCategories": {
-        "billing": "Abrechnungsfehler: Unzureichende Credits oder Zahlungsfehler mit umsetzbarer Anleitung",
-        "heading": "Fehlerkategorien",
-        "system": "Systemfehler: Dateisystemzugriff, Git-Befehlsfehler oder Speicherbeschränkungen",
-        "validation": "Validierungsfehler: Ungültige Sitzungs-ID, fehlende Aufgabenbeschreibung oder ungültiges Projektverzeichnis",
-        "workflow": "Workflow-Fehler: Stufenspezifische Fehler mit detailliertem Kontext und Wiederholungsvorschlägen"
+        "billing": "Billing Errors: Insufficient credits or payment failures with actionable guidance",
+        "heading": "Error Categories",
+        "system": "System Errors: File system access, git command failures, or memory constraints",
+        "validation": "Validation Errors: Invalid session ID, missing task description, or invalid project directory",
+        "workflow": "Workflow Errors: Stage-specific failures with detailed context and retry suggestions"
       },
-      "heading": "Fehlerbehandlung & Fehlerbehebung"
+      "heading": "Error Handling & Troubleshooting"
     },
     "integration": {
       "desktop": {
-        "description": "Der Workflow integriert sich nahtlos mit der Desktop-Anwendung über Tauri-Befehle und bietet nativen Dateisystemzugriff sowie ereignisgesteuerte Updates über die WorkflowTracker-Klasse.",
-        "heading": "Desktop-Anwendung"
+        "description": "The workflow integrates seamlessly with the desktop application through Tauri commands, providing native file system access and event-driven updates via the WorkflowTracker class.",
+        "heading": "Desktop Application"
       },
-      "heading": "Integrationsmuster",
+      "heading": "Integration Patterns",
       "implementationPlans": {
-        "description": "Ausgewählte Dateien werden automatisch in das Implementierungspläne-Panel eingespeist, sodass die Plan-Generierung denselben optimierten Dateikontext verwendet, ohne dass der Suche-Workflow erneut ausgeführt werden muss.",
-        "heading": "Implementierungspläne-Integration"
+        "description": "Selected files are automatically fed into the Implementation Plans panel, ensuring that plan generation uses the same optimized file context without requiring re-execution of the discovery workflow.",
+        "heading": "Implementation Plans Integration"
       },
       "sessionManagement": {
-        "description": "Workflow-Ergebnisse werden pro Sitzung zwischengespeichert, sodass mehrere Operationen innerhalb derselben Sitzung den entdeckten Dateikontext wiederverwenden können, was die Leistung für iterative Entwicklungs-Workflows erheblich verbessert.",
-        "heading": "Sitzungsverwaltung"
+        "description": "Selected files and task history persist per session so follow-up actions can reuse the same context without rerunning discovery.",
+        "heading": "Session Management"
       }
     },
-    "intro": "PlanToCode identifiziert die richtigen Dateien, bevor Sie planen oder Befehle ausführen. Der 4-stufige Workflow grenzt den Umfang ein und hält den Kontext fokussiert.",
-    "metaDescription": "Umfassende technische Anleitung zum 4-stufigen KI-Workflow, der relevante Dateien für die Aufgabenausführung identifiziert und filtert.",
-    "metaTitle": "Dateisuche-Workflow - PlanToCode",
-    "ogDescription": "Technische Dokumentation für die mehrstufige Dateisuche-Workflow-Architektur.",
-    "ogTitle": "Dateisuche-Workflow - PlanToCode",
+    "intro": "PlanToCode identifies the right files before you plan or run commands. The 4-stage workflow narrows scope and keeps context tight.",
+    "metaDescription": "Comprehensive technical guide to the 4-stage AI workflow that identifies and filters relevant files for task execution.",
+    "metaTitle": "File discovery workflow - PlanToCode",
+    "ogDescription": "Technical documentation for the multi-stage file discovery workflow architecture.",
+    "ogTitle": "File discovery workflow - PlanToCode",
     "performance": {
       "costOptimization": {
-        "description": "KI-Stufen verfolgen tatsächliche Kosten aus API-Antworten, implementieren intelligente Batchverarbeitung zur Minimierung der Token-Nutzung und bieten Kostenschätzungen vor der Ausführung, um bei der Kostenverwaltung zu helfen.",
-        "heading": "Kostenoptimierung"
+        "description": "AI stages track actual costs from API responses, implement intelligent batching to minimize token usage, and provide cost estimates before execution to help manage expenses.",
+        "heading": "Cost Optimization"
       },
-      "heading": "Leistungsüberlegungen",
+      "heading": "Performance Considerations",
       "memory": {
-        "description": "Der Workflow implementiert intelligente Speicherverwaltung mit Datei-Caching (30-Sekunden-TTL), Batchverarbeitung (100 Dateien pro Batch) und automatischer Bereinigung von Zwischendaten, um Speichererschöpfung zu verhindern.",
-        "heading": "Speicherverwaltung"
+        "description": "The workflow uses token-aware chunking, streaming responses, and cleanup of temporary data to manage memory. There is no fixed file batch size.",
+        "heading": "Memory Management"
       },
       "monitoring": {
-        "description": "Integrierte Leistungsverfolgung überwacht Ausführungszeiten, Speichernutzung, Durchsatzmetriken und liefert Empfehlungen zur Optimierung basierend auf historischer Datenanalyse.",
-        "heading": "Leistungsüberwachung"
+        "description": "Built-in performance tracking monitors execution times, memory usage, throughput metrics, and provides recommendations for optimization based on historical data analysis.",
+        "heading": "Performance Monitoring"
       }
     },
-    "readTime": "12 Min.",
+    "readTime": "12 min",
     "stages": {
-      "heading": "4-stufiger Workflow-Prozess",
+      "heading": "4-Stage Workflow Process",
       "stage1": {
-        "description": "Verwendet KI, um intelligent die relevantesten Stammverzeichnisse aus einer Liste von Kandidatenpfaden basierend auf der Aufgabenbeschreibung auszuwählen. Das LLM analysiert das primäre Projektverzeichnis und die Kandidaten-Stammverzeichnisse, um zu bestimmen, welche Verzeichnisse am wahrscheinlichsten für die Aufgabe relevante Dateien enthalten.",
-        "heading": "Stufe 1: Stammordner-Auswahl",
-        "technical": "Technische Details: Empfängt Kandidaten-Stammverzeichnisse (bis Tiefe 2) und die Aufgabenbeschreibung. Das LLM bewertet jeden Pfad gegen den Aufgabenkontext und gibt eine gefilterte Liste von Stammverzeichnissen zurück, die in nachfolgenden Stufen durchsucht werden.",
-        "inputOutput": "Eingabe/Ausgabe: Empfängt candidate_roots-Array und task_description. Gibt root_directories-Array zurück, das die KI-ausgewählten, für die Aufgabe relevantesten Verzeichnisse enthält."
+        "description": "Uses AI to intelligently select the most relevant root directories from a list of candidate paths based on the task description. The LLM analyzes the primary project directory and candidate roots to determine which directories are most likely to contain files relevant to the task.",
+        "heading": "Stage 1: Root Folder Selection",
+        "technical": "Technical Details: Receives candidate root directories (up to depth 2) and the task description. The LLM evaluates each path against the task context and returns a filtered list of root directories that will be searched in subsequent stages.",
+        "inputOutput": "Input/Output: Receives candidate_roots array and task_description. Returns root_directories array containing the AI-selected directories most relevant to the task."
       },
       "stage2": {
-        "binaryDetection": "Binärdatei-Erkennung: Filtert Dateien mit Binärerweiterungen (.jpg, .png, .pdf, .exe usw.) und verwendet Inhaltsanalyse, um Binärdateien durch Null-Bytes und nicht druckbare Zeichenverhältnisse zu erkennen.",
-        "description": "Verwendet KI, um intelligente Regex-Mustergruppen basierend auf der Aufgabenbeschreibung und Verzeichnisstruktur zu generieren. Jede Mustergruppe kann Pfadmuster (positive und negative) und Inhaltsmuster enthalten. Der Prozessor wendet dann diese Muster an, um Dateien aus jedem ausgewählten Stammverzeichnis zu filtern.",
-        "gitIntegration": "Git-Integration: Findet das Git-Repository-Stammverzeichnis für jedes ausgewählte Verzeichnis und verwendet git_utils, um alle nicht ignorierten Dateien zu erhalten, wobei .gitignore-Regeln respektiert und sowohl verfolgte als auch nicht verfolgte Dateien einbezogen werden.",
-        "heading": "Stufe 2: Regex-Dateifilter",
-        "technical": "Technische Details: Generiert einen Verzeichnisbaum für jedes Stammverzeichnis, ruft das LLM auf, um patternGroups mit path_pattern, content_pattern und negative_path_pattern-Feldern zu erzeugen. Verwendet fancy-regex für Lookahead/Lookbehind-Unterstützung. Verarbeitet Stammverzeichnisse parallel mit konfigurierbarer Nebenläufigkeit."
+        "binaryDetection": "Binary Detection: Filters out files with binary extensions (.jpg, .png, .pdf, .exe, etc.) and uses content analysis to detect binary files by null bytes and non-printable character ratios.",
+        "description": "Uses AI to generate intelligent regex pattern groups based on the task description and directory structure. Each pattern group can include path patterns (positive and negative) and content patterns. The processor then applies these patterns to filter files from each selected root directory.",
+        "gitIntegration": "Git Integration: Finds the git repository root for each selected directory and uses git_utils to get all non-ignored files, respecting .gitignore rules while including both tracked and untracked files.",
+        "heading": "Stage 2: Regex File Filter",
+        "technical": "Technical Details: Generates a directory tree for each root, calls the LLM to produce patternGroups with path_pattern, content_pattern, and negative_path_pattern fields. Uses fancy-regex for lookahead/lookbehind support. Processes roots in parallel with configurable concurrency."
       },
       "stage3": {
-        "aiProcessing": "KI-Verarbeitung: Verwendet große Sprachmodelle, um Dateiinhalte gegen Aufgabenanforderungen zu bewerten, mit intelligentem Chunking basierend auf tatsächlichen Dateigrößen und Token-Schätzungen, um Kontextfenster effizient zu verwalten.",
-        "description": "Setzt KI-Modelle ein, um Dateiinhalte zu analysieren und die Relevanz für die spezifische Aufgabenbeschreibung zu bewerten. Diese Stufe führt eine tiefe Inhaltsanalyse durch, indem sie Dateiinhalte liest und das LLM identifizieren lässt, welche Dateien für die Aufgabe am relevantesten sind.",
-        "heading": "Stufe 3: KI-Datei-Relevanzbewertung",
-        "technical": "Technische Details: Schätzt Token pro Datei mit dateityp-bewussten Heuristiken (Code ~3 Zeichen/Token, strukturierte Daten ~5 Zeichen/Token). Erstellt inhaltsbewusste Chunks, um unter der 90k-Token-Schwelle zu bleiben. Verarbeitet Chunks parallel mit Streaming, um Timeouts zu vermeiden. Validiert alle LLM-vorgeschlagenen Pfade gegen das Dateisystem."
+        "aiProcessing": "AI Processing: Uses large language models to evaluate file content against task requirements, with intelligent chunking based on actual file sizes and token estimates to manage context windows efficiently.",
+        "description": "Employs AI models to analyze file content and assess relevance to the specific task description. This stage performs deep content analysis by reading file contents and having the LLM identify which files are most relevant to the task.",
+        "heading": "Stage 3: AI File Relevance Assessment",
+        "technical": "Technical Details: Estimates tokens per file using file-type-aware heuristics (code ~3 chars/token, structured data ~5 chars/token). Creates content-aware chunks to stay under the 90k token threshold. Processes chunks in parallel with streaming to avoid timeouts. Validates all LLM-suggested paths against the filesystem."
       },
       "stage4": {
-        "description": "Entdeckt zusätzliche relevante Dateien, indem dem LLM die zuvor identifizierten Dateien und deren Inhalte zusammen mit dem Verzeichnisbaum bereitgestellt werden. Die KI analysiert Importe, Abhängigkeiten und Projektstruktur, um verwandte Dateien zu finden, die den Kontext für die Aufgabe verbessern.",
-        "heading": "Stufe 4: Erweiterter Pfadfinder",
-        "relationship": "Beziehungsanalyse: Liest den Inhalt aller zuvor identifizierten Dateien und stellt ihn dem LLM zusammen mit dem Verzeichnisbaum bereit (auf ausgewählte Stammverzeichnisse beschränkt, falls verfügbar). Die KI identifiziert zusätzliche Dateien basierend auf Importen, Referenzen und strukturellen Beziehungen.",
-        "technical": "Technische Details: Generiert einen kombinierten Verzeichnisbaum für ausgewählte Stammverzeichnisse. Liest den Inhalt aller initial_paths-Dateien. Verwendet Streaming-LLM-Aufrufe, um Cloudflare-Timeouts zu vermeiden. Validiert entdeckte Pfade gegen das Dateisystem und normalisiert zu relativen Pfaden innerhalb des Projekts."
+        "description": "Discovers additional relevant files by providing the LLM with the previously identified files and their contents, along with the directory tree. The AI analyzes imports, dependencies, and project structure to find related files that enhance the context for the task.",
+        "heading": "Stage 4: Extended Path Finder",
+        "relationship": "Relationship Analysis: Reads content of all previously identified files and provides it to the LLM alongside the directory tree (scoped to selected roots if available). The AI identifies additional files based on imports, references, and structural relationships.",
+        "technical": "Technical Details: Generates a combined directory tree for selected root directories. Reads content of all initial_paths files. Uses streaming LLM calls to avoid Cloudflare timeouts. Validates discovered paths against the filesystem and normalizes to relative paths within the project."
       }
     },
     "stateManagement": {
       "eventDriven": {
-        "description": "Das System veröffentlicht Echtzeit-Ereignisse für Workflow-Statusänderungen, Stufenabschlüsse und Fehlerbedingungen. Diese Ereignisse ermöglichen reaktionsfähige Benutzeroberflächen und Integration mit externen Überwachungssystemen.",
-        "heading": "Ereignisgesteuerte Updates"
+        "description": "The system publishes real-time events for workflow status changes, stage completions, and error conditions. These events enable responsive user interfaces and integration with external monitoring systems.",
+        "heading": "Event-Driven Updates"
       },
-      "heading": "Workflow-Statusverwaltung",
+      "heading": "Workflow State Management",
       "intermediateData": {
-        "description": "Jede Stufe speichert ihre Ausgabe in einem strukturierten Zwischendatenformat, einschließlich Verzeichnisbauminhalt, Regex-Muster und gefilterte Dateilisten-Ergebnisse. Diese Daten sind für Debugging zugänglich und können verwendet werden, um Workflows von bestimmten Stufen aus fortzusetzen.",
-        "heading": "Zwischendatenspeicherung"
+        "description": "Each stage stores its output in a structured intermediate data format, including directory tree content, regex patterns, filtered file lists results. This data is accessible for debugging and can be used to resume workflows from specific stages.",
+        "heading": "Intermediate Data Storage"
       },
       "transitions": {
-        "description": "Der Workflow durchläuft klar definierte Zustände: Erstellt → Laufend → Pausiert (optional) → Abgeschlossen/Fehlgeschlagen/Abgebrochen. Jeder Zustandsübergang veröffentlicht Ereignisse, die für Echtzeit-Updates überwacht werden können.",
-        "heading": "Zustandsübergänge"
+        "description": "The workflow progresses through clearly defined states: Created → Running → Paused (optional) → Completed/Failed/Canceled. Each state transition publishes events that can be monitored for real-time updates.",
+        "heading": "State Transitions"
       }
     },
     "visuals": {
       "pipeline": {
-        "title": "Dateisuche-Pipeline",
-        "description": "Der 4-stufige Workflow: Stammordner-Auswahl, Regex-Filterung, KI-Relevanzbewertung und erweiterte Pfadsuche.",
+        "title": "File discovery pipeline",
+        "description": "The 4-stage workflow: root folder selection, regex filtering, AI relevance assessment, and extended path discovery.",
         "imageSrc": "/images/docs/file-discovery/pipeline.svg",
-        "caption": "Dateisuche-Pipeline mit allen 4 Stufen",
-        "imageAlt": "Diagramm des 4-stufigen Dateisuche-Workflows: Stammordner-Auswahl, Regex-Dateifilter, KI-Datei-Relevanzbewertung und Erweiterter Pfadfinder"
+        "caption": "File discovery pipeline showing all 4 stages",
+        "imageAlt": "Diagram showing the 4-stage file discovery workflow: Root Folder Selection, Regex File Filter, AI File Relevance Assessment, and Extended Path Finder"
       }
     },
-    "title": "Dateisuche-Workflow",
+    "title": "File Discovery Workflow",
     "sqliteStorage": {
-      "heading": "SQLite-Speicherung",
-      "description": "Alle Workflow-Zustände, Zwischenergebnisse und Job-Metadaten werden in SQLite persistiert. Jede Stufe speichert ihre Ausgabe in der background_jobs-Tabelle und ermöglicht so Workflow-Fortsetzung, Debugging und Audit-Trails. Die Job-Datensätze enthalten Token-Nutzung, Kostenverfolgung und System-Prompt-Vorlagen für jede KI-Stufe."
+      "heading": "SQLite Storage",
+      "description": "All workflow state, intermediate results, and job metadata are persisted in SQLite. Each stage stores its output in the background_jobs table, enabling workflow resumption and debugging. The job records include token usage, cost tracking, and system prompt templates for each AI stage."
     }
   },
   "hub": {
@@ -545,7 +574,7 @@
     },
     "category": "Produktleitfaden",
     "context": {
-      "audit": "Alle Metadaten bleiben mit dem Plan für Audit-Zwecke erhalten. Unternehmensteams können verfolgen, welche Stakeholder welche Pläne überprüft haben, welche Änderungen angefordert wurden und die vollständige Argumentationskette von der anfänglichen Aufgabenbeschreibung über die Dateisuche bis zum endgültigen genehmigten Plan.",
+      "audit": "Plan metadata persists with each job so you can review which inputs were used (task description, selected roots/files, model settings) and compare drafts later.",
       "heading": "Kontext und Metadaten für Unternehmensführung",
       "storage": "Das Panel speichert, welche Repository-Stammverzeichnisse während des Dateisuche-Workflows ausgewählt wurden, sodass Folgeaktionen denselben Umfang wiederverwenden. Es zeichnet auch planspezifische Metadaten auf, wie das Projektverzeichnis und vorbereitete Prompt-Inhalte, sodass nachgelagerte Prompts generiert oder kopiert werden können, ohne den Workflow neu zu berechnen.",
       "tokenEstimation": "Die Token-Schätzung wird vor dem Kopieren von Prompts ausgeführt. Das Panel ruft den Token-Schätzungsbefehl mit dem Projektverzeichnis, ausgewählten Dateien und dem aktuell gewählten Modell auf und zeigt sowohl System- als auch Benutzer-Prompt-Summen an, damit Teams unter den Modell-Limits bleiben können."
@@ -564,39 +593,39 @@
       }
     },
     "date": "2025-09-19",
-    "description": "Wie PlanToCode die sichere Einführung von KI-Coding-Agenten durch Human-in-the-Loop-Führung, granulare dateibasierte Pläne und umfassende Überprüfungs-Workflows ermöglicht.",
+    "description": "How PlanToCode enables confident adoption of AI coding agents through human-in-the-loop review, granular file-by-file plans, and clear handoff workflows.",
     "fileGranularity": {
       "created": "Erstellt (mit vollständigen Dateipfaden und initialer Inhaltsstruktur)",
       "declaredFiles": "Jeder Schritt in einem Plan deklariert explizit, welche Dateien:",
       "deleted": "Gelöscht (mit Begründung und Abhängigkeitsanalyse)",
       "heading": "Datei-für-Datei-Granularität",
-      "impact": "Dieses Detailniveau macht die Auswirkungen vorgeschlagener Änderungen kristallklar, bevor Code berührt wird. Teamleiter können sofort erkennen, ob kritischer Legacy-Code geändert wird, ob Breaking Changes vorgeschlagen werden oder ob der Plan Dateien berührt, die zusätzliche Prüfung erfordern.",
-      "intro": "Implementierungspläne verwenden eine hochgranulare Struktur, die Entwicklungsaufgaben auf Datei-für-Datei-Basis aufschlüsselt, mit exakten Dateipfaden, die der Repository-Struktur des Projekts entsprechen. Diese Granularität ist grundlegend für die Vermeidung von Regressionen und ermöglicht die sichere Einführung von KI-Coding-Agenten in Unternehmensumgebungen.",
+      "impact": "Reviewers can immediately identify if critical legacy code will be modified, if breaking changes are proposed, or if the plan touches files that require additional scrutiny.",
+      "intro": "Implementation plans use a highly granular structure that breaks down development tasks on a file-by-file basis, with exact file paths corresponding to the project's repository structure. This granularity makes scope explicit before any code is touched.",
       "modified": "Geändert (mit spezifischen Zeilenbereichen und beschriebenen Änderungen)",
       "referenced": "Referenziert (für Kontext, aber nicht geändert)",
       "transmission": "Der Datei-für-Datei-Ansatz ermöglicht auch die präzise Übertragung genehmigter Pläne an Coding-Agenten. Anstelle vager Anweisungen wie \"aktualisiere das Authentifizierungssystem\" erhalten Agenten exakte Spezifikationen: \"ändere src/auth/session_manager.rs Zeilen 45-67, um Token-Rotation hinzuzufügen, erstelle src/auth/token_store.rs mit folgender Struktur...\""
     },
     "hitl": {
       "approve": "Genehmigen:",
-      "approveDesc": "Erst nach expliziter Genehmigung können Pläne sicher an den gewählten Coding-Agenten oder zugewiesenen Softwareentwickler zur Ausführung übertragen werden.",
-      "conclusion": "Dieser Workflow stellt sicher, dass alle Entwicklungsbemühungen mit den Produktanforderungen des Unternehmens, Team-Workflows und Geschäftszielen übereinstimmen. Keine Code-Änderungen erfolgen ohne explizite menschliche Genehmigung.",
+      "approveDesc": "When you are ready, you can hand the plan off to a coding agent or developer for execution.",
+      "conclusion": "This workflow keeps execution aligned with the plan you reviewed and helps prevent surprise changes.",
       "edit": "Bearbeiten:",
-      "editDesc": "Stakeholder können Schritte direkt ändern, Ansätze anpassen, Einschränkungen hinzufügen oder riskante Operationen mit VS Code-Bearbeitungsfunktionen entfernen.",
+      "editDesc": "You can directly modify steps, adjust approaches, add constraints, or remove risky operations using VS Code editing features.",
       "heading": "Human-in-the-Loop-Führung",
-      "intro": "PlanToCode implementiert einen umfassenden Human-in-the-Loop (HITL)-Workflow, der sicherstellt, dass Teamleiter und Stakeholder die volle Kontrolle über jeden Aspekt der KI-generierten Implementierungspläne behalten. Dieses Führungsmodell verhindert die Regressionen, Bugs und unbeabsichtigten Änderungen, die auftreten können, wenn KI-Coding-Agenten autonom arbeiten.",
-      "reject": "Ablehnen:",
-      "rejectDesc": "Pläne, die die Anforderungen nicht erfüllen, können vollständig abgelehnt werden, wobei vollständige Audit-Trails für Compliance und Lernen erhalten bleiben.",
+      "intro": "PlanToCode keeps planning human-in-the-loop so you can review, edit, and decide when to hand off a plan for execution.",
+      "reject": "Discard:",
+      "rejectDesc": "If a draft isn't useful, you can delete it from the session list.",
       "requestChanges": "Änderungen anfordern:",
-      "requestChangesDesc": "Teams können Änderungen vom KI-System anfordern, alternative Ansätze generieren oder mehrere Pläne mit benutzerdefinierten Anweisungen zusammenführen.",
+      "requestChangesDesc": "Generate alternative plans or merge drafts with custom instructions to converge on the approach you want.",
       "review": "Überprüfen:",
       "reviewDesc": "Pläne werden im Monaco-Editor geöffnet, wo Prüfer jede vorgeschlagene Änderung mit vollständiger Syntaxhervorhebung und professionellen Bearbeitungswerkzeugen untersuchen können.",
-      "workflow": "Jeder Plan muss einen strukturierten Überprüfungs-Workflow durchlaufen, bevor Code-Änderungen beginnen:"
+      "workflow": "Plans are designed for a structured review workflow before any code modifications begin:"
     },
-    "intro": "Überprüfen und genehmigen Sie jeden Plan vor der Ausführung. Human-in-the-Loop-Führung mit Datei-für-Datei-Granularität stellt sicher, dass KI-generierte Änderungen mit Unternehmensanforderungen und Team-Workflows übereinstimmen.",
+    "intro": "Review and approve every plan before execution. File-by-file granularity keeps scope explicit and changes aligned with your requirements.",
     "metaDescription": "Leitfaden zur KI-Implementierungsplanung. Generieren, überprüfen und genehmigen Sie dateibasierte Pläne vor der Ausführung. Duplikate und falsche Pfade verhindern.",
     "metaTitle": "Implementierungspläne - KI-Änderungen überprüfen",
     "multiplePlans": {
-      "description": "Pläne können zusammengeführt, gelöscht oder später erneut geöffnet werden. Das Panel führt eine Liste ausgewählter Plan-Bezeichner, verwaltet ein dediziertes Modal für Terminal-Ausgabe, die an einen Plan gebunden ist, und stellt Navigationshelfer bereit, sodass Prüfer durch frühere Pläne blättern können, ohne den Viewer zu schließen. Terminal-Zugriff, Prompt-Kopiersteuerungen und Merge-Anweisungen teilen alle denselben Job-Bezeichner, sodass die Audit-Historie konsistent bleibt.",
+      "description": "Plans can be merged, deleted, or reopened later. The panel keeps a list of selected plan identifiers, manages a dedicated modal for terminal output tied to a plan, and exposes navigation helpers so reviewers can page through earlier plans without closing the viewer. Terminal access, prompt copy controls, and merge instructions all share the same job identifier so plan history stays consistent.",
       "heading": "Arbeiten mit mehreren Plänen"
     },
     "ogDescription": "Verstehen Sie, wie Human-in-the-Loop-Führung und Datei-für-Datei-Überprüfungs-Workflows sichere KI-Entwicklung mit vollständiger Kontrolle über Code-Änderungen gewährleisten.",
@@ -605,7 +634,7 @@
       "description": "Jeder Plan entspricht einem Hintergrundjob in der aktuellen Sitzung. Das Panel abonniert Plan-Daten, verfolgt, welcher Plan aktuell geöffnet ist, und stellt Navigation zwischen früheren und neueren Jobs bereit. Dieses Verhalten befindet sich in {code} und der umgebenden Panel-Komponente.",
       "heading": "Woher die Pläne kommen",
       "processor": "ImplementationPlanProcessor verarbeitet die Plan-Generierung. Er liest relevante Dateien, generiert optional einen Verzeichnisbaum basierend auf ausgewählten Stammverzeichnissen und stellt einen vereinheitlichten Prompt für das LLM zusammen.",
-      "storage": "Plan-Antworten werden in der Jobs-Tabelle mit Metadaten gespeichert, einschließlich planTitle, summary, sessionName und Token-Nutzung. Die rohe LLM-Antwort wird für Audit-Zwecke aufbewahrt.",
+      "storage": "Plan responses are stored in the background_jobs table with metadata including planTitle, summary, sessionName, and token usage. The raw LLM response is preserved for review and debugging.",
       "streaming": "Pläne werden über den LlmTaskRunner mit Echtzeit-Fortschrittsereignissen gestreamt. Token-Warnungen werden für Prompts über 100k Token protokolliert, aber die Verarbeitung wird mit vollem Inhalt fortgesetzt."
     },
     "readTime": "6 Min.",
@@ -619,7 +648,8 @@
         "title": "Implementierungsplan-Struktur",
         "description": "XML-Format für Implementierungspläne mit Datei-für-Datei-Granularität und Metadaten.",
         "imageSrc": "/images/docs/implementation-plans/structure.svg",
-        "caption": "Plan-Struktur mit Schritten, Dateien und Abhängigkeitsverfolgung"
+        "caption": "Plan-Struktur mit Schritten, Dateien und Abhängigkeitsverfolgung",
+        "imageAlt": "Implementation plan XML structure diagram"
       }
     },
     "title": "Implementierungspläne",
@@ -639,7 +669,7 @@
         "planTitle - Generierter oder vom Benutzer bereitgestellter Titel für den Plan",
         "summary - Lesbare Zusammenfassung des Plans",
         "sessionName - Name der Sitzung, die den Plan generiert hat",
-        "isStructured - Immer true für abgeschlossene Pläne",
+        "isStructured - True for implementation_plan jobs; false for merge outputs",
         "isStreaming - False für abgeschlossene Pläne (true während der Generierung)",
         "planData - Enthält agent_instructions (optional) und steps-Array"
       ],
@@ -674,7 +704,16 @@
       "description": "Standardmodelle und erlaubte Alternativen werden serverseitig in der Anwendungskonfiguration gespeichert. Jeder Aufgabentyp - wie Implementierungspläne, Merges, Prompt-Generierung oder Sprachtranskription - definiert ein bevorzugtes Modell, eine Liste erlaubter Optionen und Token-Limits, die die Desktop-App zur Laufzeit liest.",
       "heading": "Aufgabengesteuerte Standardwerte"
     },
-    "title": "Modellkonfiguration"
+    "title": "Modellkonfiguration",
+    "visuals": {
+      "selector": {
+        "title": "Model selector toggle",
+        "description": "How the model selector shows allowed models with token guardrails.",
+        "imageSrc": "/images/docs/model-configuration/selector.png",
+        "imageAlt": "Model selector toggle with token estimates and guardrails",
+        "caption": "Placeholder for the model selector view."
+      }
+    }
   },
   "terminalSessions": {
     "meta": {
@@ -709,240 +748,232 @@
     "voiceRecovery": {
       "heading": "Sprachtranskription und Wiederherstellung",
       "recovery": "Wenn eine PTY-Sitzung die Verbindung trennt, zeigt die Terminal-Oberfläche Wiederherstellungssteuerungen an und versucht die Verbindung mit exponentiellem Backoff erneut. Zustandsprüfungen überwachen weiterhin den Sitzungsstatus und bieten automatische Wiederherstellungsaktionen, wenn Verbindungsprobleme erkannt werden.",
-      "voice": "Im Terminal-Modal kann Sprachtranskription Sprache aufnehmen und in den Terminal-Eingabebereich einfügen. Der Aufnahme-Hook sucht projektbezogene Transkriptionseinstellungen, verfolgt den Aufnahmestatus und streamt erkannten Text in die aktive Plan-Sitzung."
+      "voice": "Inside the terminal modal, voice transcription can capture speech and paste it into the terminal input area. The recording hook looks up project-level transcription settings, tracks recording state, and inserts transcribed text when the recording stops."
+    },
+    "visuals": {
+      "sessionView": {
+        "title": "Terminal session architecture",
+        "description": "PTY process lifecycle, output routing, and persistence layers.",
+        "imageSrc": "/images/docs/terminal-sessions/session-view.png",
+        "imageAlt": "Terminal session architecture showing PTY, channels, and persistence",
+        "caption": "Placeholder for terminal session architecture diagram."
+      }
     }
   },
   "copyButtons": {
     "meta": {
-      "title": "Kopier-Buttons - PlanToCode",
-      "description": "Wie vorlagengesteuerte Kopier-Buttons Platzhalter gegen Pläne auflösen und an Terminals oder Zwischenablage zur Agenten-Ausführung übergeben."
+      "title": "Copy Buttons - PlanToCode",
+      "description": "How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution."
     },
-    "category": "Ausführung",
+    "category": "Execution",
     "date": "2025-09-23",
-    "readTime": "10 Min.",
-    "title": "Kopier-Buttons",
-    "description": "Vorlagengesteuerte Übergabe von Implementierungsplänen an PTY-Terminals und externe Tools.",
-    "intro": "Kopier-Buttons überbrücken Planung und Ausführung, indem sie Vorlagen-Platzhalter gegen den aktiven Plan auflösen und dann das Ergebnis an PTY-Sitzungen oder die Systemzwischenablage liefern. Jede Aktion ist mit Job-Metadaten für vollständige Audit-Trails verknüpft, sodass Teams genau nachverfolgen können, was an Agenten gesendet wurde.",
-    "metaTitle": "Kopier-Buttons - PlanToCode",
-    "metaDescription": "Wie vorlagengesteuerte Kopier-Buttons Platzhalter gegen Pläne auflösen und an Terminals oder Zwischenablage zur Agenten-Ausführung übergeben.",
-    "ogTitle": "Kopier-Buttons - PlanToCode",
-    "ogDescription": "Technische Anleitung zu Kopier-Button-Vorlagen, Platzhalter-Auflösung und Terminal-Übergabe.",
+    "readTime": "10 min",
+    "title": "Copy Buttons",
+    "description": "Template-driven handoff from implementation plans to PTY terminals and external tools.",
+    "intro": "Copy buttons resolve template placeholders against the active plan and then send the result to the clipboard (plan views) or the PTY (terminal modal).",
+    "metaTitle": "Copy buttons - PlanToCode",
+    "metaDescription": "How template-driven copy buttons resolve placeholders against plans and hand off to terminals or clipboard for agent execution.",
+    "ogTitle": "Copy buttons - PlanToCode",
+    "ogDescription": "Technical guide to copy button templates, placeholder resolution, and terminal handoff.",
     "visuals": {
       "templateFlow": {
-        "title": "Vorlagenauflösungs-Ablauf",
-        "description": "Dieses Diagramm zeigt die Kopier-Button-Ausführungs-Pipeline. Stufe 1 'Button-Klick': Benutzer klickt einen Kopier-Button im Plan-Viewer oder Terminal-Header. Die Button-Konfiguration enthält ein Label, Vorlagentext und Ziel (Terminal oder Zwischenablage). Stufe 2 'Platzhalter-Extraktion': Der Vorlagen-Prozessor sucht nach doppelten geschweiften Klammer-Mustern wie {{IMPLEMENTATION_PLAN}}, {{STEP_CONTENT}}, {{TASK_DESCRIPTION}}. Stufe 3 'Kontext-Auflösung': Der Resolver fragt Job-Metadaten nach Plan-Inhalten ab, dann Sitzungsstatus nach Aufgabenbeschreibung und ausgewählten Dateien. Fehlende Platzhalter werden in der Ausgabe zum Debugging beibehalten. Stufe 4 'Ziel-Zustellung': Für Terminal-Ziele wird Inhalt über master.take_writer() in den PTY-Eingabepuffer geschrieben. Für Zwischenablage-Ziele wird Inhalt über Tauri Clipboard API kopiert. Eine Toast-Benachrichtigung bestätigt die Aktion mit Inhaltsvorschau.",
+        "title": "Template resolution flow",
+        "description": "Templates resolve {{IMPLEMENTATION_PLAN}}, {{TASK_DESCRIPTION}}, and {{STEP_CONTENT}} before copying or sending to the terminal.",
         "imageSrc": "/images/docs/copy-buttons/templates.svg",
-        "imageAlt": "Ablauf der Kopier-Button-Vorlagenauflösung",
-        "caption": "Platzhalter für ein Vorlagenauflösungs-Ablaufdiagramm."
+        "imageAlt": "Flow showing copy button template resolution",
+        "caption": "Placeholder for a template resolution flow diagram."
       }
     },
     "templateConfiguration": {
-      "heading": "Vorlagen-Konfigurationsquellen",
-      "description": "Kopier-Button-Vorlagen folgen einem geschichteten Konfigurationsmodell. Server-Standardwerte bieten Basis-Vorlagen, Projekt-Ebenen-Überschreibungen passen für Team-Workflows an, und aufgabenspezifische Konfigurationen behandeln Einmalfälle.",
+      "heading": "Template Configuration Sources",
+      "description": "Copy button templates follow a layered configuration model. Server defaults provide baseline templates, and project-level overrides customize the implementation_plan task for a given repo.",
       "serverDefaults": {
-        "heading": "Server-Standardwerte",
-        "description": "Gemeinsame Vorlagen von /api/config/desktop-runtime-config. Enthält Button-Labels, Vorlagen-Strings, Ziel (Terminal oder Zwischenablage) und Sichtbarkeitsbedingungen."
+        "heading": "Server Defaults",
+        "description": "Shared templates from /api/config/desktop-runtime-config. Includes button labels and template strings."
       },
       "projectOverrides": {
-        "heading": "Projekt-Überschreibungen",
-        "description": "In der SQLite project_settings-Tabelle gespeicherte Vorlagen. Zur Laufzeit mit Server-Standardwerten zusammengeführt, um für Team-Standards anzupassen."
+        "heading": "Project Overrides",
+        "description": "Project overrides are stored in SQLite key_value_store under project_task_settings and merged with server defaults."
       },
       "taskSpecific": {
-        "heading": "Aufgabenspezifisch",
-        "description": "Pro-task_model_config-Vorlagen für spezialisierte Workflows. Ermöglicht benutzerdefinierte Übergabemuster ohne Änderung globaler Einstellungen."
+        "heading": "Task-Specific",
+        "description": "Copy buttons are configured per task type (implementation_plan) and stored per project. There are no per-job overrides."
       }
     },
     "placeholderResolution": {
-      "heading": "Platzhalter-Auflösung",
-      "description": "Vorlagen verwenden doppelte geschweifte Klammer-Platzhalter, die zum Klickzeitpunkt gegen den aktiven Plan und Sitzungskontext aufgelöst werden. Die primären Platzhalter sind {{IMPLEMENTATION_PLAN}} und {{TASK_DESCRIPTION}}.",
-      "placeholdersHeading": "Verfügbare Platzhalter",
+      "heading": "Placeholder Resolution",
+      "description": "Templates use double-brace placeholders that are resolved against plan content and the current task description.",
+      "placeholdersHeading": "Available Placeholders",
       "placeholders": [
         {
           "placeholder": "{{IMPLEMENTATION_PLAN}}",
-          "description": "Vollständiger Implementierungsplan-Inhalt wie vom LLM generiert"
+          "description": "Full implementation plan content as generated by the LLM"
         },
         {
           "placeholder": "{{TASK_DESCRIPTION}}",
-          "description": "Die Aufgabenbeschreibung aus der aktuellen Sitzung"
+          "description": "The task description from the current session"
+        },
+        {
+          "placeholder": "{{STEP_CONTENT}}",
+          "description": "Content for the selected plan step (when a step is selected)"
         }
       ],
-      "resolutionOrder": "Auflösungsreihenfolge: Zuerst Job-Metadaten, dann Plan-Inhalt, dann Sitzungskontext. Undefinierte Platzhalter werden in der Ausgabe zum Debugging beibehalten.",
-      "exampleTemplate": "Beispielvorlage:\n\n{{IMPLEMENTATION_PLAN}}\n\nVerstehen Sie den obigen Implementierungsplan gründlich. Analysieren Sie die Architektur, Datenflüsse und Ereignisabfolge.\n\nAufgabe: {{TASK_DESCRIPTION}}"
+      "resolutionOrder": "Missing placeholders are replaced with empty strings. Step content is only available when a plan step is selected.",
+      "exampleTemplate": "Example template:\n\n{{IMPLEMENTATION_PLAN}}\n\nUnderstand the implementation plan above thoroughly. Analyze the architecture, data flows, and sequence of events.\n\nTask: {{TASK_DESCRIPTION}}"
     },
     "processingPipeline": {
-      "heading": "Vorlagen-Verarbeitungs-Pipeline",
-      "description": "Wenn ein Button geklickt wird, führt der Vorlagen-Prozessor eine mehrstufige Pipeline aus: Platzhalter-Extraktion, Kontext-Suche, Wert-Substitution und Ausgabeformatierung.",
+      "heading": "Template Processing Pipeline",
+      "description": "When a button is clicked, placeholders are extracted, values are resolved, and the output is sent to clipboard or PTY depending on where the button is used.",
       "steps": [
         {
           "number": 1,
-          "title": "Platzhalter extrahieren",
-          "description": "Regex-Scan nach {{...}}-Mustern im Vorlagentext"
+          "title": "Extract Placeholders",
+          "description": "Regex scan for {{...}} patterns in the template string"
         },
         {
           "number": 2,
-          "title": "Kontext suchen",
-          "description": "Job-Metadaten, Plan-Inhalt und Sitzungsstatus nach Werten abfragen"
+          "title": "Lookup Context",
+          "description": "Resolve plan content and task description values for placeholders"
         },
         {
           "number": 3,
-          "title": "Werte substituieren",
-          "description": "Platzhalter durch aufgelöste Werte ersetzen, Formatierung beibehalten"
+          "title": "Substitute Values",
+          "description": "Replace placeholders with resolved values"
         },
         {
           "number": 4,
-          "title": "Ausgabe formatieren",
-          "description": "Zielspezifisches Escaping anwenden (Shell für Terminal, Plain für Zwischenablage)"
+          "title": "Send Output",
+          "description": "Copy to clipboard or write to the PTY input buffer"
         }
       ],
       "chunking": {
-        "heading": "Große Plan-Chunking",
-        "description": "Pläne über 100KB werden automatisch in sequenzielle Segmente mit klaren Grenzen aufgeteilt, um Überlastung von Terminal-Puffern oder Zwischenablage-Limits zu vermeiden. Jeder Chunk wird mit seiner Position vorangestellt (z.B. '[Teil 1/3]')."
+        "heading": "Large Plan Chunking",
+        "description": "When sending to the PTY, the text is chunked into 4KB segments and a carriage return is appended."
       }
     },
     "terminalHandoff": {
-      "heading": "PTY-Terminal-Übergabe",
-      "description": "Für Terminal-Übergabe konfigurierte Buttons schreiben direkt in den PTY-Sitzungs-Eingabepuffer. Die aufgelöste Vorlage erscheint, als wäre sie vom Benutzer getippt worden, und löst sofort die Agenten-Ausführung aus.",
-      "detailsHeading": "Übergabe-Details",
+      "heading": "PTY Terminal Handoff",
+      "description": "In the plan terminal modal, copy buttons write the resolved template to the PTY input buffer as if typed by the user.",
+      "detailsHeading": "Handoff Details",
       "details": [
-        "Inhalt über master.take_writer() in den PTY-Eingabepuffer geschrieben",
-        "Unterstützt mehrzeilige Eingabe und Escape-Sequenzen",
-        "Große Inhalte in 4KB-Segmente aufgeteilt, um Pufferüberlauf zu vermeiden",
-        "UI zeigt erste 100 Zeichen als Bestätigungsvorschau"
+        "Content sent via write_terminal_input_command to the PTY input buffer",
+        "Chunked into 4KB segments for large plans",
+        "Appends a carriage return after sending"
       ],
-      "codeExample": "// Terminal handoff implementation\nasync fn handoff_to_terminal(\n    session_id: &str,\n    content: &str,\n    template_id: &str,\n) -> Result<HandoffResult> {\n    // Get PTY writer for session\n    let writer = terminal_manager.get_writer(session_id)?;\n\n    // Write content to PTY input buffer\n    writer.write_all(content.as_bytes()).await?;\n\n    // Log the action for audit\n    copy_button_actions.insert(CopyButtonAction {\n        session_id: session_id.to_string(),\n        template_id: template_id.to_string(),\n        content_hash: sha256(content),\n        created_at: Utc::now(),\n    })?;\n\n    Ok(HandoffResult::Terminal { session_id })\n}"
+      "codeExample": "// Terminal handoff (PlanTerminalModal)\nconst textToSend = replacePlaceholders(button.content, {\n  IMPLEMENTATION_PLAN: planContent,\n  TASK_DESCRIPTION: taskDescription ?? \"\"\n});\nawait sendInChunks(sessionId, textToSend);"
     },
     "clipboardHandoff": {
-      "heading": "Zwischenablage-Übergabe",
-      "description": "Für Zwischenablage konfigurierte Buttons kopieren die aufgelöste Vorlage über die Tauri Clipboard API in die Systemzwischenablage. Dies ermöglicht die Übergabe an externe Tools wie IDE-Terminals oder webbasierte Agenten.",
+      "heading": "Clipboard Handoff",
+      "description": "In plan cards and plan modals, buttons copy the resolved template to the system clipboard using the browser clipboard API.",
       "crossPlatform": {
-        "heading": "Plattformübergreifende API",
-        "description": "Verwendet tauri::api::clipboard::set_text() für konsistenten Zwischenablage-Zugriff über macOS, Windows und Linux."
+        "heading": "Cross-Platform API",
+        "description": "Uses navigator.clipboard.writeText() inside the Tauri webview for clipboard access."
       },
       "feedback": {
-        "heading": "Benutzer-Feedback",
-        "description": "Toast-Benachrichtigung bestätigt das Kopieren mit einer Inhaltsvorschau und Token-Anzahl-Schätzung für das Zielmodell."
+        "heading": "User Feedback",
+        "description": "Toast notification confirms the copy action."
       }
     },
     "defaultButtons": {
-      "heading": "Standard-Kopier-Buttons",
-      "description": "PlanToCode wird mit mehreren Standard-Kopier-Buttons ausgeliefert, die gängige Workflows abdecken. Diese können über Projekteinstellungen angepasst oder erweitert werden.",
-      "buttonsHeading": "Eingebaute Buttons",
+      "heading": "Default Copy Buttons",
+      "description": "PlanToCode ships with several default copy buttons for implementation plans. These are templates you can edit in settings.",
+      "buttonsHeading": "Built-in Buttons",
       "buttons": [
         {
           "id": "parallel-agents",
-          "label": "Parallele Claude Coding-Agenten",
-          "description": "Startet parallele Claude Coding-Agenten, die gleichzeitig ausgeführt werden. Jeder Agent erhält explizite Anweisungen über seine Verantwortlichkeiten. Enthält Anweisungen, veraltete Funktionen vollständig zu entfernen."
+          "label": "Parallel Claude Coding Agents",
+          "description": "Template that instructs Claude Code to launch parallel agents using the plan."
         },
         {
           "id": "investigate-results",
-          "label": "Ergebnisse untersuchen",
-          "description": "Überprüft Ergebnisse von gestarteten Agenten und verifiziert vollständige Implementierung. Führt Selbstprüfung durch Lesen geänderter Dateien und Analysieren von Änderungen durch, ohne zusätzliche Agenten zu starten."
+          "label": "Investigate Results",
+          "description": "Template that asks the agent to review changes without launching new agents."
         },
         {
           "id": "task-only",
-          "label": "Aufgabe",
-          "description": "Kopiert nur die Aufgabenbeschreibung für Kontext. Verwendet {{TASK_DESCRIPTION}}-Platzhalter."
+          "label": "Task",
+          "description": "Copies only the task description."
         },
         {
           "id": "task-and-plan",
-          "label": "Aufgabe + Plan",
-          "description": "Kombiniert Aufgabenbeschreibung und Implementierungsplan. Nützlich, um vollständigen Kontext bereitzustellen, wenn der Agent sowohl das Ziel als auch die Ausführungsstrategie benötigt."
+          "label": "Task + Plan",
+          "description": "Combines task description and implementation plan for full context."
         },
         {
           "id": "plan-only",
           "label": "Plan",
-          "description": "Kopiert nur den Implementierungsplan-Inhalt. Am besten für Agenten, die bereits Aufgabenkontext haben und nur Ausführungsanweisungen benötigen."
+          "description": "Copies only the implementation plan content."
         }
       ]
     },
     "customization": {
-      "heading": "Kopier-Buttons anpassen",
-      "description": "Kopier-Buttons können auf mehreren Ebenen angepasst werden: globale Standardwerte, Projekt-Ebenen-Überschreibungen und Pro-Aufgaben-Konfigurationen.",
+      "heading": "Customizing Copy Buttons",
+      "description": "Copy buttons can be customized at multiple levels: global defaults, project-level overrides, and per-task configurations.",
       "globalDefaults": {
-        "heading": "Globale Standardwerte",
-        "description": "Serverseitige Konfiguration in /api/config/desktop-runtime-config definiert den Basis-Satz von Kopier-Buttons. Diese werden beim Start der Desktop-App geladen und für Offline-Nutzung zwischengespeichert."
+        "heading": "Global Defaults",
+        "description": "Server-side configuration in /api/config/desktop-runtime-config defines the base set of copy buttons. These are loaded when the desktop app starts and cached for offline use."
       },
       "projectSettings": {
-        "heading": "Projekt-Ebenen-Anpassung",
-        "description": "Jedes Projekt kann die Standard-Buttons über das Einstellungs-Panel überschreiben. Projektspezifische Buttons werden in SQLite gespeichert und zur Laufzeit mit Server-Standardwerten zusammengeführt."
+        "heading": "Project-Level Customization",
+        "description": "Each project can override the default buttons through the Settings panel. Project-specific buttons are stored in key_value_store and merged with server defaults at runtime."
       },
       "taskSettings": {
-        "heading": "Aufgaben-Ebenen-Konfiguration",
-        "description": "Einzelne Aufgaben können ihre eigenen Kopier-Button-Konfigurationen haben. Dies ermöglicht verschiedene Button-Sätze für Implementierungspläne, Code-Reviews oder Dokumentationsaufgaben."
+        "heading": "Task-Level Configuration",
+        "description": "Copy buttons are configured per task type (implementation_plan) and applied per project."
       },
-      "editorDescription": "Der Kopier-Button-Editor in den Einstellungen ermöglicht Drag-and-Drop-Neuanordnung, Inline-Label-Bearbeitung und Vorlagen-Inhaltsänderung. Änderungen werden verzögert und automatisch persistiert."
+      "editorDescription": "The copy button editor supports drag-and-drop ordering, inline label editing, and template content modification. Changes are persisted automatically."
     },
     "uiIntegration": {
-      "heading": "UI-Integration und Sicherheit",
-      "description": "Kopier-Buttons erscheinen in Plan-Viewern und Terminal-Headern. Jeder Button zeigt ein Vorschau-Popover mit dem aufgelösten Inhalt und Token-Schätzung vor der Ausführung.",
+      "heading": "UI Integration and Safety",
+      "description": "Copy buttons appear in plan viewers and terminal headers. Clicking a button sends output immediately; there is no preview step by default.",
       "tokenEstimation": {
-        "heading": "Token-Schätzung",
-        "description": "Token-Schätzungen helfen Prüfern zu validieren, dass der Prompt in das Kontextfenster des Zielmodells passt, bevor die Übergabe erfolgt. Neben der Vorschau angezeigt."
+        "heading": "Token Estimation",
+        "description": "Plan cards display token counts for the plan job; copy buttons do not compute per-template token estimates."
       },
       "previewModal": {
-        "heading": "Vollständiges Vorschau-Modal",
-        "description": "Klicken auf das Vorschau-Symbol öffnet ein Modal mit der vollständig aufgelösten Vorlage, Syntaxhervorhebung und Diff-Ansicht, wenn sich die Vorlage seit der letzten Verwendung geändert hat."
+        "heading": "Full Preview Modal",
+        "description": "There is no dedicated preview modal; open the plan content to inspect what will be copied."
       },
       "disabledState": {
-        "heading": "Deaktivierter Zustand",
-        "description": "Buttons werden deaktiviert, wenn erforderlicher Kontext fehlt (z.B. kein aktiver Plan, fehlende Sitzung). Tooltips erklären, welcher Kontext benötigt wird, um den Button zu aktivieren."
+        "heading": "Disabled State",
+        "description": "Buttons are disabled when required context is missing (e.g., no active plan, missing session). Tooltips explain what context is needed to enable the button."
       }
     },
     "auditTrail": {
-      "heading": "Job-Metadaten und Audit-Trail",
-      "description": "Jede Kopier-Button-Aktion ist mit Job-Metadaten für vollständige Nachverfolgbarkeit verknüpft. Der Audit-Datensatz enthält den Quellplan, Ziel-Sitzung, aufgelösten Inhalts-Hash und Benutzerkontext.",
-      "schemaHeading": "Audit-Schema",
-      "schema": "-- copy_button_actions table schema\nCREATE TABLE copy_button_actions (\n    action_id    TEXT PRIMARY KEY,\n    plan_id      TEXT NOT NULL REFERENCES implementation_plans(id),\n    job_id       TEXT REFERENCES background_jobs(id),\n    session_id   TEXT REFERENCES terminal_sessions(session_id),\n    template_id  TEXT NOT NULL,\n    content_hash TEXT NOT NULL,  -- SHA-256 for integrity verification\n    created_at   TEXT NOT NULL\n);\n\n-- Query to trace plan handoffs\nSELECT * FROM copy_button_actions\nWHERE plan_id = ?\nORDER BY created_at DESC;",
-      "fieldsHeading": "Audit-Datensatzfelder",
+      "heading": "History and signoff",
+      "description": "Copy button clicks are not stored in a dedicated table. Plan edits are stored in background_jobs.response and signoff state is recorded in background_jobs.metadata.userSignoff.",
+      "schemaHeading": "Notes",
+      "schema": "No copy_button_actions table exists in the current release.",
+      "fieldsHeading": "Stored plan signals",
       "fields": [
         {
-          "field": "action_id",
-          "description": "Eindeutiger Bezeichner für diese Übergabe-Aktion"
+          "field": "background_jobs.response",
+          "description": "Plan content after edits or merges"
         },
         {
-          "field": "plan_id",
-          "description": "Quell-Implementierungsplan-Referenz"
-        },
-        {
-          "field": "job_id",
-          "description": "Zugehöriger Hintergrundjob, falls zutreffend"
-        },
-        {
-          "field": "session_id",
-          "description": "Ziel-Terminal-Sitzung oder null für Zwischenablage"
-        },
-        {
-          "field": "template_id",
-          "description": "Verwendete Vorlagen-Konfiguration"
-        },
-        {
-          "field": "content_hash",
-          "description": "SHA-256 des aufgelösten Inhalts zur Integritätsprüfung"
-        },
-        {
-          "field": "created_at",
-          "description": "Zeitstempel der Aktion"
+          "field": "background_jobs.metadata.userSignoff",
+          "description": "User signoff state and timestamp"
         }
       ],
-      "retention": "Aufbewahrung: Audit-Datensätze werden standardmäßig 90 Tage aufbewahrt, konfigurierbar in den Projekteinstellungen."
+      "retention": "No separate retention policy exists for copy button actions; job history retention is controlled in app settings."
     },
     "mobileIntegration": {
       "heading": "Mobile Integration",
-      "description": "Kopier-Buttons funktionieren über Desktop- und Mobile-Clients mit konsistentem Verhalten. Der iOS-Client verwendet dieselbe Platzhalter-Auflösungslogik und kann Inhalte an verknüpfte Terminals senden.",
+      "description": "Copy buttons work in the iOS remote terminal actions bar. Resolved templates are sent to the linked desktop terminal.",
       "deviceLink": {
-        "heading": "Geräteverbindungs-Unterstützung",
-        "description": "Wenn ein mobiles Gerät mit einer Desktop-Sitzung verknüpft ist, können Kopier-Buttons das Desktop-Terminal direkt ansteuern. Der aufgelöste Inhalt wird über die Geräteverbindungs-WebSocket-Verbindung gesendet."
+        "heading": "Device Link Support",
+        "description": "When a mobile device is linked to a desktop session, copy buttons can target the desktop terminal directly. The resolved content is sent through the device link WebSocket connection."
       },
       "mobileButtons": {
-        "heading": "Mobile-spezifische Buttons",
-        "description": "Mobile Clients unterstützen dieselbe Button-Anpassung wie Desktop. Button-Konfigurationen werden über den Server synchronisiert, um Konsistenz über Geräte hinweg zu gewährleisten."
+        "heading": "Mobile-Specific Buttons",
+        "description": "Mobile clients use the same copy button configuration stored in project task settings."
       }
     },
     "cta": {
-      "heading": "Übergabe zur Ausführung nachverfolgen",
-      "description": "Terminal-Sitzungen zeigen, wo Kopier-Button-Ausgabe landet und wie sie protokolliert wird.",
-      "terminalLink": "Terminal-Sitzungen",
-      "plansLink": "Implementierungspläne"
+      "heading": "Trace handoff to execution",
+      "description": "Terminal sessions show where copy button output lands and how it is logged.",
+      "terminalLink": "Terminal sessions",
+      "plansLink": "Implementation plans"
     }
   },
   "textImprovement": {
@@ -980,13 +1011,13 @@
       "metadata": "The background jobs sidebar records the original text in job metadata, so you can review what was sent alongside the rewritten copy. If the selection changes while a job is running, the provider skips replacing the text to avoid clobbering manual edits."
     },
     "videoCapture": {
-      "dialog": "Screen recordings pass through the video analysis dialog, which combines your current task description with an optional prompt block wrapped in semantic XML tags before sending the request to the Gemini video analysis job. Any notes you dictate during the recording are available as text once analysis completes, so you can feed the resulting summary back through the improvement popover to tighten the instructions before planning.",
-      "features": "Video jobs include frame-rate controls, audio capture toggles, and cost reporting. Results appear in the same background jobs sidebar as text improvements, keeping all prompt preparation artefacts in one place.",
+      "dialog": "The video analysis dialog combines the current task description with an optional focus prompt wrapped in <description> and <video_attention_prompt> tags before sending the job. You can narrate while recording; the resulting summary can be pasted into the task description and refined with the improvement popover.",
+      "features": "Video jobs include frame-rate controls, optional audio capture, and usage tracking. Results appear in the background jobs sidebar alongside text improvements.",
       "heading": "Video capture and prompt scaffolding"
     },
     "voiceIntegration": {
       "heading": "Voice transcription integration",
-      "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcripts at the cursor inside the task description or terminal dictation buffer. The inserted text can immediately be highlighted and passed through the same improvement popover, and the original transcription job identifier is stored with the improvement payload for auditing.",
+      "hook": "Voice recordings use the {code} hook. It loads per-project transcription defaults, requests microphone access, and inserts transcribed text at the cursor inside the task description or terminal dictation buffer. The inserted text can be highlighted and passed through the improvement popover.",
       "preferences": "Language, model, and temperature preferences persist at the project level, so teams get consistent transcription quality before refining the copy. Silence detection warns about bad audio levels, and a ten-minute cap prevents oversized recordings from blocking improvement jobs with large payloads."
     },
     "visuals": {
@@ -994,7 +1025,8 @@
         "title": "Text improvement flow",
         "description": "Selection popover triggers improvement job and returns enhanced text.",
         "imageSrc": "/images/docs/text-improvement/flow.svg",
-        "imageAlt": "Text improvement flow diagram"
+        "imageAlt": "Text improvement flow diagram",
+        "caption": "Selection popover to job pipeline overview."
       }
     },
     "processorDetails": {
@@ -1045,119 +1077,118 @@
   },
   "voiceTranscription": {
     "meta": {
-      "title": "Sprachtranskription - PlanToCode",
-      "description": "Wie PlanToCode Audio aufnimmt, Echtzeit-Transkripte mit gpt-4o-transcribe streamt, Berechtigungen und Projekteinstellungen verwaltet."
+      "title": "Voice transcription - PlanToCode",
+      "description": "How PlanToCode records audio, sends it to the configured transcription provider, and inserts text into task or terminal inputs."
     },
-    "category": "Produktleitfaden",
+    "category": "Product Guide",
     "date": "2025-09-22",
-    "description": "Aufnahme-Lebenszyklus, Geräteverwaltung und Streaming-Verhalten für sprachgesteuerte Prompts.",
+    "description": "Recording lifecycle, device management, and transcription behavior for voice-driven prompts.",
     "deviceManagement": {
-      "description": "Die Funktion fordert Mikrofonberechtigung an, listet verfügbare Audioeingänge auf und ermöglicht Benutzern, Geräte während einer Sitzung zu wechseln. Audiopegel werden live überwacht, sodass die UI Stillewarnungen anzeigen kann, wenn das Mikrofon stummgeschaltet oder getrennt ist.",
-      "heading": "Geräteverwaltung",
-      "monitoring": "Echtzeit-Audiopegel-Überwachung zeigt visuelles Feedback während der Aufnahme an. Das System erkennt Stilleperioden und warnt Benutzer, wenn das Mikrofon stummgeschaltet oder getrennt erscheint, um fehlgeschlagene Aufnahmen zu verhindern, bevor Audio zur Transkription gesendet wird."
+      "description": "The feature requests microphone permission, enumerates available audio inputs, and lets users choose the active device before recording. Changes take effect on the next recording.",
+      "heading": "Device management",
+      "monitoring": "Real-time audio level monitoring displays visual feedback during recording. The system warns when audio is silent so you can catch muted microphones before sending the recording."
     },
-    "intro": "Sprachtranskription ist überall verfügbar, wo die Desktop-App Diktiersteuerungen bereitstellt, einschließlich dem Plan-Terminal und Prompt-Editoren. Die Funktion nimmt Audio lokal auf, sendet Chunks an den Transkriptionsdienst und fügt erkannten Text in das aktive Eingabefeld ein, ohne manuelles Tippen zu blockieren.",
-    "metaDescription": "Wie PlanToCode Audio aufnimmt, Echtzeit-Transkripte mit gpt-4o-transcribe streamt, Berechtigungen und Projekteinstellungen verwaltet.",
-    "metaTitle": "Sprachtranskription - PlanToCode",
-    "ogDescription": "Erfahren Sie, wie der Aufnahme-Hook Geräte, Berechtigungen und Text-Streaming verwaltet.",
-    "ogTitle": "Sprachtranskription - PlanToCode",
+    "intro": "Voice transcription is available anywhere the desktop app exposes dictation controls, including the plan terminal and prompt editors. The feature records audio locally and sends a single recording to the transcription service when you stop, then inserts text into the active input field without blocking manual typing.",
+    "metaDescription": "How PlanToCode records audio, sends it to the configured transcription provider, manages permissions, and inserts text into task or terminal inputs.",
+    "metaTitle": "Voice transcription - PlanToCode",
+    "ogDescription": "Learn how the recording hook manages devices, permissions, and streaming text.",
+    "ogTitle": "Voice transcription - PlanToCode",
     "projectSettings": {
-      "description": "Wenn eine Aufnahmesitzung startet, sucht der Hook die Transkriptionskonfiguration des aktiven Projekts. Sprachcodes, bevorzugte Modelle und andere Einstellungen werden vor der Audioaufnahme abgerufen, sodass Aufnahmen den Projektpräferenzen folgen.",
-      "heading": "Projektbezogene Einstellungen",
-      "storage": "Projektspezifische Transkriptionspräferenzen werden in SQLite gespeichert und umfassen das bevorzugte Modell (gpt-4o-transcribe oder gpt-4o-mini-transcribe), Sprachcode und Temperatureinstellungen. Diese Präferenzen bleiben über Sitzungen hinweg bestehen und synchronisieren sich mit dem Server für Abrechnungszwecke."
+      "description": "When a recording session starts, the hook looks up the active project's transcription configuration so recordings follow the project's preferences.",
+      "heading": "Project-aware settings",
+      "storage": "Project transcription preferences are stored in SQLite key_value_store under project_task_settings and include the preferred model, language code, prompt, and temperature. Hosted uses managed providers; self-hosting can adjust the allowlist."
     },
-    "readTime": "5 Min.",
+    "readTime": "5 min",
     "recordingWorkflow": {
-      "description": "Der Aufnahme-Hook hält eine Zustandsmaschine mit Leerlauf-, Aufnahme-, Verarbeitungs- und Fehlerzuständen. Er verfolgt die Dauer, verwaltet Stilleerkennung und stellt sicher, dass Aufnahmen nach zehn Minuten automatisch stoppen. Chunks werden gepuffert und an die Transkriptionsaktion weitergeleitet, die erkannten Text zur Einfügung zurückgibt.",
-      "heading": "Aufnahme-Workflow",
-      "statesHeading": "Aufnahmezustände",
+      "description": "The recording hook keeps a state machine with idle, recording, processing, and error states. It records audio into a single blob, enforces a ten-minute cap, and sends the recording on stop.",
+      "heading": "Recording workflow",
+      "statesHeading": "Recording states",
       "states": [
-        "idle: Keine Aufnahme läuft, Mikrofonberechtigungen können gewährt sein oder nicht",
-        "recording: Aktive Audioaufnahme über MediaRecorder, Dauer verfolgt, visuelles Feedback angezeigt",
-        "processing: Audio-Chunk an Server gesendet, warte auf Transkriptionsantwort von gpt-4o-transcribe",
-        "error: Aufnahme fehlgeschlagen aufgrund Berechtigungsverweigerung, Gerätetrennung oder Transkriptions-API-Fehler"
+        "idle: No recording in progress, microphone permissions may or may not be granted",
+        "recording: Capturing audio via MediaRecorder with live level monitoring",
+        "processing: Uploading the recording to the transcription endpoint and awaiting a response",
+        "error: Recording failed due to permission denial, device disconnection, or transcription API error"
       ]
     },
     "routingBehavior": {
-      "heading": "Multi-Ziel-Routing",
-      "description": "Transkribierter Text kann basierend auf dem aktiven Kontext an mehrere Ziele geroutet werden. Der insertTranscript-Callback ermöglicht flexibles Routing ohne Kopplung. Das Routing-Ziel wird in Job-Metadaten für Audit-Trails gespeichert.",
+      "heading": "Multi-destination routing",
+      "description": "Transcribed text is routed based on the active UI context and inserted into the appropriate input.",
       "destinations": [
-        "Aufgabenbeschreibungs-Editoren: Cursor-Einfügung mit optionaler sofortiger text_improvement-Verfeinerung",
-        "Terminal-Diktierpuffer: Befehlsausführung (z.B. 'run npm test' in PTY getippt)",
-        "Meeting-Notizen-Modus: Akkumulierter Puffer automatisch in SQLite gespeichert mit task_refinement, das umsetzbare Aufgaben generiert",
-        "Prompt-Editoren: Direkte Einfügung in jedes Texteingabefeld in der gesamten Anwendung"
+        "Task description editors: Cursor insertion with optional follow-up text_improvement",
+        "Terminal dictation buffer: Command text inserted into PTY input",
+        "Prompt editors: Direct insertion into active text inputs"
       ]
     },
     "pipeline": {
-      "heading": "Transkriptions-Pipeline",
-      "hook": "Der {code} React-Hook verwaltet den vollständigen Aufnahme-Lebenszyklus. Er initialisiert {code} für Audioaufnahme im WebM-Format mit Opus-Codec, überwacht Audiopegel und behandelt Gerätewechsel.",
-      "command": "Die Desktop-App ruft {code} auf, um Audiodaten an den Server-Endpunkt {code} zu senden. Der Befehl validiert Audiogröße (mindestens 1KB, maximal 25MB), Dauer, Temperatur (0,0-1,0) und Prompt-Länge (max. 1000 Zeichen).",
-      "constraints": "Audiodateien müssen zwischen 1KB und 25MB groß sein. Unterstützte Formate: WAV, MP3, M4A, OGG, WebM, FLAC, AAC und MP4. Das Transkriptionsmodell muss explizit angegeben werden - unterstützte Modelle sind gpt-4o-transcribe und gpt-4o-mini-transcribe von OpenAI."
+      "heading": "Transcription pipeline",
+      "hook": "The {code} React hook manages the complete recording lifecycle. It initializes {code} for audio capture in WebM format with Opus codec, monitors audio levels, and handles device switching.",
+      "command": "The desktop app invokes {code} to send audio data to the server endpoint {code}. The command validates minimum size (1KB), duration, temperature (0.0-1.0), and prompt length (max 1000 characters); the server enforces max file size (100MB).",
+      "constraints": "Audio files must be between 1KB and 100MB. Supported formats: WAV, MP3, M4A, OGG, WebM, FLAC, AAC, and MP4. The transcription model must be specified explicitly and must be in the server allowlist (OpenAI models by default on hosted)."
     },
     "serverProcessing": {
-      "heading": "Serverseitige Verarbeitung",
-      "endpoint": "Der Server stellt {code} bereit, der Multipart-Formulardaten akzeptiert. Er routet Anfragen basierend auf der Anbieter-Konfiguration des Modells entweder an OpenAI oder Google, validiert Benutzer-Credits und berechnet die Abrechnung basierend auf der Audiodauer.",
-      "parametersHeading": "Anfrageparameter",
+      "heading": "Server-side processing",
+      "endpoint": "The server exposes {code} which accepts multipart form data. It routes requests to OpenAI or Google based on the model's provider configuration, validates user credits, and calculates billing based on audio duration.",
+      "parametersHeading": "Request parameters",
       "parameters": [
-        "file: Audiodatei-Daten (erforderlich) - WAV, MP3, M4A, OGG, WebM, FLAC, AAC oder MP4",
-        "model: Transkriptionsmodell-ID (erforderlich) - openai/gpt-4o-transcribe oder openai/gpt-4o-mini-transcribe",
-        "duration_ms: Aufnahmedauer in Millisekunden (erforderlich für Abrechnungsberechnung)",
-        "language: ISO 639-1 Sprachcode (optional) - verbessert Genauigkeit für bestimmte Sprachen",
-        "prompt: Kontexthinweis für Transkription (optional, max. 1000 Zeichen) - hilft bei domänenspezifischem Vokabular",
-        "temperature: Sampling-Temperatur 0,0-1,0 (optional, Standard 0,0) - niedrigere Werte produzieren deterministischere Ausgabe"
+        "file: Audio file data (required) - WAV, MP3, M4A, OGG, WebM, FLAC, AAC, or MP4",
+        "model: Transcription model ID (required) - from server allowlist (e.g., openai/gpt-4o-transcribe)",
+        "durationMs: Recording duration in milliseconds (required for billing calculation)",
+        "language: ISO 639-1 language code (optional) - improves accuracy for specific languages",
+        "prompt: Context hint for transcription (optional, max 1000 characters) - helps with domain-specific vocabulary",
+        "temperature: Sampling temperature 0.0-1.0 (optional, default 0.0) - lower values produce more deterministic output"
       ]
     },
     "dataFlow": {
-      "heading": "Datenfluss",
-      "description": "Audiodaten fließen vom Browser durch die Tauri-Befehlsschicht zum Server, der Anfragen an den entsprechenden Transkriptionsanbieter weiterleitet.",
-      "stepsHeading": "Verarbeitungsschritte",
+      "heading": "Data flow",
+      "description": "Audio data flows from the browser through the Tauri command layer to the server, which proxies requests to the appropriate transcription provider.",
+      "stepsHeading": "Processing steps",
       "steps": [
-        "Browser MediaRecorder erfasst Audio-Chunks im WebM/Opus-Format",
-        "useVoiceTranscription-Hook puffert Chunks und überwacht Dauer",
-        "Beim Stoppen wird Audio-Blob in Bytes konvertiert und über transcribe_audio_command gesendet",
-        "Tauri-Befehl validiert Audiogröße, Dauer und Parameter",
-        "Anfrage wird an Server /api/audio/transcriptions-Endpunkt mit Auth-Token gesendet",
-        "Server validiert Benutzer-Credits und routet an OpenAI- oder Google-Anbieter",
-        "Anbieter gibt transkribierten Text zurück, Server protokolliert Nutzung und zieht Credits ab",
-        "Transkribierter Text wird an Desktop zurückgegeben und über Callback eingefügt"
+        "Browser MediaRecorder captures audio in a single recording (WebM by default)",
+        "useVoiceTranscription tracks duration and recording state",
+        "On stop, the audio blob is converted to bytes and sent via transcribe_audio_command",
+        "Tauri command validates size, duration, temperature, and prompt length",
+        "Request sent to server /api/audio/transcriptions endpoint with auth token",
+        "Server routes to the configured provider and returns transcribed text",
+        "Transcribed text returned to desktop and inserted via callback"
       ]
     },
     "keyFiles": {
-      "heading": "Wichtige Implementierungsdateien",
+      "heading": "Key implementation files",
       "items": [
-        "desktop/src/hooks/useVoiceTranscription.ts",
+        "desktop/src/hooks/use-voice-recording/use-voice-transcription.ts",
+        "desktop/src/actions/voice-transcription/transcribe.ts",
         "desktop/src-tauri/src/commands/audio_commands.rs",
         "server/src/handlers/proxy/specialized/transcription.rs",
         "server/src/clients/openai/transcription.rs",
-        "server/src/clients/google/transcription.rs"
+        "server/src/clients/google_client.rs"
       ]
     },
     "examples": {
-      "heading": "Verwendungsbeispiele",
-      "description": "Gängige Sprachtranskriptions-Workflows demonstrieren die Flexibilität des Systems:",
+      "heading": "Usage examples",
+      "description": "Common voice transcription workflows:",
       "items": [
-        "Sprint-Planung: Meeting-Aufnahme mit Transkription, die an task_refinement zur Generierung von Aufgabenbeschreibungen geleitet wird",
-        "Terminal-Befehle: Diktat transkribiert und direkt in PTY zur Ausführung getippt",
-        "Fehlerberichte: Verbale Beschreibung erfasst, mit text_improvement verfeinert, dann von task_refinement verarbeitet",
-        "Architekturdiskussionen: Videoaufnahme mit extrahierter Audiospur zur Transkription, kombiniert mit Vision-Analyse"
+        "Sprint planning: Dictate tasks, then run text_improvement and task_refinement",
+        "Terminal commands: Dictation transcribed and typed directly into PTY for execution",
+        "Bug reports: Verbal description captured, refined with text_improvement, then stored in task history",
+        "Walkthrough notes: Narrate a screen recording and attach the video analysis summary to the task"
       ]
     },
     "cta": {
-      "heading": "Weiter erkunden",
-      "description": "Erfahren Sie, wie transkribierter Text verfeinert werden kann und wie Meeting-Aufnahmen zu umsetzbaren Aufgaben verarbeitet werden.",
+      "heading": "Continue exploring",
+      "description": "Learn how transcribed text can be refined and how meeting recordings are processed into actionable tasks.",
       "links": {
-        "textImprovement": "Textverbesserung",
-        "meetingIngestion": "Meeting-Erfassung"
+        "textImprovement": "Text Improvement",
+        "meetingIngestion": "Meeting Ingestion"
       }
     },
-    "title": "Sprachtranskription",
+    "title": "Voice Transcription",
     "visuals": {
       "recordingFlow": {
-        "title": "Sprachtranskriptions-Pipeline",
-        "description": "Audioaufnahme, GPT-4o-Transkriptionsverarbeitung und Text-Routing-Ablauf.",
+        "title": "Voice transcription pipeline",
+        "description": "Audio capture, provider transcription, and text insertion flow.",
         "imageSrc": "/images/docs/voice-transcription/pipeline.svg",
-        "imageAlt": "Sprachtranskriptions-Pipeline-Diagramm",
-        "caption": "Audio fließt von der Browser-Aufnahme durch Tauri-Befehle zur serverseitigen GPT-4o-Transkription."
+        "imageAlt": "Voice transcription pipeline diagram",
+        "caption": "Audio flows from browser capture through Tauri commands to the configured transcription provider."
       }
     }
   },
@@ -1171,7 +1202,7 @@
     "readTime": "15 Min.",
     "title": "Systemübersicht",
     "description": "Eine prägnante Karte des Systems, der Kernschleife und der erforderlichen Abhängigkeiten.",
-    "intro": "PlanToCode ist ein Desktop-Arbeitsbereich, der Code-Änderungen vor der Ausführung plant und validiert. Er koordiniert eine lokale Rust-Job-Engine, eine React-UI und einen Server-Proxy für LLM-Aufrufe. Das System folgt einer Offline-First-Architektur, bei der die Desktop-App unabhängig mit SQLite für lokalen Zustand arbeitet, während der Server Authentifizierung, LLM-Anbieter-Routing und Abrechnung verwaltet. Ohne externe LLM-Anbieter, die mit Ihren API-Schlüsseln konfiguriert sind, werden die Planungs- und Analyse-Pipelines nicht ausgeführt.",
+    "intro": "PlanToCode ist ein Desktop-Arbeitsbereich, der Code-Änderungen vor der Ausführung plant und validiert. Er koordiniert eine lokale Rust-Job-Engine, eine React-UI und einen Server-Proxy für LLM-Aufrufe. Das System folgt einer Offline-First-Architektur, bei der die Desktop-App unabhängig mit SQLite für lokalen Zustand arbeitet, während der Server Authentifizierung, LLM-Anbieter-Routing und Abrechnung verwaltet. Ohne LLM-Zugriff (gehostet verwaltet oder selbst gehostet mit eigenen Schlüsseln) werden die Planungs- und Analyse-Pipelines nicht ausgeführt.",
     "visuals": {
       "systemMap": {
         "title": "Systemkarte",
@@ -1201,7 +1232,7 @@
         "Implementierungspläne über ImplementationPlanProcessor generieren, der XML-formatierte Pläne an den Monaco-Viewer streamt.",
         "Optional mehrere Plan-Entwürfe mit ImplementationPlanMergeProcessor unter Verwendung von XML-getaggten Quellplänen zusammenführen.",
         "Den genehmigten Plan über PTY-Terminal-Sitzungen oder Kopier-Button-Vorlagen für externe Agenten ausführen oder exportieren.",
-        "Jeden Job, jedes Artefakt und jedes Terminal-Protokoll in SQLite (background_jobs, terminal_sessions-Tabellen) für Auditierbarkeit persistieren."
+        "Persist every job, artifact, and terminal log to SQLite (background_jobs, terminal_sessions tables) for history and recovery."
       ]
     },
     "components": {
@@ -1249,7 +1280,7 @@
         "Session: Projektkontext gespeichert in sessions-Tabelle mit task_description, included_files und Modellpräferenzen. Identifiziert durch UUID.",
         "Background Job: LLM-gestützte Operation gespeichert in background_jobs-Tabelle mit task_type, prompt, response, Token-Verfolgung und Kosten.",
         "Workflow: Mehrstufiger orchestrierter Prozess (z.B. file_finder_workflow), koordiniert vom WorkflowOrchestrator mit IntermediateData, das zwischen Stufen übergeben wird.",
-        "Terminal Session: PTY-Prozess gespeichert in terminal_sessions mit output_log, status und optionaler job_id-Verknüpfung für Audit.",
+        "Terminal Session: PTY process stored in terminal_sessions with output_log, status, and optional job_id linking for traceability.",
         "Provider: LLM-Dienst-Abstraktion in server/src/handlers/proxy/providers/ mit Anfrage-Transformation und Antwort-Normalisierung."
       ]
     },
@@ -1310,7 +1341,7 @@
         "Benutzer überprüft Plan in VirtualizedCodeViewer-Komponente, kann direkt bearbeiten oder Merge anfordern.",
         "Genehmigter Plan wird über Kopier-Button-Vorlagen an Terminal kopiert oder für externe Agenten exportiert.",
         "Terminal-Sitzung in terminal_commands.rs erfasst PTY-Ausgabe, erkennt Agenten-Aufmerksamkeitszustände.",
-        "Alle Artefakte werden in SQLite background_jobs und terminal_sessions-Tabellen für Audit und Sitzungs-Wiederherstellung persistiert."
+        "All artifacts persist in SQLite background_jobs and terminal_sessions tables for history and session recovery."
       ]
     },
     "jobTypes": {
@@ -1324,7 +1355,7 @@
         "extended_path_finder: ExtendedPathFinderProcessor analysiert Importe/Abhängigkeiten, erweitert Kontext mit verwandten Dateien.",
         "implementation_plan: ImplementationPlanProcessor streamt XML-formatierte Pläne mit plan_step-Elementen.",
         "implementation_plan_merge: ImplementationPlanMergeProcessor kombiniert Pläne mit source_plans XML-Tags und Benutzeranweisungen.",
-        "video_analysis: Verarbeitet Bildschirmaufnahmen über /api/llm/video/analyze-Endpunkt mit Frame-Sampling.",
+        "video_analysis: Processes screen recordings via /api/llm/video/analyze with a framerate hint.",
         "web_search_prompts_generation: Generiert research_task XML-Blöcke für Deep Research-Workflow.",
         "web_search_execution: Führt Recherche-Prompts parallel aus, aggregiert Erkenntnisse."
       ]
@@ -1345,16 +1376,16 @@
     },
     "persistence": {
       "heading": "Zustandspersistenz",
-      "description": "Alle Artefakte werden für Audit und Wiederherstellung persistiert:",
+      "description": "All artifacts are persisted for review and recovery:",
       "jobs": "background_job_repository/ speichert Job-Datensätze mit session_id, task_type, status, prompt, response, tokens_sent/received, actual_cost.",
       "sessions": "session_repository.rs verwaltet sessions-Tabelle mit task_description, included_files, model_used, Historie-Versionen.",
       "terminals": "terminal_repository.rs persistiert terminal_sessions mit output_log, status, exit_code, working_directory für Sitzungs-Wiederherstellung.",
       "rehydration": "Beim App-Neustart rehydriert der Rust-Kern den Sitzungsstatus aus SQLite, markiert veraltete laufende Jobs als fehlgeschlagen und stellt Terminal-Ausgabeprotokolle wieder her."
     },
     "inputs": {
-      "heading": "Aufgabeneingabe-Erfassung",
-      "capture": "Aufgaben gelangen durch mehrere Eingabeoberflächen ins System: getippter Text in TaskDescriptionEditor, Sprach-Diktat über useVoiceTranscription-Hook oder Video-Analyse durch VideoAnalysisDialog.",
-      "artifacts": "Jeder Eingabetyp erzeugt Artefakte, die in SQLite gespeichert werden - task_description in sessions-Tabelle, Transkriptionsergebnisse in background_jobs und Video-Frames in zugehörigen Job-Metadaten."
+      "heading": "Task input capture",
+      "capture": "Tasks enter the system through multiple input surfaces: typed text in TaskDescriptionEditor, voice dictation via useVoiceTranscription hook, or video analysis through VideoAnalysisDialog.",
+      "artifacts": "Each input type updates SQLite state: task_description in sessions and task_description_history, voice transcription inserts text into the session or terminal input, and video analysis responses are stored in background_jobs."
     },
     "refinement": {
       "heading": "Eingabeverfeinerung",
@@ -1377,9 +1408,9 @@
       "outputs": "Zusammengeführte Pläne bewahren die Nachverfolgbarkeit zu Quellplänen und enthalten merged_from-Metadaten im finalen background_jobs-Datensatz."
     },
     "review": {
-      "heading": "Plan-Überprüfung",
-      "editor": "Pläne werden im Monaco-basierten VirtualizedCodeViewer zur Überprüfung geöffnet. Benutzer können Plan-Text direkt bearbeiten, Änderungen anfordern oder zur Ausführung genehmigen.",
-      "audit": "Alle Überprüfungsaktionen werden mit Zeitstempeln und Benutzerkontext protokolliert und bieten einen Audit-Trail der Plan-Evolution."
+      "heading": "Plan review",
+      "editor": "Plans open in the Monaco-based VirtualizedCodeViewer for review. Users can edit plan text directly, request modifications, or approve for execution.",
+      "audit": "Plan edits are persisted in background_jobs.response; signoff state is recorded in background_jobs.metadata.userSignoff."
     },
     "execution": {
       "heading": "Ausführungsübergabe",
@@ -1466,7 +1497,7 @@
       "modules": [
         "job_commands.rs: create_job, get_job, cancel_job, get_jobs_for_session, clear_job_history.",
         "workflow_commands.rs: start_file_finder_workflow, get_workflow_status, retry_workflow, pause_workflow, resume_workflow.",
-        "terminal_commands.rs: create_terminal_session, send_terminal_input, resize_terminal, get_terminal_output, check_cli_availability.",
+        "terminal_commands.rs: start_terminal_session, attach_terminal_output, write_terminal_input, resize_terminal_session, get_terminal_metadata, graceful_exit_terminal.",
         "session_commands.rs: create_session, get_session, update_session, sync_task_description_history, sync_file_selection_history.",
         "auth0_commands.rs: initiate_login, complete_login, refresh_token, logout, get_user_info.",
         "implementation_plan_commands.rs: generate_implementation_plan, merge_implementation_plans, estimate_tokens.",
@@ -1583,7 +1614,7 @@
       "description": "The LLM proxy normalizes requests across providers and streams responses:",
       "routes": [
         "/api/llm/chat/completions (POST): Main chat completion endpoint. Routes to OpenAI, Anthropic, Google, X.AI, or OpenRouter based on model ID.",
-        "/api/llm/video/analyze (POST): Multipart video upload for frame analysis. Requires google/* models with video capability.",
+        "/api/llm/video/analyze (POST): Multipart video upload for video analysis (FPS hint). Requires google/* models with video capability.",
         "/api/llm/cancel (POST): Cancels in-flight streaming request by request_id.",
         "/api/llm/status/{request_id} (GET): Returns status of a request (active, completed, cancelled).",
         "/api/audio/transcriptions (POST): Whisper-compatible transcription. Multipart upload with audio file and parameters."
@@ -1684,7 +1715,7 @@
     "readTime": "14 min",
     "title": "Background Jobs",
     "description": "Job queue, processors, state machine, event streaming, and artifact storage.",
-    "intro": "All LLM-backed work runs through the background job system in the desktop app. The job queue dispatches work to processors, streams progress events, and persists every prompt and response in SQLite for audit and recovery. This architecture enables cancellation, retry, cost tracking, and real-time UI updates.",
+    "intro": "All LLM-backed work runs through the background job system in the desktop app. The job queue dispatches work to processors, streams progress events, and persists every prompt and response in SQLite for review and recovery. This architecture enables cancellation, retry, cost tracking, and real-time UI updates.",
     "visuals": {
       "stateMachine": {
         "title": "Job state machine",
@@ -1702,7 +1733,7 @@
         "session_id (TEXT NOT NULL, FK): References sessions.id with CASCADE DELETE.",
         "task_type (TEXT DEFAULT 'unknown'): Processor identifier (e.g., implementation_plan, text_improvement, root_folder_selection).",
         "status (TEXT): Current state with CHECK constraint for valid values.",
-        "prompt (TEXT NOT NULL): Full text sent to the LLM, stored for audit.",
+        "prompt (TEXT NOT NULL): Full text sent to the LLM, stored for review and debugging.",
         "response (TEXT): LLM output or error message.",
         "error_message (TEXT): Detailed error information on failure.",
         "tokens_sent (INTEGER DEFAULT 0): Input token count from provider response.",
@@ -1792,7 +1823,7 @@
     },
     "artifacts": {
       "heading": "Artifact storage",
-      "description": "Job inputs and outputs are fully persisted for audit:",
+      "description": "Job inputs and outputs are fully persisted for review:",
       "stored": [
         "prompt: Complete LLM prompt including system prompt and user content.",
         "response: Full LLM response text or streaming accumulation.",
@@ -1811,7 +1842,7 @@
     },
     "cta": {
       "heading": "See the data model",
-      "description": "Understand the SQLite schema that stores jobs, sessions, and terminal output.",
+      "description": "Understand the SQLite schema that stores jobs, sessions, and terminal session logs.",
       "links": {
         "dataModel": "Data model",
         "runtime": "Runtime walkthrough"
@@ -1846,7 +1877,7 @@
         "benefits": [
           "Decouples UI responsiveness from LLM latency",
           "Enables cancellation mid-stream",
-          "Provides audit trail of all operations",
+          "Provides job history of all operations",
           "Supports retry with exponential backoff"
         ],
         "pitfalls": [
@@ -1949,7 +1980,7 @@
         },
         {
           "pitfall": "Not persisting job state",
-          "solution": "Store every job with full prompt and response for audit and recovery."
+          "solution": "Store every job with full prompt and response for review and recovery."
         },
         {
           "pitfall": "Blocking UI on LLM calls",
@@ -1968,7 +1999,7 @@
     "artifacts": {
       "heading": "Artifacts to Persist",
       "items": [
-        "Full prompt sent to the LLM (for debugging and audit)",
+        "Full prompt sent to the LLM (for debugging and review)",
         "Complete response including streaming accumulation",
         "Token counts from provider response",
         "Computed cost based on model pricing",
@@ -2768,7 +2799,7 @@
     },
     "versioning": {
       "heading": "Template Versioning",
-      "description": "System prompt templates are versioned for reproducibility. Each job records the template ID used, enabling audit and comparison of results across template versions."
+      "description": "System prompt templates are versioned for reproducibility. Each job records the template ID used, enabling traceability and comparison of results across template versions."
     },
     "designNotes": {
       "heading": "Design Notes",
@@ -2865,7 +2896,7 @@
     "ui": {
       "heading": "UI Integration",
       "description": "The Implementation Plans panel supports merge workflow:",
-      "audit": "Merged plans link back to source plans for complete audit trail."
+      "audit": "Merged plans link back to source plans for traceability."
     },
     "cta": {
       "heading": "Learn about plan generation",
@@ -2879,18 +2910,18 @@
   "meetingIngestionDoc": {
     "meta": {
       "title": "Meeting and recording ingestion - PlanToCode",
-      "description": "How recordings become structured task inputs and artifacts through video analysis."
+      "description": "How recordings are analyzed into task summaries through the video analysis pipeline."
     },
     "category": "Inputs",
     "date": "2025-09-25",
     "readTime": "8 min",
     "title": "Meeting & Recording Ingestion",
-    "description": "How recordings become structured task inputs and artifacts.",
-    "intro": "PlanToCode can process meeting recordings and screen captures to extract task-relevant information. This document describes the ingestion workflow from recording to structured artifacts.",
+    "description": "How recordings become task summaries and planning inputs.",
+    "intro": "PlanToCode can analyze meeting recordings and screen captures with the video analysis job. The model is guided by a system prompt that adapts to your goal, whether you are debugging, reviewing UI, or documenting a workflow.",
     "visuals": {
       "ingestionFlow": {
         "title": "Recording ingestion flow",
-        "description": "How recordings flow through transcription and analysis.",
+        "description": "How recordings flow through upload and analysis.",
         "imageSrc": "/images/docs/deep-research/workflow.svg",
         "imageAlt": "Recording ingestion flow diagram",
         "caption": "Placeholder for ingestion flow diagram."
@@ -2898,86 +2929,87 @@
     },
     "inputs": {
       "heading": "Supported Inputs",
-      "description": "The meeting ingestion pipeline accepts various recording formats:",
+      "description": "The ingestion workflow accepts video recordings captured in the app or uploaded from other tools.",
       "items": [
-        "Screen recordings (MP4, WebM, MOV)",
-        "Meeting recordings from Zoom, Meet, Teams",
-        "Audio-only files (MP3, WAV, M4A)",
-        "Direct screen capture from desktop"
+        "Screen recordings captured in the desktop app",
+        "Meeting recordings exported from Zoom, Meet, or Teams (video files)",
+        "Design walkthroughs or bug reproductions recorded as video",
+        "For audio-only notes, use voice transcription"
       ]
     },
     "uploadProcess": {
       "heading": "Upload Process",
-      "description": "Recordings are uploaded through multipart form data to the server:",
+      "description": "Recordings are uploaded to the server as multipart form data for analysis.",
       "stepsHeading": "Processing Steps",
       "steps": [
-        "File uploaded to server temporary storage",
-        "Metadata extracted (duration, format, resolution)",
-        "Audio track separated for transcription",
-        "Video frames sampled for visual analysis",
-        "Results combined and returned to client"
+        "Desktop saves the recording locally and calculates duration",
+        "Video file and analysis prompt are uploaded to /api/llm/video/analyze",
+        "Server stores the file temporarily and routes it to Gemini video models",
+        "Long recordings are split into 2-minute chunks by the desktop and processed in parallel",
+        "Analysis summary is returned and stored in the job response"
       ]
     },
     "normalization": {
       "heading": "Format Normalization",
-      "description": "Various input formats are normalized before processing. Audio is converted to 16kHz mono WAV for Whisper compatibility. Video is processed at native resolution with configurable frame sampling.",
-      "outputs": "Normalized outputs ensure consistent downstream processing regardless of input format."
+      "description": "Recordings are sent mostly as-is. WebM recordings are remuxed to fix container metadata before analysis.",
+      "outputs": "No separate transcript or frame artifacts are generated; the output is a text analysis summary."
     },
     "multimodalAnalysis": {
       "heading": "Multimodal Analysis",
-      "description": "Recordings with both audio and video are analyzed using multimodal models. Models with {code} prefix support native video understanding.",
-      "combined": "Audio transcription and visual analysis are combined to produce a comprehensive understanding of the recording content."
+      "description": "Recordings are analyzed with {code} video models, which accept video and audio in a single request.",
+      "combined": "The default video analysis system prompt adapts the output to your goal rather than forcing a fixed schema."
     },
     "transcription": {
-      "heading": "Audio Transcription",
-      "description": "Audio tracks are transcribed using OpenAI Whisper through the server API.",
-      "attribution": "Speaker diarization attempts to attribute text to different speakers when multiple voices are detected.",
-      "featuresHeading": "Transcription Features",
+      "heading": "Audio context",
+      "description": "Audio is analyzed as part of the video; the app does not generate a standalone transcript.",
+      "attribution": "If spoken content is unclear, the model may mark it as partially visible rather than guessing.",
+      "featuresHeading": "Audio analysis notes",
       "features": [
-        "Multiple language support with auto-detection",
-        "Word-level timestamps for alignment",
-        "Speaker diarization (multi-speaker)",
-        "Punctuation and formatting restoration"
+        "Narration steers the summary",
+        "Spoken intent and errors can be quoted",
+        "No diarization or timestamped transcript"
       ]
     },
     "frames": {
-      "heading": "Frame Sampling",
-      "description": "Video frames are sampled at configurable intervals to capture UI state changes and user actions.",
-      "timestamps": "Each frame includes its timestamp for correlation with the audio transcript."
+      "heading": "Frame rate hint",
+      "description": "FPS is a sampling hint sent with the analysis request. For large files the provider may ignore it.",
+      "timestamps": "Long recordings can be chunked to keep analysis responsive."
     },
     "structuredExtraction": {
       "heading": "Structured Extraction",
-      "description": "The combined analysis produces structured outputs suitable for planning:",
+      "description": "The analysis output is freeform and adapts to your prompt. Typical outputs include:",
       "extractedHeading": "Extracted Elements",
       "items": [
-        "Action items and decisions mentioned",
-        "UI elements and navigation paths shown",
-        "Error states and issues demonstrated",
-        "Technical context for implementation"
+        "Bug reproduction steps and observed errors",
+        "UI walkthrough notes and navigation paths",
+        "Design feedback or UX issues shown on screen",
+        "Suggested fixes or follow-up tasks"
       ]
     },
     "artifacts": {
       "heading": "Analysis Artifacts",
-      "description": "Meeting analysis produces several artifacts stored in the session:",
+      "description": "Video analysis produces artifacts stored with the job:",
       "items": [
-        "meeting_transcript: Full text with timestamps",
-        "action_items: Extracted tasks and decisions",
-        "ui_observations: Visual state changes",
-        "combined_context: Merged analysis summary"
+        "analysis_summary: Text summary stored in background_jobs.response",
+        "job_metadata: durationMs, framerate, videoPath",
+        "chunk_info: chunk boundaries for long recordings (when applicable)"
       ]
     },
     "keyFiles": {
       "heading": "Key Source Files",
       "items": [
-        "desktop/src/components/meeting/MeetingUploader.tsx",
-        "server/src/handlers/proxy/video_handler.rs",
-        "server/src/services/video_processor.rs"
+        "desktop/src/app/components/generate-prompt/_components/video-recording-dialog.tsx",
+        "desktop/src/contexts/screen-recording/Provider.tsx",
+        "desktop/src-tauri/src/jobs/processors/video_analysis_processor.rs",
+        "server/src/handlers/proxy/specialized/video_analysis.rs",
+        "server/src/utils/multipart_utils.rs",
+        "server/src/clients/google_client.rs"
       ]
     },
     "handoff": {
       "heading": "Planning Handoff",
-      "description": "Meeting analysis artifacts can be incorporated into the task description:",
-      "pipeline": "The combined context flows into the file discovery and plan generation pipeline, providing rich context for implementation planning."
+      "description": "Video analysis summaries can be incorporated into the task description for planning.",
+      "pipeline": "The summary can be refined with text_improvement and task_refinement before file discovery."
     },
     "cta": {
       "heading": "Continue to video analysis",
@@ -2991,21 +3023,21 @@
   "videoAnalysisDoc": {
     "meta": {
       "title": "Video analysis - PlanToCode",
-      "description": "Frame sampling, prompts, and analysis artifacts from screen recordings."
+      "description": "Adaptive analysis of screen recordings with Gemini video models."
     },
     "category": "Inputs",
     "date": "2025-09-25",
     "readTime": "6 min",
     "title": "Video Analysis",
-    "description": "Frame sampling, prompts, and analysis artifacts from recordings.",
-    "intro": "Video analysis extracts UI state and action sequences from screen recordings. This enables understanding of user workflows and bug reproduction contexts.",
+    "description": "Adaptive analysis and prompts for screen recordings.",
+    "intro": "Video analysis sends the recording to Gemini video models with a system prompt that adapts to your goal. The output is a text summary, not a frame-by-frame export or separate transcript.",
     "visuals": {
       "frameNotes": {
         "title": "Video analysis pipeline",
-        "description": "How frames flow through the analysis model.",
+        "description": "How recordings flow through the analysis model.",
         "imageSrc": "/assets/images/demo-video-analysis.jpg",
         "imageAlt": "Video analysis interface",
-        "caption": "The video analysis interface showing frame capture and analysis options."
+        "caption": "The video analysis interface showing analysis options."
       }
     },
     "apiEndpoint": {
@@ -3013,90 +3045,92 @@
       "endpoint": "Video analysis is handled by {code} on the server. The endpoint accepts multipart form data with the video file and analysis parameters.",
       "payloadHeading": "Payload Fields",
       "payloadFields": [
-        "video: The video file (MP4, WebM, MOV)",
-        "model: Model identifier for analysis",
-        "prompt: Optional custom analysis prompt",
-        "max_frames: Maximum frames to sample",
-        "fps: Frame sampling rate"
+        "video: The video file",
+        "model: Model identifier for analysis (google/* required)",
+        "prompt: Task description and optional focus prompt (wrapped in <description> and <video_attention_prompt>)",
+        "temperature: Sampling temperature from task settings",
+        "durationMs: Recording duration in milliseconds",
+        "framerate: Sampling hint (0.1-20 from the UI)",
+        "systemPrompt: Composed system prompt (server-generated)"
       ]
     },
     "inputs": {
       "heading": "Supported Input Formats",
       "items": [
-        "MP4 with H.264 or H.265 codec",
-        "WebM with VP8 or VP9 codec",
-        "MOV from screen recording tools",
-        "Maximum file size: 100MB"
+        "MP4, WebM, MOV, and AVI are common inputs",
+        "Large files may be uploaded with the provider File API",
+        "Long recordings are chunked by the desktop app before analysis"
       ]
     },
     "sampling": {
-      "heading": "Frame Sampling",
-      "description": "Frames are extracted at configurable intervals to balance coverage and API costs. Lower frame rates reduce token usage but may miss rapid changes.",
-      "fps": "Default rate is 1 frame per second. For detailed UI analysis, 2-3 FPS may be needed.",
+      "heading": "Frame rate hint",
+      "description": "FPS is a hint for how densely to sample the video. For large files the provider may ignore it; for long recordings the desktop may downsample when chunking.",
+      "fps": "Default recorder rate is 5 FPS. Lower rates reduce cost but may miss rapid UI changes.",
       "parametersHeading": "Sampling Parameters",
       "parameters": [
-        "fps: Frames per second to extract (0.5-5)",
-        "max_frames: Maximum total frames (10-100)",
-        "start_time: Offset to begin sampling",
-        "end_time: Offset to stop sampling"
+        "framerate: 0.1-20 selection in the UI (provider requests are clamped to 1-20)",
+        "chunking: long recordings split into 2-minute segments",
+        "audio: include narration when \"Include dictation\" is enabled"
       ]
     },
     "modelRequirements": {
       "heading": "Model Requirements",
-      "format": "Video analysis requires vision-capable models. Model identifiers follow {code} format. Currently only {code} models support native video analysis.",
-      "reasoning": "Google Gemini models can process video natively, while other vision models require frame-by-frame image analysis."
+      "format": "Video analysis requires Gemini video models. Model identifiers follow {code} format; only {code} models are supported.",
+      "reasoning": "The server restricts video analysis to Google Gemini models that accept video inputs."
     },
     "analysis": {
       "heading": "Analysis Process",
-      "description": "Sampled frames are sent to the vision model along with the analysis prompt. The model produces structured observations about UI state and user actions.",
-      "prompting": "System prompts guide the model to focus on specific aspects of the recording.",
+      "description": "The model analyzes the full video (and audio if present) and produces a goal-oriented summary.",
+      "prompting": "The default system prompt (default_video_analysis) tells the model to adapt to your goal, quote visible text when relevant, and mark unclear content instead of guessing.",
       "promptElementsHeading": "Prompt Elements",
       "promptElements": [
-        "UI inventory: List visible elements and controls",
-        "Action sequence: Describe user actions in order",
-        "Error detection: Identify error states and messages",
-        "Navigation paths: Track screen transitions"
+        "Goal alignment: focus on the user's stated intent",
+        "Evidence: quote visible errors, logs, or UI text when relevant",
+        "Sequence: describe the order of events or steps shown",
+        "Next steps: suggest fixes or follow-up tasks"
       ]
     },
     "outputs": {
       "heading": "Analysis Outputs",
       "items": [
-        "frame_observations: Per-frame UI descriptions",
-        "action_timeline: Ordered list of user actions",
-        "error_summary: Any errors or issues observed",
-        "context_summary: High-level workflow description"
+        "Analysis summary text tailored to the prompt",
+        "Quoted errors or UI text when visible",
+        "Workflow notes describing what happened on screen",
+        "Suggested fixes or follow-up tasks"
       ]
     },
     "billing": {
       "heading": "Token Usage & Billing",
-      "description": "Video analysis consumes tokens based on frame count and resolution. Each frame is processed as an image token.",
+      "description": "Video analysis usage and cost are tracked per job using provider-reported tokens or duration-based estimates.",
       "tracked": [
-        "tokens_sent: Prompt + image tokens",
+        "tokens_sent: Prompt + video tokens",
         "tokens_received: Analysis response tokens",
         "actual_cost: Computed from model pricing"
       ]
     },
     "storage": {
       "heading": "Result Storage",
-      "description": "Analysis results are stored in the background_jobs table with task_type 'video_analysis'. The response contains the full analysis in JSON format.",
+      "description": "Analysis results are stored in background_jobs.response with task_type \"video_analysis\". Long recordings may include chunk metadata.",
       "reuse": "Results can be incorporated into task descriptions or used directly in the planning workflow."
     },
     "keyFiles": {
       "heading": "Key Source Files",
       "items": [
-        "server/src/handlers/proxy/video_handler.rs",
-        "server/src/services/video_processor.rs",
-        "desktop/src/components/video/VideoAnalyzer.tsx"
+        "desktop/src/app/components/generate-prompt/_components/video-recording-dialog.tsx",
+        "desktop/src/contexts/screen-recording/Provider.tsx",
+        "desktop/src-tauri/src/jobs/processors/video_analysis_processor.rs",
+        "server/src/handlers/proxy/specialized/video_analysis.rs",
+        "server/src/clients/google_client.rs"
       ]
     },
     "integration": {
       "heading": "Integration with Planning",
-      "description": "Video analysis outputs can feed directly into the task description for context-aware planning.",
-      "followup": "The context_summary is particularly useful as a starting point for implementation planning."
+      "description": "Video analysis summaries can be appended to the task description for context-aware planning.",
+      "followup": "Use text_improvement or task_refinement to polish the summary before file discovery."
     },
     "cta": {
       "heading": "See meeting ingestion",
-      "description": "Learn how video analysis fits into the broader meeting ingestion workflow.",
+      "description": "Learn more about how video analysis works.",
       "links": {
         "meeting": "Meeting ingestion",
         "runtime": "Runtime walkthrough"
@@ -3316,6 +3350,12 @@
         "modelConfiguration": "Model configuration",
         "runtimeWalkthrough": "Runtime walkthrough"
       }
+    }
+  },
+  "docs": {
+    "meta": {
+      "title": "Documentation - PlanToCode",
+      "description": "Learn how to plan and ship code changes with PlanToCode: file discovery, implementation plans, terminal sessions, model guardrails, and voice."
     }
   }
 }
