@@ -496,11 +496,24 @@ public struct RemoteTerminalView: View {
                     jobId: capturedJobId
                 )
 
+                let initialSize = await MainActor.run { () -> (cols: Int?, rows: Int?) in
+                    guard let termView = terminalController.terminalView else {
+                        return (nil, nil)
+                    }
+                    let terminal = termView.getTerminal()
+                    guard terminal.cols > 0 && terminal.rows > 0 else {
+                        return (nil, nil)
+                    }
+                    return (terminal.cols, terminal.rows)
+                }
+
                 let session = try await withTimeout(seconds: Self.sessionStartTimeout) {
                     try await terminalService.startSession(
                         jobId: capturedJobId,
                         shell: preferredShell,
-                        context: contextBinding
+                        context: contextBinding,
+                        initialCols: initialSize.cols,
+                        initialRows: initialSize.rows
                     )
                 }
                 await MainActor.run { [self] in
@@ -546,16 +559,13 @@ public struct RemoteTerminalView: View {
                             }
                     }
 
-                    Task {
-                        try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
-                    }
-
                     if let termView = terminalController.terminalView {
                         let terminal = termView.getTerminal()
                         let cols = terminal.cols
                         let rows = terminal.rows
 
                         if cols > 0 && rows > 0 {
+                            // Ensure PTY size is synced before requesting binary bind/snapshot.
                             Task {
                                 try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
                                 await MainActor.run {

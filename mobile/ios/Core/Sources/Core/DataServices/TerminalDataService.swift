@@ -116,9 +116,11 @@ public class TerminalDataService: ObservableObject {
     private var bindAckObserver: NSObjectProtocol?
     private var dsrRequestDeadlineBySession: [String: Date] = [:]
     private var dsrProbeTailBySession: [String: [UInt8]] = [:]
+    private var dsrOutputTailBySession: [String: [UInt8]] = [:]
 
     private static let dsrRequestSequence: [UInt8] = [0x1b, 0x5b, 0x36, 0x6e]
-    private static let dsrResponseWindow: TimeInterval = 1.0
+    private static let dsrResponseWindow: TimeInterval = 2.0
+    private static let dsrOutputTailMaxBytes = 16
 
     // MARK: - Initialization
     public init() {
@@ -229,7 +231,13 @@ public class TerminalDataService: ObservableObject {
     // MARK: - Terminal Session Management
 
     /// Start a new terminal session for the given job
-    public func startSession(jobId: String, shell: String? = nil, context: TerminalContextBinding) async throws -> TerminalSession {
+    public func startSession(
+        jobId: String,
+        shell: String? = nil,
+        context: TerminalContextBinding,
+        initialCols: Int? = nil,
+        initialRows: Int? = nil
+    ) async throws -> TerminalSession {
         guard let deviceId = self.connectionManager.activeDeviceId,
               let relayClient = self.connectionManager.relayConnection(for: deviceId),
               self.connectionManager.connectionStates[deviceId]?.isConnected == true,
@@ -244,6 +252,10 @@ public class TerminalDataService: ObservableObject {
         var params: [String: Any] = ["jobId": jobId]
         if let shell = shell {
             params["shell"] = shell
+        }
+        if let cols = initialCols, let rows = initialRows, cols > 0, rows > 0 {
+            params["cols"] = cols
+            params["rows"] = rows
         }
 
         let request = RpcRequest(
@@ -718,20 +730,25 @@ public class TerminalDataService: ObservableObject {
         }
 
         trackDsrRequests(sessionId: sessionId, data: event.data)
+        let filteredData = filterEchoedDsrResponses(sessionId: sessionId, data: event.data)
+
+        guard !filteredData.isEmpty else {
+            return
+        }
 
         if outputRings[sessionId] == nil {
             outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
         }
-        outputRings[sessionId]!.append(event.data)
+        outputRings[sessionId]!.append(filteredData)
 
         if let bytesPublisher = outputBytesPublishers[sessionId] {
-            bytesPublisher.send(event.data)
+            bytesPublisher.send(filteredData)
         }
 
         lastActivityBySession[sessionId] = event.timestamp
 
         if let textPublisher = outputPublishers[sessionId],
-           let decoded = String(data: event.data, encoding: .utf8) {
+           let decoded = String(data: filteredData, encoding: .utf8) {
             let output = TerminalOutput(
                 sessionId: sessionId,
                 data: decoded,
@@ -816,6 +833,94 @@ public class TerminalDataService: ObservableObject {
         return true
     }
 
+    private enum DsrMatchResult {
+        case noMatch
+        case incomplete
+        case match(length: Int)
+    }
+
+    private func matchDsrResponse(in bytes: [UInt8], startIndex: Int) -> DsrMatchResult {
+        let count = bytes.count
+        var idx = startIndex
+        var consumedPrefix = false
+
+        if idx < count && bytes[idx] == 0x1b {
+            idx += 1
+            consumedPrefix = true
+            if idx >= count { return .incomplete }
+        }
+
+        if idx < count && bytes[idx] == 0x5b {
+            idx += 1
+            consumedPrefix = true
+            if idx >= count { return .incomplete }
+        }
+
+        guard consumedPrefix || (idx < count && bytes[idx] >= 0x30 && bytes[idx] <= 0x39) else {
+            return .noMatch
+        }
+
+        let rowStart = idx
+        while idx < count && bytes[idx] >= 0x30 && bytes[idx] <= 0x39 {
+            idx += 1
+        }
+        if idx == rowStart {
+            return idx >= count ? .incomplete : .noMatch
+        }
+        if idx >= count { return .incomplete }
+        if bytes[idx] != 0x3b { return .noMatch }
+        idx += 1
+        if idx >= count { return .incomplete }
+
+        let colStart = idx
+        while idx < count && bytes[idx] >= 0x30 && bytes[idx] <= 0x39 {
+            idx += 1
+        }
+        if idx == colStart {
+            return idx >= count ? .incomplete : .noMatch
+        }
+        if idx >= count { return .incomplete }
+        if bytes[idx] != 0x52 { return .noMatch }
+        idx += 1
+
+        return .match(length: idx - startIndex)
+    }
+
+    private func filterEchoedDsrResponses(sessionId: String, data: Data) -> Data {
+        let now = Date()
+        guard let deadline = dsrRequestDeadlineBySession[sessionId], deadline >= now else {
+            if let tail = dsrOutputTailBySession.removeValue(forKey: sessionId), !tail.isEmpty {
+                var combined = Data(tail)
+                combined.append(data)
+                return combined
+            }
+            return data
+        }
+
+        let tail = dsrOutputTailBySession[sessionId] ?? []
+        let combinedBytes = tail + [UInt8](data)
+
+        var output: [UInt8] = []
+        output.reserveCapacity(combinedBytes.count)
+
+        var idx = 0
+        while idx < combinedBytes.count {
+            switch matchDsrResponse(in: combinedBytes, startIndex: idx) {
+            case .match(let length):
+                idx += length
+            case .incomplete:
+                dsrOutputTailBySession[sessionId] = Array(combinedBytes[idx...].suffix(Self.dsrOutputTailMaxBytes))
+                return Data(output)
+            case .noMatch:
+                output.append(combinedBytes[idx])
+                idx += 1
+            }
+        }
+
+        dsrOutputTailBySession[sessionId] = []
+        return Data(output)
+    }
+
     private func ensureGlobalBinarySubscriptionForActiveDevice() {
         guard let activeDeviceId = connectionManager.activeDeviceId,
               let activeRelay = connectionManager.relayConnection(for: activeDeviceId) else {
@@ -846,6 +951,7 @@ public class TerminalDataService: ObservableObject {
         outputRings.removeValue(forKey: sessionId)
         dsrRequestDeadlineBySession.removeValue(forKey: sessionId)
         dsrProbeTailBySession.removeValue(forKey: sessionId)
+        dsrOutputTailBySession.removeValue(forKey: sessionId)
         lastActivityBySession.removeValue(forKey: sessionId)
         lastKnownSizeBySession.removeValue(forKey: sessionId)
 
@@ -1159,6 +1265,7 @@ public class TerminalDataService: ObservableObject {
         firstResizeCompleted.removeAll()
         dsrRequestDeadlineBySession.removeAll()
         dsrProbeTailBySession.removeAll()
+        dsrOutputTailBySession.removeAll()
 
         lifecycleBySession.removeAll()
         readinessBySession.removeAll()

@@ -87,6 +87,21 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
         .and_then(|v| v.as_str())
         .map(String::from);
 
+    let cols = request
+        .params
+        .get("cols")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u16);
+    let rows = request
+        .params
+        .get("rows")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as u16);
+    let (cols, rows) = match (cols, rows) {
+        (Some(c), Some(r)) if c > 0 && r > 0 => (Some(c), Some(r)),
+        _ => (None, None),
+    };
+
     let session_id = job_id.unwrap_or_else(|| format!("terminal-session-{}", uuid::Uuid::new_v4()));
 
     // Query working directory from key_value_store table
@@ -124,6 +139,8 @@ async fn handle_terminal_start(app_handle: &AppHandle, request: RpcRequest) -> R
         session_id.clone(),
         working_directory.clone(),
         shell.clone(),
+        cols,
+        rows,
     )
     .await
     .map_err(RpcError::from)?;

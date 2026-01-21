@@ -132,6 +132,8 @@ pub async fn start_terminal_session_for_rpc_command(
     session_id: String,
     working_directory: Option<String>,
     shell: Option<String>,
+    cols: Option<u16>,
+    rows: Option<u16>,
 ) -> Result<TerminalSessionInfo, String> {
     let mgr = app.state::<std::sync::Arc<crate::services::TerminalManager>>();
 
@@ -158,8 +160,8 @@ pub async fn start_terminal_session_for_rpc_command(
     mgr.start_session(
         session_id.clone(),
         working_directory.clone(),
-        None, // cols
-        None, // rows
+        cols,
+        rows,
         None, // RPC path runs headless; output relayed via device-link events
     )
     .await

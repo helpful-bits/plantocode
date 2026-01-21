@@ -27,6 +27,8 @@ const FLUSH_INTERVAL_SECS: u64 = 10;
 const FLUSH_SCAN_TICK_MILLIS: u64 = 1000;
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 256 * 1024;
 const WINDOWS_WRITE_CHUNK_BYTES: usize = 8 * 1024;
+#[cfg(windows)]
+const WINDOWS_EXIT_POLL_INTERVAL_MS: u64 = 250;
 
 enum TerminalState {
     Initializing,
@@ -96,6 +98,64 @@ impl TerminalManager {
             sessions: DashMap::new(),
             flusher_started: std::sync::atomic::AtomicBool::new(false),
         }
+    }
+
+    #[cfg(windows)]
+    fn spawn_exit_monitor(&self, session_id: String, handle: Arc<SessionHandle>) {
+        tauri::async_runtime::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_millis(
+                WINDOWS_EXIT_POLL_INTERVAL_MS,
+            ));
+
+            loop {
+                interval.tick().await;
+
+                let mut exit_code: Option<i32> = None;
+                let mut should_stop = false;
+
+                {
+                    let mut state_guard = handle.state.lock().unwrap();
+                    match &mut *state_guard {
+                        TerminalState::Running { child, .. } => match child.try_wait() {
+                            Ok(Some(status)) => {
+                                let code = status.exit_code() as i32;
+                                exit_code = Some(code);
+                                let old_state = std::mem::replace(
+                                    &mut *state_guard,
+                                    TerminalState::Exited { code },
+                                );
+                                drop(old_state);
+                                should_stop = true;
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                log::warn!(
+                                    "Terminal exit poll failed for session {}: {}",
+                                    session_id,
+                                    e
+                                );
+                            }
+                        },
+                        TerminalState::Initializing => {}
+                        _ => {
+                            should_stop = true;
+                        }
+                    }
+                }
+
+                if let Some(code) = exit_code {
+                    log::info!(
+                        "Terminal session {} exited (code={}) detected by poll",
+                        session_id,
+                        code
+                    );
+                }
+
+                if should_stop {
+                    break;
+                }
+            }
+        });
     }
 
     pub async fn start_session(
@@ -274,6 +334,8 @@ impl TerminalManager {
         });
 
         self.sessions.insert(session_id.clone(), handle.clone());
+        #[cfg(windows)]
+        self.spawn_exit_monitor(session_id.clone(), handle.clone());
 
         // Send the init command to the terminal if configured
         if let Some(init_cmd) = init_command {
