@@ -119,7 +119,9 @@ public struct CommandRouter {
 
     public static func terminalStart(
         jobId: String? = nil,
-        shell: String? = nil
+        shell: String? = nil,
+        cols: Int? = nil,
+        rows: Int? = nil
     ) -> AsyncThrowingStream<RpcResponse, Error> {
         guard let usable = getUsableRelay() else {
             return AsyncThrowingStream { continuation in
@@ -134,6 +136,10 @@ public struct CommandRouter {
         }
         if let shell = shell {
             params["shell"] = shell
+        }
+        if let cols = cols, let rows = rows, cols > 0, rows > 0 {
+            params["cols"] = cols
+            params["rows"] = rows
         }
 
         let request = RpcRequest(

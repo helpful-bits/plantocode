@@ -28,6 +28,7 @@ static LAST_WARN_MS: AtomicU64 = AtomicU64::new(0);
 const MAX_PENDING_BYTES: usize = 8 * 1_048_576; // 8 MiB cap
 
 const MAX_TERMINAL_SNAPSHOT_BYTES: usize = 64 * 1024;
+const TERMINAL_BINARY_CHUNK_BYTES: usize = 16 * 1024;
 
 // Batching configuration for terminal output
 // Lower frame rate reduces network churn and improves stability on flaky links
@@ -917,13 +918,25 @@ impl DeviceLinkClient {
                             };
 
                             for (session_id, data) in buffers_to_flush {
-                                let framed = wrap_with_ptc1_frame(&session_id, &data);
-                                let len = framed.len();
-                                if let Err(e) = ws_sender.send(Message::Binary(framed.into())).await {
-                                    error!("Failed to send batched binary frame: {}", e);
+                                let mut send_failed = false;
+                                for chunk in data.chunks(TERMINAL_BINARY_CHUNK_BYTES) {
+                                    let framed = wrap_with_ptc1_frame(&session_id, chunk);
+                                    let len = framed.len();
+                                    if let Err(e) = ws_sender.send(Message::Binary(framed.into())).await {
+                                        error!("Failed to send batched binary frame: {}", e);
+                                        send_failed = true;
+                                        break;
+                                    }
+                                    debug!(
+                                        "WebSocket: flushed batch {} bytes for session {} (raw: {})",
+                                        len,
+                                        session_id,
+                                        chunk.len()
+                                    );
+                                }
+                                if send_failed {
                                     break;
                                 }
-                                debug!("WebSocket: flushed batch {} bytes for session {} (raw: {})", len, session_id, data.len());
                             }
                         }
                         else => {
@@ -1023,9 +1036,17 @@ impl DeviceLinkClient {
                                         if let Some(terminal_mgr) = app_handle.try_state::<std::sync::Arc<crate::services::TerminalManager>>() {
                                             if let Some(snapshot) = terminal_mgr.get_buffer_snapshot(&session_id, Some(snapshot_limit)) {
                                                 if !snapshot.is_empty() {
-                                                    let framed_snapshot = wrap_with_ptc1_frame(&session_id, &snapshot);
-                                                    info!("Binary uplink: sending snapshot for session {}, {} bytes (framed: {})", session_id, snapshot.len(), framed_snapshot.len());
-                                                    let _ = bin_tx_for_receiver.send(framed_snapshot);
+                                                    let chunk_count = (snapshot.len() + TERMINAL_BINARY_CHUNK_BYTES - 1) / TERMINAL_BINARY_CHUNK_BYTES;
+                                                    for chunk in snapshot.chunks(TERMINAL_BINARY_CHUNK_BYTES) {
+                                                        let framed_snapshot = wrap_with_ptc1_frame(&session_id, chunk);
+                                                        let _ = bin_tx_for_receiver.send(framed_snapshot);
+                                                    }
+                                                    info!(
+                                                        "Binary uplink: sent snapshot for session {}, {} bytes (chunks: {})",
+                                                        session_id,
+                                                        snapshot.len(),
+                                                        chunk_count
+                                                    );
                                                 }
                                             }
                                         }
@@ -1679,26 +1700,43 @@ impl DeviceLinkClient {
         if let Ok(mut batch_buffers) = self.batch_buffer_by_session.lock() {
             if let Some(buffered) = batch_buffers.remove(session_id) {
                 if !buffered.is_empty() {
-                    let framed = wrap_with_ptc1_frame(session_id, &buffered);
-                    if tx.send(framed).is_err() {
-                        warn!("Binary uplink: channel closed while flushing buffered data for session {}", session_id);
-                        let mut pending = self.pending_binary_by_session.lock().unwrap();
-                        let buf = pending.entry(session_id.to_string()).or_default();
-                        buf.extend_from_slice(&buffered);
-                        if buf.len() > MAX_PENDING_BYTES {
-                            let overflow = buf.len() - MAX_PENDING_BYTES;
-                            buf.drain(0..overflow);
+                    let mut sent_bytes = 0usize;
+                    for chunk in buffered.chunks(TERMINAL_BINARY_CHUNK_BYTES) {
+                        let framed = wrap_with_ptc1_frame(session_id, chunk);
+                        if tx.send(framed).is_err() {
+                            warn!("Binary uplink: channel closed while flushing buffered data for session {}", session_id);
+                            let mut pending = self.pending_binary_by_session.lock().unwrap();
+                            let buf = pending.entry(session_id.to_string()).or_default();
+                            buf.extend_from_slice(&buffered[sent_bytes..]);
+                            if buf.len() > MAX_PENDING_BYTES {
+                                let overflow = buf.len() - MAX_PENDING_BYTES;
+                                buf.drain(0..overflow);
+                            }
+                            return Ok(());
                         }
-                        return Ok(());
+                        sent_bytes += chunk.len();
                     }
                 }
             }
         }
 
-        let framed_data = wrap_with_ptc1_frame(session_id, data);
-        if tx.send(framed_data).is_err() {
-            warn!("Binary uplink: channel closed for session {}", session_id);
-            self.buffer_pending_bytes(session_id, data);
+        if data.len() > TERMINAL_BINARY_CHUNK_BYTES {
+            let mut sent_bytes = 0usize;
+            for chunk in data.chunks(TERMINAL_BINARY_CHUNK_BYTES) {
+                let framed_data = wrap_with_ptc1_frame(session_id, chunk);
+                if tx.send(framed_data).is_err() {
+                    warn!("Binary uplink: channel closed for session {}", session_id);
+                    self.buffer_pending_bytes(session_id, &data[sent_bytes..]);
+                    return Ok(());
+                }
+                sent_bytes += chunk.len();
+            }
+        } else {
+            let framed_data = wrap_with_ptc1_frame(session_id, data);
+            if tx.send(framed_data).is_err() {
+                warn!("Binary uplink: channel closed for session {}", session_id);
+                self.buffer_pending_bytes(session_id, data);
+            }
         }
 
         Ok(())
@@ -1822,7 +1860,7 @@ impl DeviceLinkClient {
         }
 
         let mut sent_bytes = 0usize;
-        for chunk in pending.chunks(BATCH_SIZE_THRESHOLD) {
+        for chunk in pending.chunks(TERMINAL_BINARY_CHUNK_BYTES) {
             let framed = wrap_with_ptc1_frame(session_id, chunk);
             if bin_tx.send(framed).is_err() {
                 warn!("Binary uplink: failed to flush pending bytes for session {}", session_id);

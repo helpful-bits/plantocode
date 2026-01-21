@@ -25,6 +25,9 @@ private let MOBILE_TERMINAL_SNAPSHOT_MAX_BYTES = 32 * 1024
 /// Chunk size for emitting snapshots: 4KB chunks with delays
 private let MOBILE_TERMINAL_SNAPSHOT_CHUNK_SIZE = 4 * 1024
 
+/// Chunk size for outbound terminal input to avoid oversized RPC payloads
+private let MOBILE_TERMINAL_INPUT_CHUNK_BYTES = 32 * 1024
+
 private enum TerminalSessionLifecycle: Equatable {
     case initializing
     case active
@@ -117,6 +120,7 @@ public class TerminalDataService: ObservableObject {
     private var dsrRequestDeadlineBySession: [String: Date] = [:]
     private var dsrProbeTailBySession: [String: [UInt8]] = [:]
     private var dsrOutputTailBySession: [String: [UInt8]] = [:]
+    private var utf8RemainderBySession: [String: Data] = [:]
 
     private static let dsrRequestSequence: [UInt8] = [0x1b, 0x5b, 0x36, 0x6e]
     private static let dsrResponseWindow: TimeInterval = 2.0
@@ -368,19 +372,21 @@ public class TerminalDataService: ObservableObject {
     /// method to preserve control sequences. Base64 encoding happens only at the
     /// transport boundary to avoid any lossy conversions.
     public func write(jobId: String, data: Data) async throws {
+        let session: TerminalSession
+
         // Fast path: if session exists and publisher is ready, skip ensureSession
         if let existingSession = self.activeSessions.values.first(where: { $0.jobId == jobId }),
            self.outputPublishers[existingSession.id] != nil {
-            try await self.writeViaRelay(session: existingSession, data: data)
-            return
+            session = existingSession
+        } else {
+            session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
         }
 
-        let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
-        try await self.writeViaRelay(session: session, data: data)
+        try await self.writeChunked(session: session, data: data)
     }
 
     /// Send large text to terminal in chunks to avoid overwhelming the PTY
-    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = 2_097_152) async throws {
+    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = MOBILE_TERMINAL_INPUT_CHUNK_BYTES) async throws {
         guard !text.isEmpty else { return }
 
         let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
@@ -473,6 +479,24 @@ public class TerminalDataService: ObservableObject {
         // Should not reach here, but handle just in case
         if let error = lastError {
             throw error
+        }
+    }
+
+    private func writeChunked(session: TerminalSession, data: Data) async throws {
+        guard !data.isEmpty else { return }
+
+        if data.count <= MOBILE_TERMINAL_INPUT_CHUNK_BYTES {
+            try await writeViaRelay(session: session, data: data)
+            return
+        }
+
+        var offset = 0
+        while offset < data.count {
+            let end = min(offset + MOBILE_TERMINAL_INPUT_CHUNK_BYTES, data.count)
+            let chunk = Data(data[offset..<end])
+            try await writeViaRelay(session: session, data: chunk)
+            offset = end
+            await Task.yield()
         }
     }
 
@@ -748,7 +772,8 @@ public class TerminalDataService: ObservableObject {
         lastActivityBySession[sessionId] = event.timestamp
 
         if let textPublisher = outputPublishers[sessionId],
-           let decoded = String(data: filteredData, encoding: .utf8) {
+           let decoded = decodeUtf8(sessionId: sessionId, data: filteredData),
+           !decoded.isEmpty {
             let output = TerminalOutput(
                 sessionId: sessionId,
                 data: decoded,
@@ -757,6 +782,35 @@ public class TerminalDataService: ObservableObject {
             )
             textPublisher.send(output)
         }
+    }
+
+    private func decodeUtf8(sessionId: String, data: Data) -> String? {
+        guard !data.isEmpty else { return nil }
+
+        var combined = Data()
+        if let remainder = utf8RemainderBySession[sessionId], !remainder.isEmpty {
+            combined.append(remainder)
+        }
+        combined.append(data)
+
+        if let decoded = String(data: combined, encoding: .utf8) {
+            utf8RemainderBySession[sessionId] = nil
+            return decoded
+        }
+
+        // Trim up to 3 bytes to handle partial UTF-8 sequences at chunk boundaries.
+        for trim in 1...3 {
+            guard combined.count > trim else { break }
+            let prefix = combined.prefix(combined.count - trim)
+            if let decoded = String(data: prefix, encoding: .utf8) {
+                utf8RemainderBySession[sessionId] = Data(combined.suffix(trim))
+                return decoded
+            }
+        }
+
+        // Fallback: lossy decode to avoid dropping output entirely.
+        utf8RemainderBySession[sessionId] = nil
+        return String(decoding: combined, as: UTF8.self)
     }
 
     private func trackDsrRequests(sessionId: String, data: Data) {
@@ -952,6 +1006,7 @@ public class TerminalDataService: ObservableObject {
         dsrRequestDeadlineBySession.removeValue(forKey: sessionId)
         dsrProbeTailBySession.removeValue(forKey: sessionId)
         dsrOutputTailBySession.removeValue(forKey: sessionId)
+        utf8RemainderBySession.removeValue(forKey: sessionId)
         lastActivityBySession.removeValue(forKey: sessionId)
         lastKnownSizeBySession.removeValue(forKey: sessionId)
 
@@ -1266,6 +1321,7 @@ public class TerminalDataService: ObservableObject {
         dsrRequestDeadlineBySession.removeAll()
         dsrProbeTailBySession.removeAll()
         dsrOutputTailBySession.removeAll()
+        utf8RemainderBySession.removeAll()
 
         lifecycleBySession.removeAll()
         readinessBySession.removeAll()

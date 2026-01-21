@@ -1187,6 +1187,14 @@ struct SwiftTerminalView: UIViewRepresentable {
         ]
         terminal.installPalette(colors: darkPalette)
 
+        // Keep selection visuals subtle for dark theme (prevents harsh white selection bars).
+        terminalView.selectedTextBackgroundColor = UIColor(white: 0.25, alpha: 0.85)
+        terminalView.selectionHandleColor = UIColor(white: 0.8, alpha: 1.0)
+
+        // Ensure autowrap is enabled (DEC private mode 7) in case host doesn't set it.
+        let enableAutowrap: [UInt8] = [0x1b, 0x5b, 0x3f, 0x37, 0x68]
+        terminalView.feed(byteArray: ArraySlice(enableAutowrap))
+
         // Configure keyboard behavior for desktop parity (if properties exist)
         // Configure Backspace to send DEL (0x7f) instead of ^H (0x08)
         if terminalView.responds(to: Selector(("setBackspaceSendsControlH:"))) {
@@ -1293,6 +1301,20 @@ final class FirstResponderTerminalView: TerminalView {
         let terminal = getTerminal()
         terminal.options.scrollback = 2_000
         terminal.silentLog = true
+    }
+
+    override func paste(_ sender: Any?) {
+        guard let text = UIPasteboard.general.string, !text.isEmpty else { return }
+
+        let terminal = getTerminal()
+        if terminal.bracketedPasteMode {
+            let wrapped = "\u{1b}[200~" + text + "\u{1b}[201~"
+            send(txt: wrapped)
+            setNeedsDisplay()
+            return
+        }
+
+        super.paste(sender)
     }
 
     // Keyboard management is handled by updateUIView watching shouldShowKeyboard binding

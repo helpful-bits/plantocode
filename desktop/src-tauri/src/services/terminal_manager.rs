@@ -288,10 +288,16 @@ impl TerminalManager {
             }
         }
 
-        // Set environment variables for full color support
-        if !cfg!(windows) {
+        // Set environment variables for full color support (respect existing values)
+        let has_no_color = std::env::var_os("NO_COLOR").is_some();
+        let term_env = std::env::var("TERM").ok();
+        if term_env.as_deref().map(|v| v.is_empty() || v == "dumb").unwrap_or(true) {
             cmd.env("TERM", "xterm-256color"); // Standard 256-color support
+        }
+        if std::env::var_os("COLORTERM").is_none() {
             cmd.env("COLORTERM", "truecolor"); // Indicates 24-bit truecolor support
+        }
+        if !has_no_color && std::env::var_os("FORCE_COLOR").is_none() {
             cmd.env("FORCE_COLOR", "1"); // Forces color output for many tools
         }
 
