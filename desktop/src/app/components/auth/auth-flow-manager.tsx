@@ -23,6 +23,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
   const [isOnboardingNeeded, setIsOnboardingNeeded] = useState<boolean | null>(null);
   const [availableRegions, setAvailableRegions] = useState<ServerRegionInfo[] | null>(null);
   const [selectedUrl, setSelectedUrl] = useState<string | null | undefined>(undefined);
+  const [serverReady, setServerReady] = useState(false);
   const { showNotification } = useNotification();
   
   // Safe version - early return if not ready
@@ -68,9 +69,27 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
           
           if (currentUrl) {
             setSelectedUrl(currentUrl);
+            setServerReady(false);
+
+            try {
+              await invoke('set_selected_server_url_command', { url: currentUrl });
+              setServerReady(true);
+            } catch (syncError) {
+              const errorInfo = extractErrorInfo(syncError);
+              const userMessage = createUserFriendlyErrorMessage(errorInfo, "server configuration");
+
+              await logError(syncError, "AuthFlowManager.checkServerSelection.syncServerUrl");
+              showNotification({
+                title: "Server Initialization Failed",
+                message: userMessage,
+                type: "warning"
+              });
+              setServerReady(false);
+            }
           } else {
             // No URL selected, get available regions
             setSelectedUrl(null);
+            setServerReady(false);
             try {
               const regionsTimeoutPromise = new Promise<never>((_, reject) => {
                 setTimeout(() => reject(new Error('Regions fetch timeout')), 5000);
@@ -102,6 +121,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
           
           await logError(e, "AuthFlowManager.checkServerSelection");
           setSelectedUrl(null); // Default to no selection if check fails
+          setServerReady(false);
           showNotification({
             title: isTimeout ? "Server Check Timeout" : "Server Check Failed",
             message: userMessage,
@@ -245,16 +265,17 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       const noConfigError = !configError;
       const tokenValid = !isTokenExpired;
       const serverSelected = selectedUrl !== null && selectedUrl !== undefined;
+      const serverInitialized = serverSelected && serverReady;
 
       // Check if we're in a state where we should show UI (even if not fully loaded)
-      const shouldShowLogin = !hasValidUser && authResolved && serverSelected;
-      const shouldShowApp = onboardingDone && authResolved && hasValidUser && serverSelected;
+      const shouldShowLogin = !hasValidUser && authResolved && serverInitialized;
+      const shouldShowApp = onboardingDone && authResolved && hasValidUser && serverInitialized;
       
       // Only mark initialization as complete when we can show meaningful UI
       if (shouldShowLogin || shouldShowApp) {
         // We can show either login or the main app
         setAppInitializing(false);
-      } else if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid && serverSelected) {
+      } else if (onboardingDone && authResolved && configResolved && hasValidUser && noConfigError && tokenValid && serverInitialized) {
         // All critical async operations before rendering main app are done
         setAppInitializing(false);
       } else {
@@ -270,6 +291,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
       configError,
       isTokenExpired,
       selectedUrl,
+      serverReady,
       setAppInitializing
     ]);
 
@@ -282,6 +304,7 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
         }
         if (selectedUrl === undefined) {
           setSelectedUrl(null); // Force to show server selection
+          setServerReady(false);
         }
       }, 15000); // 15 second fallback
       
@@ -314,6 +337,16 @@ export function AuthFlowManager({ children }: AuthFlowManagerProps) {
         <>
           <UpdaterStatus />
           <ServerSelectionPage regions={availableRegions} onSelect={handleServerSelection} />
+        </>
+      );
+    }
+
+    // Show loading screen while server URL is being initialized in the backend
+    if (selectedUrl && !serverReady) {
+      return (
+        <>
+          <UpdaterStatus />
+          <LoadingScreen loadingType="initializing" message="Preparing server configuration..." />
         </>
       );
     }

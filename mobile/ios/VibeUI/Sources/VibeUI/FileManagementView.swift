@@ -23,6 +23,8 @@ public struct FileManagementView: View {
     @State private var fileHistoryState: HistoryState?
     @State private var allFilesCount: Int = 0
     @State private var selectedFilesCount: Int = 0
+    @State private var missingFileMetadata: [String: FileInfo] = [:]
+    @State private var missingMetadataInFlight: Set<String> = []
 
     public init(filesService: FilesDataService, sessionService: SessionDataService, jobsService: JobsDataService) {
         self.filesService = filesService
@@ -82,6 +84,12 @@ public struct FileManagementView: View {
             if jobsService.activeSessionId != session.id {
                 jobsService.setActiveSession(sessionId: session.id, projectDirectory: session.projectDirectory)
             }
+        }
+        .onReceive(multiConnectionManager.$connectionStates) { _ in
+            refreshMissingFileMetadata()
+        }
+        .onChange(of: includedFilesNotInList) { _ in
+            refreshMissingFileMetadata()
         }
         .task(id: sessionService.currentSession?.projectDirectory) {
             let currentProjectDir = sessionService.currentSession?.projectDirectory
@@ -418,7 +426,7 @@ public struct FileManagementView: View {
 
             Section {
                 ForEach(Array(includedFilesNotInList.enumerated()), id: \.element) { index, filePath in
-                    if let file = FileInfo(from: [
+                    if let file = missingFileMetadata[filePath] ?? FileInfo(from: [
                         "path": filePath,
                         "name": URL(fileURLWithPath: filePath).lastPathComponent,
                         "relativePath": URL(fileURLWithPath: filePath).deletingLastPathComponent().path,
@@ -875,6 +883,71 @@ public struct FileManagementView: View {
         selectedFilesCount = includedSet.count
     }
 
+    private func refreshMissingFileMetadata() {
+        guard isConnected else { return }
+
+        let missingPaths = includedFilesNotInList
+        let missingSet = Set(missingPaths)
+
+        if missingSet.isEmpty {
+            missingFileMetadata.removeAll()
+            missingMetadataInFlight.removeAll()
+            return
+        }
+
+        missingFileMetadata = Dictionary(uniqueKeysWithValues: missingFileMetadata.filter { missingSet.contains($0.key) })
+        missingMetadataInFlight = Set(missingMetadataInFlight.filter { missingSet.contains($0) })
+
+        let toFetch = missingPaths.filter { missingFileMetadata[$0] == nil && !missingMetadataInFlight.contains($0) }
+        guard !toFetch.isEmpty else { return }
+
+        missingMetadataInFlight.formUnion(toFetch)
+
+        let projectDirectory = sessionService.currentSession?.projectDirectory
+            ?? container.currentProject?.directory
+            ?? Core.AppState.shared.selectedProjectDirectory
+
+        guard let projectDir = projectDirectory else {
+            toFetch.forEach { missingMetadataInFlight.remove($0) }
+            return
+        }
+
+        Task {
+            do {
+                var resolved: [String: FileInfo] = [:]
+                for try await response in CommandRouter.filesGetMetadata(
+                    projectDirectory: projectDir,
+                    filePaths: toFetch
+                ) {
+                    guard let result = response.result?.value as? [String: Any] else { continue }
+
+                    if let metadataArray = result["metadata"] as? NSArray {
+                        for item in metadataArray {
+                            guard let dict = item as? [String: Any],
+                                  let info = FileInfo(from: dict) else { continue }
+                            resolved[info.path] = info
+                        }
+                    } else if let metadataArray = result["metadata"] as? [[String: Any]] {
+                        for dict in metadataArray {
+                            if let info = FileInfo(from: dict) {
+                                resolved[info.path] = info
+                            }
+                        }
+                    }
+                }
+
+                await MainActor.run {
+                    missingFileMetadata.merge(resolved) { _, new in new }
+                    toFetch.forEach { missingMetadataInFlight.remove($0) }
+                }
+            } catch {
+                await MainActor.run {
+                    toFetch.forEach { missingMetadataInFlight.remove($0) }
+                }
+            }
+        }
+    }
+
 }
 
 private struct FileManagementRowView: View {
@@ -980,9 +1053,12 @@ private struct FileManagementRowView: View {
     // MARK: - Computed Properties
 
     private var formattedSize: String {
+        if file.size == 0 && file.modifiedAt <= 0 {
+            return "Unknown"
+        }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
-        formatter.allowedUnits = [.useKB, .useMB]
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB]
         return formatter.string(fromByteCount: Int64(file.size))
     }
 
@@ -1083,6 +1159,7 @@ private struct FileManagementRowView: View {
     }
 
     private var formattedDate: String {
+        guard file.modifiedAt > 0 else { return "Unknown" }
         let date = Date(timeIntervalSince1970: TimeInterval(file.modifiedAt) / 1000.0)
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated

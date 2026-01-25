@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import {
-  isApprovedRegion,
   isSanctionedRegion,
   getCountryFromRequest,
-  shouldGatePath,
 } from '@/lib/territories';
 import { locales, defaultLocale, type Locale } from '@/i18n/config';
 
@@ -75,17 +73,9 @@ export default async function middleware(request: NextRequest) {
   const isRestrictedPage = path.includes('/legal/restricted');
 
   // Check if country is sanctioned (but don't redirect if already on restricted page)
+  // These are legally required restrictions due to OFAC/international sanctions
   if (isSanctionedRegion(country) && !isRestrictedPage) {
     // Canonical URLs: /legal/restricted for English, /de/legal/restricted for German, etc.
-    const restrictedPath = matchedLocale === 'en'
-      ? '/legal/restricted'
-      : `/${matchedLocale}/legal/restricted`;
-    return NextResponse.redirect(new URL(restrictedPath, request.url));
-  }
-
-  // Check if path needs geo-gating
-  if (shouldGatePath(path) && !isApprovedRegion(country)) {
-    // For app/download pages, redirect to locale-aware restricted page
     const restrictedPath = matchedLocale === 'en'
       ? '/legal/restricted'
       : `/${matchedLocale}/legal/restricted`;

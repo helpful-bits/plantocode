@@ -30,7 +30,7 @@ export default function RestrictedRegionPage() {
       <GlassCard className="max-w-lg w-full p-8">
         <div className="flex flex-col items-center gap-6 text-center">
           <MapPin className="w-16 h-16 text-red-500" />
-          
+
           <div>
             <h1 className="text-2xl font-semibold text-foreground mb-3">
               Service Not Available in Your Region

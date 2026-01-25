@@ -14,6 +14,7 @@ public struct TerminalComposeView: View {
     @State private var isEditing: Bool = false
     @State private var forceSelectionApply: Bool = false
     @StateObject private var undoRedoManager = UndoRedoManager(maxHistorySize: 10)
+    @StateObject private var keyboardObserver = KeyboardObserver()
 
     @State private var errorMessage: String?
     @State private var isSending = false
@@ -50,49 +51,58 @@ public struct TerminalComposeView: View {
 
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Error message banner
-                if let error = errorMessage {
-                    HStack {
-                        Text("Error: \(error)")
-                            .small()
-                            .foregroundColor(Color.destructive)
-                        Spacer()
-                        Button(action: { errorMessage = nil }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(Color.muted)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(Color.background.opacity(0.9))
-                }
+            GeometryReader { geo in
+                let globalFrame = geo.frame(in: .global)
+                let keyboardOverlap = keyboardObserver.isKeyboardVisible
+                    ? max(0, globalFrame.maxY - keyboardObserver.keyboardFrame.minY)
+                    : 0
 
-                // Task Editor with integrated voice, enhance, and undo/redo
-                TaskEditorView(
-                    text: $composedText,
-                    selectedRange: $selectedRange,
-                    isEditing: $isEditing,
-                    forceSelectionApply: $forceSelectionApply,
-                    undoRedoManager: undoRedoManager,
-                    autoStartRecording: autoStartRecording,
-                    placeholder: "Compose text to send to terminal...",
-                    sessionId: container.sessionService.currentSession?.id ?? "unknown",
-                    projectDirectory: container.sessionService.currentSession?.projectDirectory,
-                    onInteraction: {
-                        undoRedoManager.saveState(composedText)
-                        saveComposedText()
-                    },
-                    onTextChanged: {
-                        saveComposedText()
-                    },
-                    showLanguagePicker: true,
-                    showEnhanceButtons: true,
-                    showUndoRedo: true
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                VStack(spacing: 0) {
+                    // Error message banner
+                    if let error = errorMessage {
+                        HStack {
+                            Text("Error: \(error)")
+                                .small()
+                                .foregroundColor(Color.destructive)
+                            Spacer()
+                            Button(action: { errorMessage = nil }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundColor(Color.muted)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.background.opacity(0.9))
+                    }
+
+                    // Task Editor with integrated voice, enhance, and undo/redo
+                    TaskEditorView(
+                        text: $composedText,
+                        selectedRange: $selectedRange,
+                        isEditing: $isEditing,
+                        forceSelectionApply: $forceSelectionApply,
+                        undoRedoManager: undoRedoManager,
+                        autoStartRecording: autoStartRecording,
+                        placeholder: "Compose text to send to terminal...",
+                        sessionId: container.sessionService.currentSession?.id ?? "unknown",
+                        projectDirectory: container.sessionService.currentSession?.projectDirectory,
+                        onInteraction: {
+                            undoRedoManager.saveState(composedText)
+                            saveComposedText()
+                        },
+                        onTextChanged: {
+                            saveComposedText()
+                        },
+                        showLanguagePicker: true,
+                        showEnhanceButtons: true,
+                        showUndoRedo: true
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .padding(.bottom, keyboardOverlap)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .top)
+                .background(Color.codeBackground)
             }
-            .background(Color.codeBackground)
             .navigationTitle("Compose")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -123,6 +133,7 @@ public struct TerminalComposeView: View {
                 undoRedoManager.setDeviceId(deviceId)
             }
         }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     private func sendToTerminal() {

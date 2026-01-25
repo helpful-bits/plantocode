@@ -8,7 +8,6 @@ import { Header } from '@/components/landing/Header';
 import { GovernanceSection } from '@/components/landing/GovernanceSection';
 import { IntegrationsSection } from '@/components/landing/IntegrationsSection';
 import { FAQ } from '@/components/landing/FAQ';
-import { Footer } from '@/components/landing/Footer';
 import { cdnUrl } from '@/lib/cdn';
 import type { SoftwareApplication, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
@@ -461,7 +460,6 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
 
             <FAQ />
           </main>
-          <Footer />
         </div>
       </HomePageClient>
     </>

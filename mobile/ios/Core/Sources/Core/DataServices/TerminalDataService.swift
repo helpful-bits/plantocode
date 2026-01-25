@@ -386,7 +386,7 @@ public class TerminalDataService: ObservableObject {
     }
 
     /// Send large text to terminal in chunks to avoid overwhelming the PTY
-    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int = 0) async throws {
+    public func sendLargeText(jobId: String, text: String, appendCarriageReturn: Bool = true, chunkSize: Int =  0) async throws {
         guard !text.isEmpty else { return }
 
         let session = try await self.ensureSession(jobId: jobId, autostartIfNeeded: true)
@@ -718,6 +718,10 @@ public class TerminalDataService: ObservableObject {
         guard let sessionId = resolveSessionId(for: jobId) else { return }
         boundSessions.insert(sessionId)
         outputRings[sessionId] = ByteRing(maxBytes: MOBILE_TERMINAL_RING_MAX_BYTES)
+        dsrRequestDeadlineBySession.removeValue(forKey: sessionId)
+        dsrProbeTailBySession.removeValue(forKey: sessionId)
+        dsrOutputTailBySession.removeValue(forKey: sessionId)
+        utf8RemainderBySession.removeValue(forKey: sessionId)
         bindBinary(to: sessionId, includeSnapshot: true, forceSnapshot: true)
     }
 
@@ -1139,17 +1143,55 @@ public class TerminalDataService: ObservableObject {
         if chunks.isEmpty {
             return live.eraseToAnyPublisher()
         }
+        // Buffer live output while snapshot chunks are replayed to avoid dropping bytes.
+        return Deferred {
+            let subject = PassthroughSubject<Data, Never>()
+            var bufferedLive: [Data] = []
+            var snapshotComplete = false
+            var liveCancellable: AnyCancellable?
+            var snapshotCancellable: AnyCancellable?
 
-        let chunkedPublisher = Publishers.Sequence(sequence: chunks)
-            .flatMap(maxPublishers: .max(1)) { chunk in
-                Just(chunk)
-                    .delay(for: .milliseconds(12), scheduler: DispatchQueue.main)
+            let startStreams = {
+                liveCancellable = live.sink { data in
+                    if snapshotComplete {
+                        subject.send(data)
+                    } else {
+                        bufferedLive.append(data)
+                    }
+                }
+
+                let snapshotPublisher = Publishers.Sequence(sequence: chunks)
+                    .flatMap(maxPublishers: .max(1)) { chunk in
+                        Just(chunk)
+                            .delay(for: .milliseconds(12), scheduler: DispatchQueue.main)
+                    }
+                    .handleEvents(receiveCompletion: { _ in
+                        snapshotComplete = true
+                        if !bufferedLive.isEmpty {
+                            bufferedLive.forEach { subject.send($0) }
+                            bufferedLive.removeAll(keepingCapacity: true)
+                        }
+                    })
+
+                snapshotCancellable = snapshotPublisher.sink(
+                    receiveCompletion: { _ in },
+                    receiveValue: { data in
+                        subject.send(data)
+                    }
+                )
             }
-            .eraseToAnyPublisher()
 
-        return chunkedPublisher
-            .append(live)
-            .eraseToAnyPublisher()
+            return subject
+                .handleEvents(
+                    receiveSubscription: { _ in startStreams() },
+                    receiveCancel: {
+                        liveCancellable?.cancel()
+                        snapshotCancellable?.cancel()
+                    }
+                )
+                .eraseToAnyPublisher()
+        }
+        .eraseToAnyPublisher()
     }
 
     /// Get terminal log for a job (historical output)

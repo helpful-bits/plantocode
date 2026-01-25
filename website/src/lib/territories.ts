@@ -3,47 +3,18 @@
  * Used across middleware, API, and client-side checks
  */
 
-// Full list of approved regions (US, UK, EU, and EEA)
-export const APPROVED_REGIONS = new Set([
-  'US', // United States
+// EU/EEA regions - used for determining which legal documents to show
+export const EU_REGIONS = new Set([
   'GB', // United Kingdom
-  
   // EU Member States (27)
-  'AT', // Austria
-  'BE', // Belgium
-  'BG', // Bulgaria
-  'HR', // Croatia
-  'CY', // Cyprus
-  'CZ', // Czech Republic
-  'DK', // Denmark
-  'EE', // Estonia
-  'FI', // Finland
-  'FR', // France
-  'DE', // Germany
-  'GR', // Greece
-  'HU', // Hungary
-  'IE', // Ireland
-  'IT', // Italy
-  'LV', // Latvia
-  'LT', // Lithuania
-  'LU', // Luxembourg
-  'MT', // Malta
-  'NL', // Netherlands
-  'PL', // Poland
-  'PT', // Portugal
-  'RO', // Romania
-  'SK', // Slovakia
-  'SI', // Slovenia
-  'ES', // Spain
-  'SE', // Sweden
-  
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+  'HU', 'IE', 'IT', 'LV', 'LT', 'LU', 'MT', 'NL', 'PL', 'PT', 'RO', 'SK',
+  'SI', 'ES', 'SE',
   // EEA but not EU
-  'IS', // Iceland
-  'LI', // Liechtenstein
-  'NO', // Norway
+  'IS', 'LI', 'NO',
 ]);
 
-// Sanctioned regions (comprehensive embargo list)
+// Sanctioned regions - legally required restrictions due to OFAC/international sanctions
 export const SANCTIONED_REGIONS = new Set([
   'RU', // Russia
   'BY', // Belarus
@@ -56,16 +27,13 @@ export const SANCTIONED_REGIONS = new Set([
 ]);
 
 // Helper functions
-export function isApprovedRegion(country: string): boolean {
-  // Always allow in development environment
-  if (process.env.NODE_ENV === 'development') {
-    return true;
-  }
-  return APPROVED_REGIONS.has(country);
-}
-
 export function isSanctionedRegion(country: string): boolean {
   return SANCTIONED_REGIONS.has(country);
+}
+
+// Used for determining which legal documents to show (EU vs US)
+export function isApprovedRegion(country: string): boolean {
+  return country === 'US' || EU_REGIONS.has(country);
 }
 
 export function getCountryFromRequest(headers: Headers, geo?: any): string {
@@ -76,15 +44,4 @@ export function getCountryFromRequest(headers: Headers, geo?: any): string {
     geo?.country ?? // Vercel geo object
     'XX' // Unknown
   );
-}
-
-// List of paths that should be gated
-export const GATED_PATHS = [
-  '/api/',
-  '/app',
-  '/download',
-];
-
-export function shouldGatePath(pathname: string): boolean {
-  return GATED_PATHS.some(path => pathname.startsWith(path));
 }

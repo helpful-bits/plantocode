@@ -1,10 +1,11 @@
 import SwiftUI
+import UIKit
 import Core
 import Combine
 import SwiftTerm
-import OSLog
 import QuartzCore
 import Network
+import CoreText
 
 public struct RemoteTerminalView: View {
     let jobId: String
@@ -21,9 +22,6 @@ public struct RemoteTerminalView: View {
     @ObservedObject private var pathObserver = NetworkPathObserver.shared
 
     @State private var shouldShowKeyboard = false
-    @State private var isKeyboardVisible: Bool = false
-    @State private var outputCancellable: AnyCancellable?
-    @State private var hasInitialResize = false
     @State private var isTerminalReady = false
     @State private var sessionIdForReadiness: String?
     @State private var readinessCancellable: AnyCancellable?
@@ -131,27 +129,10 @@ public struct RemoteTerminalView: View {
         let capturedJobId = jobId
         let terminalService = container.terminalService
 
-        // If already subscribed to hydrated stream, only ensure binary bind is present
-        // This avoids replaying the entire ring snapshot repeatedly
-        if outputCancellable != nil {
-            Task {
-                defer { reattachInFlight = false }
-                try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
-            }
-            return
-        }
-
-        // Subscribe to hydrated stream (first time or after cleanup)
-        outputCancellable = terminalService
-            .getHydratedRawOutputStream(for: capturedJobId)
-            .receive(on: DispatchQueue.main)
-            .sink { data in
-                terminalController.feedBytes(data: data)
-            }
-
+        attachSnapshotStream(jobId: capturedJobId)
         Task {
             defer { reattachInFlight = false }
-            try? await terminalService.attachLiveBinary(for: capturedJobId, includeSnapshot: true)
+            terminalService.requestSnapshot(jobId: capturedJobId)
         }
     }
 
@@ -174,12 +155,6 @@ public struct RemoteTerminalView: View {
             .onChange(of: scenePhase, perform: handleScenePhaseChange)
 
         base
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
-                isKeyboardVisible = true
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-                isKeyboardVisible = false
-            }
             .onReceive(pathObserver.$currentPath.compactMap { $0 }, perform: handlePathChange)
     }
 
@@ -210,6 +185,19 @@ public struct RemoteTerminalView: View {
         if path.status == .satisfied {
             reattachToExistingSessionIfNeeded()
         }
+    }
+
+    private func attachSnapshotStream(jobId: String) {
+        terminalController.outputCancellable?.cancel()
+        terminalController.outputCancellable = nil
+        terminalController.resetForResync()
+
+        terminalController.outputCancellable = container.terminalService
+            .getRawOutputStream(for: jobId)
+            .receive(on: DispatchQueue.main)
+            .sink { data in
+                terminalController.feedBytes(data: data)
+            }
     }
 
     // MARK: - Extracted View Components
@@ -269,12 +257,18 @@ public struct RemoteTerminalView: View {
 
     @ViewBuilder
     private var terminalContentView: some View {
-        if isActionsExpanded {
-            actionsToolbar
+        ZStack(alignment: .top) {
+            SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
+
+            if isActionsExpanded {
+                actionsToolbar
+                    .frame(maxWidth: .infinity, alignment: .top)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
         }
-        SwiftTerminalView(controller: terminalController, shouldShowKeyboard: $shouldShowKeyboard)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
+        .ignoresSafeArea([.container, .keyboard], edges: .bottom)
     }
 
     @ViewBuilder
@@ -305,7 +299,6 @@ public struct RemoteTerminalView: View {
             .padding(.vertical, 8)
         }
         .background(Color.backgroundSecondary)
-        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     @ToolbarContentBuilder
@@ -538,31 +531,27 @@ public struct RemoteTerminalView: View {
                             }
                             do {
                                 try await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
-
-                                if hasInitialResize == false {
-                                    await MainActor.run {
-                                        hasInitialResize = true
-                                    }
-                                }
                             } catch {
                             }
                         }
                     }
-                    terminalController.onResizeCompleted = { needsSnapshot in
-                        guard needsSnapshot else { return }
-                        Task {
+                    terminalController.onResyncNeeded = { [weak terminalController, container, jobId] in
+                        guard let terminalController else { return }
+                        let terminalService = container.terminalService
+                        let capturedJobId = jobId
+
+                        Task { @MainActor in
+                            terminalController.outputCancellable?.cancel()
+                            terminalController.outputCancellable = terminalService
+                                .getRawOutputStream(for: capturedJobId)
+                                .receive(on: DispatchQueue.main)
+                                .sink { data in
+                                    terminalController.feedBytes(data: data)
+                                }
                             terminalService.requestSnapshot(jobId: capturedJobId)
                         }
                     }
-
-                    if outputCancellable == nil {
-                        outputCancellable = terminalService
-                            .getHydratedRawOutputStream(for: capturedJobId)
-                            .receive(on: DispatchQueue.main)
-                            .sink { data in
-                                terminalController.feedBytes(data: data)
-                            }
-                    }
+                    attachSnapshotStream(jobId: capturedJobId)
 
                     if let termView = terminalController.terminalView {
                         let terminal = termView.getTerminal()
@@ -573,10 +562,10 @@ public struct RemoteTerminalView: View {
                             // Ensure PTY size is synced before requesting binary bind/snapshot.
                             Task {
                                 try? await terminalService.resize(jobId: capturedJobId, cols: cols, rows: rows)
-                                await MainActor.run {
-                                    hasInitialResize = true
-                                }
+                                terminalService.requestSnapshot(jobId: capturedJobId)
                             }
+                        } else {
+                            terminalService.requestSnapshot(jobId: capturedJobId)
                         }
                     }
                 }
@@ -674,8 +663,8 @@ public struct RemoteTerminalView: View {
     }
 
     private func cleanupSession() {
-        outputCancellable?.cancel()
-        outputCancellable = nil
+        terminalController.outputCancellable?.cancel()
+        terminalController.outputCancellable = nil
         readinessCancellable?.cancel()
         readinessCancellable = nil
         isSessionActive = false
@@ -691,7 +680,15 @@ public struct RemoteTerminalView: View {
 // MARK: - SwiftTerm Controller
 
 class SwiftTermController: NSObject, ObservableObject {
-    private static let clearScreenBytes: [UInt8] = [0x1b, 0x5b, 0x33, 0x4a, 0x1b, 0x5b, 0x32, 0x4a, 0x1b, 0x5b, 0x48] // ESC[3J ESC[2J ESC[H
+    struct DebugState {
+        let needsInitialScrollToBottom: Bool
+        let hasReceivedOutput: Bool
+        let isResizeInProgress: Bool
+        let pendingDataCount: Int
+        let batchBufferBytes: Int
+        let resizeBufferCount: Int
+        let displayLinkPaused: Bool
+    }
     weak var terminalView: TerminalView? {
         didSet {
             guard let terminalView = terminalView else { return }
@@ -713,23 +710,27 @@ class SwiftTermController: NSObject, ObservableObject {
     }
     var onSend: (([UInt8]) -> Void)?
     var onResize: ((Int, Int, Int) -> Void)?
-    var onResizeCompleted: ((Bool) -> Void)?
-    var isFirstResize = true
+    var onResyncNeeded: (() -> Void)?
+    var onContentUpdated: (() -> Void)?
     private var pendingData: [Data] = []
+
+    var outputCancellable: AnyCancellable?
 
     private var batchBuffer = Data()
     private var displayLink: CADisplayLink?
     private var needsFlush = false
+    private var needsInitialScrollToBottom = true
+    private var hasReceivedOutput = false
 
     private var lastDataReceivedAt: Date = .distantPast
     private var burstStartedAt: Date?
-    private var framesSinceLastData: Int = 0
     private static let burstThreshold: TimeInterval = 0.1
     private static let burstCooldown: TimeInterval = 0.5
     private static let minFlushIntervalIdle: TimeInterval = 0.12
     private static let minFlushIntervalBurst: TimeInterval = 0.06
     private var lastFlushAt: Date = .distantPast
     private static let dsrRequestSequence: [UInt8] = [0x1b, 0x5b, 0x36, 0x6e]
+    private static let enableAutowrapSequence: [UInt8] = [0x1b, 0x5b, 0x3f, 0x37, 0x68]
 
     private var effectiveMinFlushInterval: TimeInterval {
         return burstStartedAt == nil ? Self.minFlushIntervalIdle : Self.minFlushIntervalBurst
@@ -738,7 +739,11 @@ class SwiftTermController: NSObject, ObservableObject {
     // Background/foreground handling: pause feeding when app is backgrounded
     private var isFeedingPaused: Bool = false
     private var backgroundBuffer: [Data] = []
-    private static let maxBackgroundChunks = 50
+    private var backgroundBufferBytes: Int = 0
+    private var needsResyncAfterBackground: Bool = false
+    private static let maxBackgroundBufferBytes = 1 * 1_048_576
+    private static let backgroundResyncThreshold: TimeInterval = 2.0
+    private var backgroundedAt: Date?
 
     // Resize deduplication: track last sent dimensions
     private var lastSentCols: Int = 0
@@ -747,19 +752,11 @@ class SwiftTermController: NSObject, ObservableObject {
     // Resize transition buffering: pause feeding briefly during resize to avoid scroll corruption
     private var isResizeInProgress: Bool = false
     private var resizeBuffer: [Data] = []
-    private var didBufferDuringResize: Bool = false
     private static let maxResizeBufferChunks = 30
-    private static let resizeDebounceIdle: TimeInterval = 0.25  // 250ms when no active output
-    private static let resizeDebounceActive: TimeInterval = 0.08  // 80ms when actively streaming
     private var resizeSequence: Int = 0
     private var activeResizeSequence: Int = 0
     private var resizeCompletionWorkItem: DispatchWorkItem?
-    private var pendingResizeRequiresSnapshot: Bool = false
 
-    // Scroll-following: only auto-scroll when user is near bottom
-    private var followOutput: Bool = true
-    private var lastScrollPosition: Double = 1.0
-    private static let nearBottomThreshold: Double = 0.98
 
     deinit {
         displayLink?.invalidate()
@@ -771,19 +768,26 @@ class SwiftTermController: NSObject, ObservableObject {
         pendingData.removeAll(keepingCapacity: false)
         batchBuffer.removeAll(keepingCapacity: false)
         backgroundBuffer.removeAll(keepingCapacity: false)
+        backgroundBufferBytes = 0
+        needsResyncAfterBackground = false
+        backgroundedAt = nil
         resizeBuffer.removeAll(keepingCapacity: false)
         burstStartedAt = nil
         isFeedingPaused = false
         isResizeInProgress = false
-        didBufferDuringResize = false
         resizeSequence = 0
         activeResizeSequence = 0
         resizeCompletionWorkItem?.cancel()
         resizeCompletionWorkItem = nil
-        pendingResizeRequiresSnapshot = false
         lastSentCols = 0
         lastSentRows = 0
+        outputCancellable?.cancel()
+        outputCancellable = nil
         terminalView = nil
+        onResyncNeeded = nil
+        onContentUpdated = nil
+        needsInitialScrollToBottom = true
+        hasReceivedOutput = false
     }
 
     // MARK: - Background/Foreground Handling
@@ -792,6 +796,7 @@ class SwiftTermController: NSObject, ObservableObject {
     /// Data will be buffered and fed when resumed.
     func pauseFeeding() {
         isFeedingPaused = true
+        backgroundedAt = Date()
         displayLink?.isPaused = true
     }
 
@@ -799,6 +804,16 @@ class SwiftTermController: NSObject, ObservableObject {
     /// Buffered data is fed immediately without animation.
     func resumeFeeding() {
         isFeedingPaused = false
+
+        let timeInBackground = backgroundedAt.map { Date().timeIntervalSince($0) } ?? 0
+        backgroundedAt = nil
+
+        if needsResyncAfterBackground || timeInBackground >= Self.backgroundResyncThreshold {
+            needsResyncAfterBackground = false
+            resetForResync()
+            onResyncNeeded?()
+            return
+        }
 
         // Feed background-buffered data without animation to avoid scroll jumping
         // CRITICAL: Consolidate all chunks into one data block before feeding.
@@ -811,6 +826,7 @@ class SwiftTermController: NSObject, ObservableObject {
                 consolidated.append(chunk)
             }
             backgroundBuffer.removeAll()
+            backgroundBufferBytes = 0
 
             if !consolidated.isEmpty {
                 UIView.performWithoutAnimation { [self] in
@@ -826,8 +842,29 @@ class SwiftTermController: NSObject, ObservableObject {
         }
     }
 
+    func resetForResync() {
+        pendingData.removeAll(keepingCapacity: false)
+        batchBuffer.removeAll(keepingCapacity: false)
+        backgroundBuffer.removeAll(keepingCapacity: false)
+        backgroundBufferBytes = 0
+        resizeBuffer.removeAll(keepingCapacity: false)
+        needsFlush = false
+        burstStartedAt = nil
+        isResizeInProgress = false
+        needsInitialScrollToBottom = true
+        hasReceivedOutput = false
+
+        if let terminalView = terminalView {
+            terminalView.getTerminal().resetToInitialState()
+            let buffer = ArraySlice(Self.enableAutowrapSequence)
+            terminalView.feed(byteArray: buffer)
+            terminalView.setNeedsDisplay(terminalView.bounds)
+        }
+    }
+
     private func feedBytesImmediate(data: Data) {
         guard let terminalView = terminalView, !data.isEmpty else { return }
+        hasReceivedOutput = true
         let buffer = ArraySlice([UInt8](data))
         terminalView.feed(byteArray: buffer)
     }
@@ -879,10 +916,16 @@ class SwiftTermController: NSObject, ObservableObject {
 
         // If paused (app backgrounded), buffer instead of feeding
         if isFeedingPaused {
+            if needsResyncAfterBackground {
+                return
+            }
+
             backgroundBuffer.append(data)
-            // Prevent unbounded memory growth during background
-            if backgroundBuffer.count > Self.maxBackgroundChunks {
-                backgroundBuffer.removeFirst(backgroundBuffer.count - Self.maxBackgroundChunks)
+            backgroundBufferBytes += data.count
+            if backgroundBufferBytes > Self.maxBackgroundBufferBytes {
+                needsResyncAfterBackground = true
+                backgroundBuffer.removeAll(keepingCapacity: false)
+                backgroundBufferBytes = 0
             }
             return
         }
@@ -891,7 +934,6 @@ class SwiftTermController: NSObject, ObservableObject {
         // This prevents cursor positioning commands from being interpreted with wrong dimensions
         if isResizeInProgress {
             resizeBuffer.append(data)
-            didBufferDuringResize = true
             // Prevent unbounded memory growth during resize
             if resizeBuffer.count > Self.maxResizeBufferChunks {
                 resizeBuffer.removeFirst(resizeBuffer.count - Self.maxResizeBufferChunks)
@@ -909,8 +951,6 @@ class SwiftTermController: NSObject, ObservableObject {
             }
         }
         lastDataReceivedAt = now
-        framesSinceLastData = 0
-
         // Exit burst mode after cooldown
         if let burstStart = burstStartedAt, now.timeIntervalSince(burstStart) > Self.burstCooldown {
             burstStartedAt = nil
@@ -947,6 +987,7 @@ class SwiftTermController: NSObject, ObservableObject {
 
         guard let terminalView = terminalView else { return }
         guard !batchBuffer.isEmpty || !pendingData.isEmpty else { return }
+        hasReceivedOutput = true
 
         // CRITICAL: Capture buffer contents BEFORE any operations that might trigger reentrancy.
         // terminalView.feed() can pump the run loop, allowing feedBytes() to be called again.
@@ -972,12 +1013,16 @@ class SwiftTermController: NSObject, ObservableObject {
                 terminalView.feed(byteArray: buffer)
             }
 
-            // CRITICAL: Do NOT call repositionVisibleFrame() here!
-            // SwiftTerm handles cursor visibility internally. Calling repositionVisibleFrame()
-            // causes "fighting loop" where our scroll conflicts with SwiftTerm's cursor-following
-            // behavior during TUI redraws (like Claude Code's progress display).
-            // Let SwiftTerm manage all scrolling naturally.
+            if needsInitialScrollToBottom {
+                tryScrollToBottomIfNeeded()
+            }
+
+            // IMPORTANT: Avoid calling repositionVisibleFrame() on every flush.
+            // We only use it once to ensure an initial "scroll to bottom" when the
+            // terminal first becomes visible; repeated calls fight SwiftTerm's scroll handling.
         }
+
+        onContentUpdated?()
     }
 
     private func containsDsrRequest(_ data: Data) -> Bool {
@@ -997,26 +1042,43 @@ class SwiftTermController: NSObject, ObservableObject {
         return false
     }
 
+    func tryScrollToBottomIfNeeded() {
+        guard needsInitialScrollToBottom, hasReceivedOutput else { return }
+        guard let terminalView = terminalView else { return }
+        guard terminalView.bounds.width > 0, terminalView.bounds.height > 0 else { return }
+        if terminalView.canScroll {
+            terminalView.scroll(toPosition: 1)
+        } else {
+            terminalView.setContentOffset(.zero, animated: false)
+        }
+        needsInitialScrollToBottom = false
+    }
+
+    func debugState() -> DebugState {
+        DebugState(
+            needsInitialScrollToBottom: needsInitialScrollToBottom,
+            hasReceivedOutput: hasReceivedOutput,
+            isResizeInProgress: isResizeInProgress,
+            pendingDataCount: pendingData.count,
+            batchBufferBytes: batchBuffer.count,
+            resizeBufferCount: resizeBuffer.count,
+            displayLinkPaused: displayLink?.isPaused ?? true
+        )
+    }
+
     func send(data: [UInt8]) {
         onSend?(data)
     }
 }
-
-private var resizeDebouncerKey: UInt8 = 0
 
 extension SwiftTermController: TerminalViewDelegate {
     func send(source: TerminalView, data: ArraySlice<UInt8>) {
         send(data: Array(data))
     }
 
-    private var resizeDebouncer: DispatchWorkItem? {
-        get { objc_getAssociatedObject(self, &resizeDebouncerKey) as? DispatchWorkItem }
-        set { objc_setAssociatedObject(self, &resizeDebouncerKey, newValue, .OBJC_ASSOCIATION_RETAIN) }
-    }
-
     func sizeChanged(source: TerminalView, newCols: Int, newRows: Int) {
         // Skip invalid sizes (0x0 or unreasonably small)
-        guard newCols > 10 && newRows > 5 else {
+        guard newCols >= 10 && newRows >= 5 else {
             return
         }
 
@@ -1025,50 +1087,18 @@ extension SwiftTermController: TerminalViewDelegate {
             return
         }
 
-        // First resize must be immediate to set correct PTY size before output rendering
-        // Subsequent resizes are debounced to handle keyboard show/hide and rotation smoothly
-        if isFirstResize {
-            isFirstResize = false
-            lastSentCols = newCols
-            lastSentRows = newRows
-            onResize?(newCols, newRows, 0)
-        } else {
-            let didChangeCols = newCols != lastSentCols
-            // Start resize transition: buffer incoming data to avoid scroll corruption
-            // from cursor positioning commands interpreted with wrong dimensions
-            isResizeInProgress = true
-            didBufferDuringResize = false
-            pendingResizeRequiresSnapshot = pendingResizeRequiresSnapshot || didChangeCols
+        // Start resize transition: buffer incoming data to avoid scroll corruption
+        isResizeInProgress = true
+        resizeSequence += 1
+        let resizeId = resizeSequence
+        activeResizeSequence = resizeId
 
-            // Adaptive debounce: shorter when actively streaming (burstStartedAt != nil),
-            // longer when idle to coalesce rapid keyboard show/hide cycles
-            let isActivelyStreaming = burstStartedAt != nil
-            let debounceInterval = isActivelyStreaming ? Self.resizeDebounceActive : Self.resizeDebounceIdle
+        lastSentCols = newCols
+        lastSentRows = newRows
+        onResize?(newCols, newRows, resizeId)
 
-            resizeDebouncer?.cancel()
-            let capturedCols = newCols
-            let capturedRows = newRows
-            resizeSequence += 1
-            let resizeId = resizeSequence
-            activeResizeSequence = resizeId
-            resizeDebouncer = DispatchWorkItem { [weak self] in
-                guard let self = self else { return }
-
-                // Double-check dimensions still different before sending
-                guard capturedCols != self.lastSentCols || capturedRows != self.lastSentRows else {
-                    self.finishResizeTransition(resizeId)
-                    return
-                }
-
-                self.lastSentCols = capturedCols
-                self.lastSentRows = capturedRows
-                self.onResize?(capturedCols, capturedRows, resizeId)
-
-                // Fallback completion in case resize RPC stalls.
-                self.scheduleResizeCompletion(resizeId: resizeId, delay: 0.6)
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + debounceInterval, execute: resizeDebouncer!)
-        }
+        // Fallback completion in case resize RPC stalls.
+        scheduleResizeCompletion(resizeId: resizeId, delay: 0.6)
     }
 
     /// Complete resize transition: flush buffered data and reset scroll position
@@ -1097,25 +1127,7 @@ extension SwiftTermController: TerminalViewDelegate {
             return
         }
 
-        let shouldSnapshot = pendingResizeRequiresSnapshot
-        pendingResizeRequiresSnapshot = false
-
-        if shouldSnapshot {
-            resizeBuffer.removeAll()
-
-            // Clear local buffers and screen; rehydrate via snapshot after resize.
-            pendingData.removeAll(keepingCapacity: false)
-            batchBuffer.removeAll(keepingCapacity: false)
-            backgroundBuffer.removeAll(keepingCapacity: false)
-            needsFlush = false
-
-            UIView.performWithoutAnimation { [self] in
-                let buffer = ArraySlice(Self.clearScreenBytes)
-                terminalView.feed(byteArray: buffer)
-            }
-
-            onResizeCompleted?(true)
-        } else if !resizeBuffer.isEmpty {
+        if !resizeBuffer.isEmpty {
             var consolidated = Data()
             for chunk in resizeBuffer {
                 consolidated.append(chunk)
@@ -1129,6 +1141,8 @@ extension SwiftTermController: TerminalViewDelegate {
         } else {
             resizeBuffer.removeAll()
         }
+
+        tryScrollToBottomIfNeeded()
 
         // Let SwiftTerm handle scrolling naturally after resize
 
@@ -1169,14 +1183,512 @@ extension SwiftTermController: TerminalViewDelegate {
     }
 
     func scrolled(source: TerminalView, position: Double) {
-        // Track scroll position and update followOutput state
-        // When user scrolls up, disable auto-scroll; when near bottom, re-enable
-        lastScrollPosition = position
-        if position >= Self.nearBottomThreshold {
-            followOutput = true
-        } else {
-            followOutput = false
+        // SwiftTerm handles scrolling internally; no-op for now.
+    }
+}
+
+// MARK: - Stable Terminal Host
+
+private struct TerminalGrid: Equatable {
+    let cols: Int
+    let rows: Int
+    let pixelSize: CGSize
+
+    static let zero = TerminalGrid(cols: 0, rows: 0, pixelSize: .zero)
+}
+
+private enum TerminalFont {
+    static func preferred() -> UIFont {
+        if let menloFont = UIFont(name: "Menlo-Regular", size: 14) {
+            return menloFont
         }
+        return UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
+    }
+}
+
+private enum TerminalCellMetrics {
+    static func cellSize(for font: UIFont) -> CGSize {
+        let lineAscent = CTFontGetAscent(font)
+        let lineDescent = CTFontGetDescent(font)
+        let lineLeading = CTFontGetLeading(font)
+        var cellHeight = ceil(lineAscent + lineDescent + lineLeading)
+
+        let fallbackProbe = "\u{2705}\u{25B3}"
+        let probeLength = fallbackProbe.utf16.count
+        let fallbackFont = CTFontCreateForString(font, fallbackProbe as CFString, CFRange(location: 0, length: probeLength))
+        let fallbackHeight = ceil(
+            CTFontGetAscent(fallbackFont) + CTFontGetDescent(fallbackFont) + CTFontGetLeading(fallbackFont)
+        )
+        if fallbackHeight > cellHeight {
+            cellHeight = fallbackHeight
+        }
+
+        let cellWidth = "W".size(withAttributes: [.font: font]).width
+        return CGSize(width: max(1, cellWidth), height: max(1, min(cellHeight, 8192)))
+    }
+}
+
+final class StableTerminalHostView: UIView {
+    private struct DebugSnapshot {
+        let bounds: CGRect
+        let safeInsets: UIEdgeInsets
+        let panelFrame: CGRect
+        let baseY: CGFloat
+        let overlapGuide: CGFloat
+        let overlapNotif: CGFloat?
+        let overlapUsed: CGFloat
+        let cursorRow: Int
+        let cursorBottom: CGFloat
+        let keyboardTop: CGFloat
+        let desiredY: CGFloat
+        let targetY: CGFloat
+        let yDisp: Int
+        let windowGuideFrame: CGRect?
+        let notifFrame: CGRect?
+        let hideInProgress: Bool
+        let contentOffset: CGPoint
+        let contentSize: CGSize
+        let canScroll: Bool
+        let scrollPosition: Double
+        let controllerState: SwiftTermController.DebugState?
+    }
+
+    private weak var controller: SwiftTermController?
+    // Debug overlay disabled for normal use.
+    private let debugEnabled = false
+    private let debugOverlay = UIView()
+    private let debugLabel = UILabel()
+    private struct LayoutSignature: Equatable {
+        let size: CGSize
+        let insets: UIEdgeInsets
+
+        init(size: CGSize, insets: UIEdgeInsets, scale: CGFloat) {
+            self.size = Self.snap(size, scale: scale)
+            self.insets = Self.snap(insets, scale: scale)
+        }
+
+        private static func snap(_ size: CGSize, scale: CGFloat) -> CGSize {
+            CGSize(
+                width: (size.width * scale).rounded() / scale,
+                height: (size.height * scale).rounded() / scale
+            )
+        }
+
+        private static func snap(_ insets: UIEdgeInsets, scale: CGFloat) -> UIEdgeInsets {
+            UIEdgeInsets(
+                top: (insets.top * scale).rounded() / scale,
+                left: (insets.left * scale).rounded() / scale,
+                bottom: (insets.bottom * scale).rounded() / scale,
+                right: (insets.right * scale).rounded() / scale
+            )
+        }
+    }
+
+    private let panelView = UIView()
+    let terminalView: FirstResponderTerminalView
+    private let cellSize: CGSize
+    private var grid: TerminalGrid = .zero
+    private var lastLayoutSignature: LayoutSignature?
+    private var keyboardObservers: [NSObjectProtocol] = []
+    private var lastKeyboardFrameInScreen: CGRect?
+    private var keyboardHideInProgress: Bool = false
+    private var basePanelOriginY: CGFloat = 0
+    private var lastAppliedOverlap: CGFloat = 0
+    private var lastAppliedTargetY: CGFloat = 0
+
+    private let minimumCols = 10
+    private let minimumRows = 5
+
+    init(controller: SwiftTermController) {
+        let font = TerminalFont.preferred()
+        self.cellSize = TerminalCellMetrics.cellSize(for: font)
+        self.terminalView = FirstResponderTerminalView(frame: .zero)
+        self.controller = controller
+        super.init(frame: .zero)
+
+        backgroundColor = .black
+        isOpaque = true
+        clipsToBounds = true
+
+        panelView.backgroundColor = .black
+        panelView.isOpaque = true
+        panelView.clipsToBounds = true
+        addSubview(panelView)
+
+        if debugEnabled {
+            debugOverlay.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+            debugOverlay.isUserInteractionEnabled = false
+            debugOverlay.layer.cornerRadius = 6
+            debugOverlay.clipsToBounds = true
+            addSubview(debugOverlay)
+
+            debugLabel.font = UIFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+            debugLabel.textColor = .green
+            debugLabel.numberOfLines = 0
+            debugOverlay.addSubview(debugLabel)
+        }
+
+        terminalView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        panelView.addSubview(terminalView)
+
+        configureTerminalView(terminalView, font: font)
+        terminalView.terminalDelegate = controller
+        controller.terminalView = terminalView
+        controller.onContentUpdated = { [weak self] in
+            self?.applyKeyboardPosition(animated: false)
+            // self?.updateDebugOverlay()
+        }
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        tapGesture.cancelsTouchesInView = false
+        terminalView.addGestureRecognizer(tapGesture)
+
+        startKeyboardObservers()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    deinit {
+        for observer in keyboardObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        keyboardObservers.removeAll()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateGridIfNeeded()
+        layoutPanel()
+        applyKeyboardPosition(animated: false)
+        controller?.tryScrollToBottomIfNeeded()
+        // updateDebugOverlay()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        setNeedsLayout()
+        layoutIfNeeded()
+        applyKeyboardPosition(animated: false)
+    }
+
+    private func updateGridIfNeeded() {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let insets = layoutInsets()
+        let signature = LayoutSignature(size: bounds.size, insets: insets, scale: scale)
+        guard signature != lastLayoutSignature else { return }
+        lastLayoutSignature = signature
+
+        let usableWidth = bounds.width - insets.left - insets.right
+        let usableHeight = bounds.height - insets.top - insets.bottom
+        guard usableWidth > 0, usableHeight > 0 else { return }
+
+        let cols = max(minimumCols, Int(usableWidth / cellSize.width))
+        let rows = max(minimumRows, Int(usableHeight / cellSize.height))
+        let pixelSize = CGSize(width: CGFloat(cols) * cellSize.width, height: CGFloat(rows) * cellSize.height)
+        let newGrid = TerminalGrid(cols: cols, rows: rows, pixelSize: pixelSize)
+
+        if newGrid != grid {
+            grid = newGrid
+            terminalView.resize(cols: cols, rows: rows)
+        }
+    }
+
+    private func layoutPanel() {
+        let insets = layoutInsets()
+        let usableWidth = bounds.width - insets.left - insets.right
+        let panelSize = grid.pixelSize
+        let originX = insets.left + max(0, (usableWidth - panelSize.width) / 2)
+        let originY = bounds.height - insets.bottom - panelSize.height
+
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        let snappedOriginX = (originX * scale).rounded() / scale
+        let snappedOriginY = (originY * scale).rounded() / scale
+
+        panelView.frame = CGRect(origin: CGPoint(x: snappedOriginX, y: snappedOriginY), size: panelSize)
+        basePanelOriginY = snappedOriginY
+        terminalView.frame = panelView.bounds
+        applyKeyboardPosition(animated: false)
+    }
+
+    private func layoutInsets() -> UIEdgeInsets {
+        UIEdgeInsets(
+            top: safeAreaInsets.top,
+            left: safeAreaInsets.left,
+            bottom: 0,
+            right: safeAreaInsets.right
+        )
+    }
+
+    private func configureTerminalView(_ terminalView: FirstResponderTerminalView, font: UIFont) {
+        terminalView.isOpaque = true
+        terminalView.backgroundColor = .black
+        terminalView.contentInsetAdjustmentBehavior = .never
+        terminalView.font = font
+        terminalView.nativeForegroundColor = UIColor.white
+        terminalView.nativeBackgroundColor = UIColor.black
+        terminalView.selectedTextBackgroundColor = UIColor(white: 0.25, alpha: 0.85)
+        terminalView.selectionHandleColor = UIColor(white: 0.8, alpha: 1.0)
+
+        let enableAutowrap: [UInt8] = [0x1b, 0x5b, 0x3f, 0x37, 0x68]
+        terminalView.feed(byteArray: ArraySlice(enableAutowrap))
+
+        if terminalView.responds(to: Selector(("setBackspaceSendsControlH:"))) {
+            terminalView.setValue(false, forKey: "backspaceSendsControlH")
+        }
+        if terminalView.responds(to: Selector(("setOptionAsMetaKey:"))) {
+            terminalView.setValue(true, forKey: "optionAsMetaKey")
+        }
+        if terminalView.responds(to: Selector(("setApplicationCursor:"))) {
+            terminalView.setValue(true, forKey: "applicationCursor")
+        }
+
+        terminalView.isUserInteractionEnabled = true
+    }
+
+    private func startKeyboardObservers() {
+        guard keyboardObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+
+        keyboardObservers.append(center.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleKeyboard(notification: note)
+        })
+
+        keyboardObservers.append(center.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleKeyboard(notification: note)
+        })
+
+        keyboardObservers.append(center.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleKeyboard(notification: note)
+        })
+
+        keyboardObservers.append(center.addObserver(
+            forName: UIResponder.keyboardDidChangeFrameNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            self?.handleKeyboard(notification: note)
+        })
+    }
+
+    private func handleKeyboard(notification: Notification) {
+        if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+            lastKeyboardFrameInScreen = keyboardFrame
+            let screenHeight = UIScreen.main.bounds.maxY
+            if keyboardFrame.minY < screenHeight - 1 {
+                keyboardHideInProgress = false
+            }
+        }
+        if notification.name == UIResponder.keyboardWillHideNotification {
+            keyboardHideInProgress = true
+        }
+        let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        let curveRaw = (notification.userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? Int) ?? UIView.AnimationCurve.easeOut.rawValue
+        let options = UIView.AnimationOptions(rawValue: UInt(curveRaw << 16))
+        applyKeyboardPosition(animated: true, duration: duration, options: options)
+        // updateDebugOverlay()
+    }
+
+    private func currentKeyboardOverlap() -> CGFloat {
+        let guideOverlap = keyboardOverlapFromLayoutGuide()
+        if guideOverlap > 0 {
+            keyboardHideInProgress = false
+            return guideOverlap
+        }
+
+        guard let overlap = keyboardOverlapFromNotificationFrame() else { return 0 }
+        if overlap > 0 {
+            keyboardHideInProgress = false
+            return overlap
+        }
+
+        if keyboardHideInProgress {
+            keyboardHideInProgress = false
+        }
+        return 0
+    }
+
+    private func keyboardOverlapFromLayoutGuide() -> CGFloat {
+        if let window = window {
+            let windowGuideFrame = window.keyboardLayoutGuide.layoutFrame
+            if windowGuideFrame.height > 0 {
+                let keyboardFrameInView = convert(windowGuideFrame, from: window)
+                return max(0, bounds.maxY - keyboardFrameInView.minY)
+            }
+        }
+
+        let guideFrame = keyboardLayoutGuide.layoutFrame
+        if guideFrame.height > 0 {
+            return max(0, bounds.maxY - guideFrame.minY)
+        }
+        return 0
+    }
+
+    private func keyboardOverlapFromNotificationFrame() -> CGFloat? {
+        guard let window = window, let screenFrame = lastKeyboardFrameInScreen else { return nil }
+        let keyboardFrameInWindow = window.convert(screenFrame, from: nil)
+        let keyboardFrameInView = convert(keyboardFrameInWindow, from: window)
+        if keyboardFrameInView.minY >= bounds.maxY - 1 {
+            return 0
+        }
+        var overlap = max(0, bounds.maxY - keyboardFrameInView.minY)
+        if overlap > 0 {
+            overlap += terminalView.inputAccessoryView?.bounds.height ?? 0
+        }
+        return overlap
+    }
+
+    private func applyKeyboardPosition(animated: Bool, duration: Double = 0, options: UIView.AnimationOptions = []) {
+        guard panelView.bounds.height > 0 else { return }
+        let overlap = currentKeyboardOverlap()
+        let buffer = terminalView.getTerminal().buffer
+        let cursorRow = max(0, buffer.y - buffer.yDisp)
+        let cursorBottom = CGFloat(cursorRow + 1) * cellSize.height
+        let keyboardTop = bounds.maxY - overlap
+        let desiredPadding = cellSize.height
+        let desiredY = keyboardTop - desiredPadding - cursorBottom
+
+        let minY = basePanelOriginY - overlap
+        let maxY = basePanelOriginY
+        var targetY = min(max(desiredY, minY), maxY)
+        lastAppliedTargetY = targetY
+        lastAppliedOverlap = basePanelOriginY - targetY
+
+        let scale = window?.screen.scale ?? UIScreen.main.scale
+        targetY = (targetY * scale).rounded() / scale
+        let animations = {
+            self.panelView.transform = .identity
+            var frame = self.panelView.frame
+            frame.origin.y = targetY
+            self.panelView.frame = frame
+        }
+
+        if animated {
+            UIView.animate(withDuration: duration, delay: 0, options: [options, .beginFromCurrentState], animations: animations)
+        } else {
+            animations()
+        }
+    }
+
+    private func updateDebugOverlay() {
+        guard debugEnabled else { return }
+
+        let buffer = terminalView.getTerminal().buffer
+        let overlapNow = currentKeyboardOverlap()
+        let cursorRow = max(0, buffer.y - buffer.yDisp)
+        let cursorBottom = CGFloat(cursorRow + 1) * cellSize.height
+        let keyboardTop = bounds.maxY - overlapNow
+        let desiredY = keyboardTop - cellSize.height - cursorBottom
+
+        let snapshot = DebugSnapshot(
+            bounds: bounds,
+            safeInsets: safeAreaInsets,
+            panelFrame: panelView.frame,
+            baseY: basePanelOriginY,
+            overlapGuide: keyboardOverlapFromLayoutGuide(),
+            overlapNotif: keyboardOverlapFromNotificationFrame(),
+            overlapUsed: lastAppliedOverlap,
+            cursorRow: cursorRow,
+            cursorBottom: cursorBottom,
+            keyboardTop: keyboardTop,
+            desiredY: desiredY,
+            targetY: lastAppliedTargetY,
+            yDisp: buffer.yDisp,
+            windowGuideFrame: window?.keyboardLayoutGuide.layoutFrame,
+            notifFrame: lastKeyboardFrameInScreen,
+            hideInProgress: keyboardHideInProgress,
+            contentOffset: terminalView.contentOffset,
+            contentSize: terminalView.contentSize,
+            canScroll: terminalView.canScroll,
+            scrollPosition: terminalView.scrollPosition,
+            controllerState: controller?.debugState()
+        )
+
+        let lines: [String] = [
+            "bounds=\(snapshot.bounds.debugString)",
+            "safe=\(snapshot.safeInsets.debugString)",
+            "panel=\(snapshot.panelFrame.debugString)",
+            "baseY=\(snapshot.baseY.roundedString)",
+            "ovlGuide=\(snapshot.overlapGuide.roundedString)",
+            "ovlNotif=\(snapshot.overlapNotif?.roundedString ?? "nil")",
+            "ovlUsed=\(snapshot.overlapUsed.roundedString)",
+            "cursorRow=\(snapshot.cursorRow)",
+            "cursorBottom=\(snapshot.cursorBottom.roundedString)",
+            "kbdTop=\(snapshot.keyboardTop.roundedString)",
+            "desiredY=\(snapshot.desiredY.roundedString)",
+            "targetY=\(snapshot.targetY.roundedString)",
+            "yDisp=\(snapshot.yDisp)",
+            "winGuide=\(snapshot.windowGuideFrame?.debugString ?? "nil")",
+            "notifFrame=\(snapshot.notifFrame?.debugString ?? "nil")",
+            "hide=\(snapshot.hideInProgress)",
+            "offset=\(snapshot.contentOffset.debugString)",
+            "content=\(snapshot.contentSize.debugString)",
+            "canScroll=\(snapshot.canScroll)",
+            "scrollPos=\(String(format: "%.2f", snapshot.scrollPosition))",
+            "needsScroll=\(snapshot.controllerState?.needsInitialScrollToBottom ?? false)",
+            "hasOutput=\(snapshot.controllerState?.hasReceivedOutput ?? false)",
+            "resize=\(snapshot.controllerState?.isResizeInProgress ?? false)",
+            "pending=\(snapshot.controllerState?.pendingDataCount ?? 0)",
+            "batch=\(snapshot.controllerState?.batchBufferBytes ?? 0)",
+            "resizeBuf=\(snapshot.controllerState?.resizeBufferCount ?? 0)",
+            "linkPaused=\(snapshot.controllerState?.displayLinkPaused ?? true)"
+        ]
+
+        debugLabel.text = lines.joined(separator: "\n")
+        let maxWidth = min(bounds.width - 16, 340)
+        let fitting = debugLabel.sizeThatFits(CGSize(width: maxWidth - 10, height: .greatestFiniteMagnitude))
+        debugOverlay.frame = CGRect(x: 8, y: 8, width: maxWidth, height: fitting.height + 10)
+        debugLabel.frame = CGRect(x: 5, y: 5, width: maxWidth - 10, height: fitting.height)
+        bringSubviewToFront(debugOverlay)
+    }
+
+    @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
+        guard !terminalView.isFirstResponder else { return }
+        _ = terminalView.becomeFirstResponder()
+    }
+}
+
+private extension CGRect {
+    var debugString: String {
+        "(\(origin.x.roundedString), \(origin.y.roundedString), \(size.width.roundedString), \(size.height.roundedString))"
+    }
+}
+
+private extension CGPoint {
+    var debugString: String {
+        "(\(x.roundedString), \(y.roundedString))"
+    }
+}
+
+private extension CGSize {
+    var debugString: String {
+        "(\(width.roundedString), \(height.roundedString))"
+    }
+}
+
+private extension UIEdgeInsets {
+    var debugString: String {
+        "(\(top.roundedString), \(left.roundedString), \(bottom.roundedString), \(right.roundedString))"
+    }
+}
+
+private extension CGFloat {
+    var roundedString: String {
+        String(format: "%.1f", Double(self))
     }
 }
 
@@ -1186,146 +1698,28 @@ struct SwiftTerminalView: UIViewRepresentable {
     @ObservedObject var controller: SwiftTermController
     @Binding var shouldShowKeyboard: Bool
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(controller: controller, shouldShowKeyboard: $shouldShowKeyboard)
+    func makeUIView(context: Context) -> StableTerminalHostView {
+        StableTerminalHostView(controller: controller)
     }
 
-    func makeUIView(context: Context) -> FirstResponderTerminalView {
-        let terminalView = FirstResponderTerminalView(frame: .zero)
-        terminalView.terminalDelegate = controller
-
-        // Mark terminal as opaque with solid background to reduce compositing artifacts during mirroring
-        terminalView.isOpaque = true
-        terminalView.backgroundColor = .black
-
-        // Use Menlo font for better emoji and wide character support
-        // Menlo has better rendering characteristics for Unicode/emoji than default monospace
-        if let menloFont = UIFont(name: "Menlo-Regular", size: 14) {
-            terminalView.font = menloFont
-        } else {
-            // Fallback to system monospace if Menlo is unavailable
-            terminalView.font = UIFont.monospacedSystemFont(ofSize: 14, weight: .regular)
-        }
-
-        // Set dark color scheme
-        terminalView.nativeForegroundColor = UIColor.white
-        terminalView.nativeBackgroundColor = UIColor.black
-
-        // Configure ANSI color palette with dark theme to prevent light backgrounds
-        // on Unicode characters. SwiftTerm's default palette includes light colors
-        // that can appear as grey/white rectangles behind characters.
-        let terminal = terminalView.getTerminal()
-        let darkPalette: [SwiftTerm.Color] = [
-            // Standard colors (0-7)
-            SwiftTerm.Color(red: 0, green: 0, blue: 0),           // 0: Black
-            SwiftTerm.Color(red: 52428, green: 0, blue: 0),        // 1: Red
-            SwiftTerm.Color(red: 0, green: 52428, blue: 0),        // 2: Green
-            SwiftTerm.Color(red: 52428, green: 52428, blue: 0),    // 3: Yellow
-            SwiftTerm.Color(red: 0, green: 0, blue: 52428),        // 4: Blue
-            SwiftTerm.Color(red: 52428, green: 0, blue: 52428),    // 5: Magenta
-            SwiftTerm.Color(red: 0, green: 52428, blue: 52428),    // 6: Cyan
-            SwiftTerm.Color(red: 52428, green: 52428, blue: 52428), // 7: White (dimmed to prevent bright backgrounds)
-            // Bright colors (8-15)
-            SwiftTerm.Color(red: 32768, green: 32768, blue: 32768), // 8: Bright Black (dark grey)
-            SwiftTerm.Color(red: 65535, green: 16384, blue: 16384), // 9: Bright Red
-            SwiftTerm.Color(red: 16384, green: 65535, blue: 16384), // 10: Bright Green
-            SwiftTerm.Color(red: 65535, green: 65535, blue: 16384), // 11: Bright Yellow
-            SwiftTerm.Color(red: 16384, green: 16384, blue: 65535), // 12: Bright Blue
-            SwiftTerm.Color(red: 65535, green: 16384, blue: 65535), // 13: Bright Magenta
-            SwiftTerm.Color(red: 16384, green: 65535, blue: 65535), // 14: Bright Cyan
-            SwiftTerm.Color(red: 58982, green: 58982, blue: 58982)  // 15: Bright White (dimmed to 90%)
-        ]
-        terminal.installPalette(colors: darkPalette)
-
-        // Keep selection visuals subtle for dark theme (prevents harsh white selection bars).
-        terminalView.selectedTextBackgroundColor = UIColor(white: 0.25, alpha: 0.85)
-        terminalView.selectionHandleColor = UIColor(white: 0.8, alpha: 1.0)
-
-        // Ensure autowrap is enabled (DEC private mode 7) in case host doesn't set it.
-        let enableAutowrap: [UInt8] = [0x1b, 0x5b, 0x3f, 0x37, 0x68]
-        terminalView.feed(byteArray: ArraySlice(enableAutowrap))
-
-        // Configure keyboard behavior for desktop parity (if properties exist)
-        // Configure Backspace to send DEL (0x7f) instead of ^H (0x08)
-        if terminalView.responds(to: Selector(("setBackspaceSendsControlH:"))) {
-            terminalView.setValue(false, forKey: "backspaceSendsControlH")
-        }
-        // Option-as-Meta enables Alt/Option key combos (ESC prefix for word navigation, etc.)
-        if terminalView.responds(to: Selector(("setOptionAsMetaKey:"))) {
-            terminalView.setValue(true, forKey: "optionAsMetaKey")
-        }
-        // Application cursor mode improves arrow/function key handling in TUIs
-        if terminalView.responds(to: Selector(("setApplicationCursor:"))) {
-            terminalView.setValue(true, forKey: "applicationCursor")
-        }
-
-        // Note: We intentionally do NOT call repositionVisibleFrame() after batch flushes.
-        // SwiftTerm handles cursor visibility and scrolling internally. Forcing scroll position
-        // causes "fighting loop" during TUI redraws (like Claude Code's progress display).
-
-        // Enable keyboard input
-        terminalView.isUserInteractionEnabled = true
-
-        // Use SwiftTerm's default TerminalAccessory keyboard (includes ESC, Tab, Ctrl, arrows)
-        // Do NOT override inputAccessoryView - SwiftTerm sets it up in setup()
-
-        // Note: We tried layer.drawsAsynchronously and layer.shouldRasterize
-        // but they interfere with SwiftTerm's dynamic updates (typed characters don't appear).
-        // The status line flicker is a SwiftTerm limitation - it renders escape sequences
-        // (clear line + redraw) as separate visible states rather than atomically.
-        // xterm.js doesn't have this issue because it uses proper double-buffering.
-
-        // Store reference to terminal view in controller
-        controller.terminalView = terminalView
-
-        let tapGesture = UITapGestureRecognizer()
-        tapGesture.cancelsTouchesInView = false
-        tapGesture.addTarget(context.coordinator, action: #selector(Coordinator.handleTap(_:)))
-        terminalView.addGestureRecognizer(tapGesture)
-
-        // Keyboard is managed solely via updateUIView watching shouldShowKeyboard binding
-        // No need for shouldFocusOnAttach mechanism
-
-        return terminalView
-    }
-
-    func updateUIView(_ uiView: FirstResponderTerminalView, context: Context) {
-        // Ensure controller has the live view reference if applicable
-        if controller.terminalView !== uiView {
-            controller.terminalView = uiView
+    func updateUIView(_ uiView: StableTerminalHostView, context: Context) {
+        if controller.terminalView !== uiView.terminalView {
+            controller.terminalView = uiView.terminalView
         }
 
         if shouldShowKeyboard {
-            // Defer to next run loop to avoid hierarchy timing issues
             DispatchQueue.main.async {
-                // Enhanced defensive guards for stable keyboard display
-                guard uiView.window != nil,          // View is attached to a window
-                      uiView.superview != nil,       // View is in view hierarchy
-                      !uiView.isFirstResponder else { // Not already first responder
+                guard uiView.terminalView.window != nil,
+                      uiView.terminalView.superview != nil,
+                      !uiView.terminalView.isFirstResponder else {
                     return
                 }
-                _ = uiView.becomeFirstResponder()
+                _ = uiView.terminalView.becomeFirstResponder()
             }
         } else {
-            // Only resign if actually first responder
-            if uiView.isFirstResponder {
-                _ = uiView.resignFirstResponder()
+            if uiView.terminalView.isFirstResponder {
+                _ = uiView.terminalView.resignFirstResponder()
             }
-        }
-    }
-
-    class Coordinator {
-        let controller: SwiftTermController
-        var shouldShowKeyboard: Binding<Bool>
-
-        init(controller: SwiftTermController, shouldShowKeyboard: Binding<Bool>) {
-            self.controller = controller
-            self.shouldShowKeyboard = shouldShowKeyboard
-        }
-
-        @objc func handleTap(_ gesture: UITapGestureRecognizer) {
-            guard let termView = controller.terminalView, !termView.isFirstResponder else { return }
-            _ = termView.becomeFirstResponder()
         }
     }
 }

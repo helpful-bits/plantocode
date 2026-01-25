@@ -72,28 +72,39 @@ public extension View {
 /// Publisher-based keyboard observer for reactive keyboard handling
 public class KeyboardObserver: ObservableObject {
     @Published public var keyboardHeight: CGFloat = 0
+    @Published public var keyboardFrame: CGRect = .zero
     @Published public var isKeyboardVisible: Bool = false
 
     private var cancellables = Set<AnyCancellable>()
 
     public init() {
-        // Listen for keyboard show
-        NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
-            .compactMap { notification -> CGFloat? in
-                (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect)?.height
+        let center = NotificationCenter.default
+
+        // Listen for keyboard show / frame changes
+        center.publisher(for: UIResponder.keyboardWillShowNotification)
+            .merge(with: center.publisher(for: UIResponder.keyboardWillChangeFrameNotification))
+            .compactMap { notification -> (frame: CGRect, duration: Double)? in
+                guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+                    return nil
+                }
+                let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+                return (frame, duration)
             }
-            .sink { [weak self] height in
-                withAnimation(.easeOut(duration: 0.25)) {
-                    self?.keyboardHeight = height
-                    self?.isKeyboardVisible = true
+            .sink { [weak self] value in
+                withAnimation(.easeOut(duration: value.duration)) {
+                    self?.keyboardFrame = value.frame
+                    self?.keyboardHeight = value.frame.height
+                    self?.isKeyboardVisible = value.frame.height > 0
                 }
             }
             .store(in: &cancellables)
 
         // Listen for keyboard hide
-        NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
-            .sink { [weak self] _ in
-                withAnimation(.easeOut(duration: 0.25)) {
+        center.publisher(for: UIResponder.keyboardWillHideNotification)
+            .sink { [weak self] notification in
+                let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+                withAnimation(.easeOut(duration: duration)) {
+                    self?.keyboardFrame = .zero
                     self?.keyboardHeight = 0
                     self?.isKeyboardVisible = false
                 }

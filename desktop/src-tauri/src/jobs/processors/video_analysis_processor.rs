@@ -2,7 +2,7 @@ use crate::error::{AppError, AppResult};
 use crate::jobs::job_processor_utils;
 use crate::jobs::processor_trait::JobProcessor;
 use crate::jobs::types::{Job, JobPayload, JobProcessResult, JobResultData, VideoAnalysisPayload};
-use crate::models::{BackgroundJob, TaskType};
+use crate::models::TaskType;
 use crate::utils::ffmpeg_utils::{verify_sidecars_available, probe_duration_ms, split_video_into_chunks, resolve_long_threshold_secs};
 use crate::utils::fs_utils::get_app_temp_dir;
 use async_trait::async_trait;
@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::fs;
 use tokio::sync::Semaphore;
+use std::path::Path;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +25,54 @@ struct ChunkMeta {
 }
 
 pub struct VideoAnalysisProcessor;
+
+fn env_u64(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
+fn env_u32(name: &str, default: u32) -> u32 {
+    std::env::var(name)
+        .ok()
+        .and_then(|s| s.parse::<u32>().ok())
+        .unwrap_or(default)
+}
+
+fn compute_chunk_secs_from_size(
+    total_bytes: u64,
+    duration_ms: i64,
+    target_chunk_bytes: u64,
+    min_secs: u32,
+    max_secs: u32,
+) -> u32 {
+    if total_bytes == 0 || duration_ms <= 0 || target_chunk_bytes == 0 {
+        return max_secs.max(min_secs);
+    }
+
+    let duration_secs = (duration_ms as f64 / 1000.0).max(1.0);
+    let bitrate_bps = (total_bytes as f64 * 8.0) / duration_secs;
+    if bitrate_bps <= 0.0 {
+        return max_secs.max(min_secs);
+    }
+
+    let raw_secs = (target_chunk_bytes as f64 * 8.0) / bitrate_bps;
+    let secs = raw_secs.floor().max(min_secs as f64) as u32;
+    secs.clamp(min_secs, max_secs)
+}
+
+async fn reset_chunk_dir(path: &Path) -> AppResult<()> {
+    if fs::metadata(path).await.is_ok() {
+        fs::remove_dir_all(path)
+            .await
+            .map_err(|e| AppError::Processing(format!("Failed to clear chunk directory: {}", e)))?;
+    }
+    fs::create_dir_all(path)
+        .await
+        .map_err(|e| AppError::Processing(format!("Failed to create chunk directory: {}", e)))?;
+    Ok(())
+}
 
 #[async_trait]
 impl JobProcessor for VideoAnalysisProcessor {
@@ -60,18 +109,16 @@ impl JobProcessor for VideoAnalysisProcessor {
                 .await
                 .map_err(|e| format!("Failed to get server proxy client: {}", e))?;
 
-        // Read video file as bytes
-        let video_data = match fs::read(&payload.video_path).await {
-            Ok(data) => data,
+        // Resolve size and duration early (needed for size-aware chunking)
+        let file_size_bytes = match fs::metadata(&payload.video_path).await {
+            Ok(meta) => meta.len(),
             Err(e) => {
                 let error_msg =
-                    format!("Failed to read video file '{}': {}", payload.video_path, e);
+                    format!("Failed to read video metadata '{}': {}", payload.video_path, e);
                 error!("{}", error_msg);
                 return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
             }
         };
-
-        info!("Read video file: {} bytes", video_data.len());
 
         // Determine actual duration - this is required for server API
         let duration_ms = if payload.duration_ms > 0 {
@@ -97,9 +144,30 @@ impl JobProcessor for VideoAnalysisProcessor {
         };
 
         let threshold_secs = resolve_long_threshold_secs();
-        let is_long_video = duration_ms > (threshold_secs as i64 * 1000);
+        let max_upload_mb = env_u64("VIDEO_ANALYSIS_MAX_UPLOAD_MB", 90);
+        let target_chunk_mb = env_u64("VIDEO_ANALYSIS_TARGET_CHUNK_MB", 85);
+        let max_upload_bytes = max_upload_mb.saturating_mul(1024 * 1024);
+        let target_chunk_bytes = target_chunk_mb
+            .saturating_mul(1024 * 1024)
+            .min(max_upload_bytes.saturating_sub(1 * 1024 * 1024));
+
+        let is_over_upload_limit = file_size_bytes > max_upload_bytes;
+        let is_long_video = duration_ms > (threshold_secs as i64 * 1000) || is_over_upload_limit;
 
         if !is_long_video {
+            // Read video file as bytes only for short videos
+            let video_data = match fs::read(&payload.video_path).await {
+                Ok(data) => data,
+                Err(e) => {
+                    let error_msg =
+                        format!("Failed to read video file '{}': {}", payload.video_path, e);
+                    error!("{}", error_msg);
+                    return Ok(JobProcessResult::failure(job.id.clone(), error_msg));
+                }
+            };
+
+            info!("Read video file: {} bytes", video_data.len());
+
             // SHORT VIDEO PATH - existing single-pass analysis
             // Check if job was canceled before making the API call
             if job_processor_utils::check_job_canceled(&repo, &job.id).await? {
@@ -204,9 +272,6 @@ impl JobProcessor for VideoAnalysisProcessor {
             // Create temp directory for chunks
             let app_temp = get_app_temp_dir().await?;
             let chunk_dir = app_temp.join(format!("video_chunks_{}", job.id));
-            tokio::fs::create_dir_all(&chunk_dir).await.map_err(|e| {
-                AppError::Processing(format!("Failed to create chunk directory: {}", e))
-            })?;
 
             // Ensure cleanup happens on success or failure
             let _cleanup_guard = CleanupGuard::new(chunk_dir.clone());
@@ -218,11 +283,72 @@ impl JobProcessor for VideoAnalysisProcessor {
                 None
             };
 
-            // Split video into 2-minute chunks
+            let min_chunk_secs = env_u32("VIDEO_ANALYSIS_MIN_CHUNK_SECS", 15);
+            let max_chunk_secs = env_u32("VIDEO_ANALYSIS_MAX_CHUNK_SECS", 120);
+            let mut chunk_secs = compute_chunk_secs_from_size(
+                file_size_bytes,
+                duration_ms,
+                target_chunk_bytes,
+                min_chunk_secs,
+                max_chunk_secs,
+            );
+
             let input_path = std::path::PathBuf::from(&payload.video_path);
-            let chunks = split_video_into_chunks(&input_path, &chunk_dir, 120, split_fps)
-                .await
-                .map_err(|e| AppError::Processing(format!("Failed to split video: {}", e)))?;
+            let max_attempts = env_u32("VIDEO_ANALYSIS_CHUNK_SPLIT_ATTEMPTS", 3);
+            let mut chunks = Vec::new();
+
+            for attempt in 0..max_attempts {
+                reset_chunk_dir(&chunk_dir).await?;
+
+                chunks = split_video_into_chunks(&input_path, &chunk_dir, chunk_secs, split_fps)
+                    .await
+                    .map_err(|e| AppError::Processing(format!("Failed to split video: {}", e)))?;
+
+                let mut max_chunk_size = 0u64;
+                for (_, chunk_path, _, _) in chunks.iter() {
+                    let chunk_size = fs::metadata(chunk_path)
+                        .await
+                        .map_err(|e| AppError::Processing(format!(
+                            "Failed to read chunk metadata {:?}: {}",
+                            chunk_path, e
+                        )))?
+                        .len();
+                    if chunk_size > max_chunk_size {
+                        max_chunk_size = chunk_size;
+                    }
+                }
+
+                if max_chunk_size <= max_upload_bytes {
+                    break;
+                }
+
+                if attempt + 1 >= max_attempts {
+                    return Err(AppError::Processing(format!(
+                        "Chunk size {} bytes exceeds upload limit {} bytes after {} attempts. \
+Consider lowering recording quality or enabling an unproxied upload endpoint.",
+                        max_chunk_size, max_upload_bytes, max_attempts
+                    )));
+                }
+
+                let ratio = if max_chunk_size > 0 {
+                    (target_chunk_bytes as f64 / max_chunk_size as f64) * 0.9
+                } else {
+                    0.5
+                };
+                let adjusted = ((chunk_secs as f64) * ratio).floor() as u32;
+                let next_chunk_secs = adjusted
+                    .clamp(min_chunk_secs, max_chunk_secs)
+                    .min(chunk_secs.saturating_sub(1).max(min_chunk_secs));
+
+                if next_chunk_secs == chunk_secs {
+                    return Err(AppError::Processing(format!(
+                        "Unable to reduce chunk size below upload limit with current settings. \
+Consider lowering recording quality or enabling an unproxied upload endpoint."
+                    )));
+                }
+
+                chunk_secs = next_chunk_secs;
+            }
 
             info!("Split video into {} chunks for job {}", chunks.len(), job.id);
 
