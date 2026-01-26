@@ -9,15 +9,76 @@ import { GovernanceSection } from '@/components/landing/GovernanceSection';
 import { IntegrationsSection } from '@/components/landing/IntegrationsSection';
 import { FAQ } from '@/components/landing/FAQ';
 import { cdnUrl } from '@/lib/cdn';
+import { GITHUB_REPO_URL } from '@/lib/brand';
 import type { SoftwareApplication, VideoObject, ImageObject, Organization, WebSite } from 'schema-dts';
 import { SectionDividerMesh } from '@/components/ui/SectionDivider';
 import { HomePageClient } from '@/components/landing/HomePageClient';
 import { loadMessagesFor } from '@/lib/i18n';
 import { ScreenshotGallery } from '@/components/demo/ScreenshotGallery';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, Github, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from '@/i18n/navigation';
+
+const GITHUB_STATS_REVALIDATE_SECONDS = 60 * 60;
+
+type GitHubRepoStats = {
+  stars: number | null;
+  fullName: string;
+};
+
+function getGitHubSlug(repoUrl: string): string | null {
+  try {
+    const slug = new URL(repoUrl).pathname.replace(/^\/+|\/+$/g, '');
+    return slug || null;
+  } catch {
+    return null;
+  }
+}
+
+function parseGitHubRepo(repoUrl: string): { owner: string; repo: string; slug: string } | null {
+  const slug = getGitHubSlug(repoUrl);
+  if (!slug) return null;
+  const [owner, repo] = slug.split('/');
+  if (!owner || !repo) return null;
+  return { owner, repo, slug: `${owner}/${repo}` };
+}
+
+async function fetchGitHubRepoStats(repoUrl: string): Promise<GitHubRepoStats | null> {
+  const parsed = parseGitHubRepo(repoUrl);
+  if (!parsed) return null;
+
+  const headers: HeadersInit = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'PlanToCode-Website',
+  };
+  const token = process.env.GITHUB_TOKEN || process.env.GITHUB_API_TOKEN;
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(`https://api.github.com/repos/${parsed.owner}/${parsed.repo}`, {
+      headers,
+      next: { revalidate: GITHUB_STATS_REVALIDATE_SECONDS },
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    const stars = typeof data?.stargazers_count === 'number' ? data.stargazers_count : null;
+    const fullName = typeof data?.full_name === 'string' ? data.full_name : parsed.slug;
+    return { stars, fullName };
+  } catch {
+    return null;
+  }
+}
+
+function formatCompactNumber(value: number, locale: string): string {
+  return new Intl.NumberFormat(locale || 'en', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(value);
+}
 
 export function generateStaticParams() {
   return LOCALES.map((locale) => ({ locale }));
@@ -116,6 +177,18 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
   const heroNoteLink = typeof t['technicalLanding.noteLink'] === 'string'
     ? t['technicalLanding.noteLink']
     : '';
+  const repoTitle = typeof t['technicalLanding.repo.title'] === 'string'
+    ? t['technicalLanding.repo.title']
+    : 'Source available on GitHub';
+  const repoDescription = typeof t['technicalLanding.repo.description'] === 'string'
+    ? t['technicalLanding.repo.description']
+    : 'This site is the front page for the PlanToCode repository. Browse the code, docs, and architecture from here.';
+  const repoStarsLabel = typeof t['technicalLanding.repo.starsLabel'] === 'string'
+    ? t['technicalLanding.repo.starsLabel']
+    : 'GitHub stars';
+  const repoLicenseLabel = typeof t['technicalLanding.repo.licenseLabel'] === 'string'
+    ? t['technicalLanding.repo.licenseLabel']
+    : 'BSL 1.1 source-available';
   const walkthroughTitle = typeof t['gallery.video.title'] === 'string'
     ? t['gallery.video.title']
     : '';
@@ -136,6 +209,13 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
   const walkthroughBullets = Array.isArray(t['gallery.video.bullets'])
     ? (t['gallery.video.bullets'] as string[])
     : [];
+  const repoStats = await fetchGitHubRepoStats(GITHUB_REPO_URL);
+  const repoSlug = repoStats?.fullName || parseGitHubRepo(GITHUB_REPO_URL)?.slug || 'helpful-bits/plantocode';
+  const repoDisplay = `github.com/${repoSlug}`;
+  const starCount = typeof repoStats?.stars === 'number' ? repoStats.stars : null;
+  const starsText = starCount !== null ? formatCompactNumber(starCount, locale) : '';
+  const starsExact = starCount !== null ? starCount.toLocaleString(locale || 'en') : '';
+  const showRepoBlock = Boolean(repoTitle || repoDescription || repoDisplay);
 
   const organizationJsonLd: Organization = {
     '@type': 'Organization',
@@ -378,6 +458,55 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                     <p className="text-lg text-foreground/80 sm:text-xl max-w-2xl">
                       {heroDescription}
                     </p>
+                    {showRepoBlock ? (
+                      <div className="rounded-2xl border border-primary/20 bg-background/70 p-4 shadow-sm backdrop-blur-sm">
+                        <div className="space-y-2">
+                          {repoTitle ? (
+                            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                              <Github className="h-4 w-4 text-primary" />
+                              <span>{repoTitle}</span>
+                            </div>
+                          ) : null}
+                          {repoDescription ? (
+                            <p className="text-sm text-muted-foreground leading-relaxed">
+                              {repoDescription}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          <Button asChild size="sm" variant="outline" className="gap-2 text-xs sm:text-sm">
+                            <a
+                              href={GITHUB_REPO_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`View ${repoDisplay}`}
+                            >
+                              <Github className="h-4 w-4" />
+                              {repoDisplay}
+                            </a>
+                          </Button>
+                        </div>
+                        {(repoLicenseLabel || starsText) ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            {repoLicenseLabel ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2.5 py-1">
+                                {repoLicenseLabel}
+                              </span>
+                            ) : null}
+                            {starsText ? (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-2.5 py-1"
+                                title={starsExact ? `${starsExact} ${repoStarsLabel}` : undefined}
+                              >
+                                <Star className="h-3.5 w-3.5 text-primary/70" />
+                                <span className="font-semibold text-foreground">{starsText}</span>
+                                <span>{repoStarsLabel}</span>
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                     {(heroPrimaryCta || heroSecondaryCta) ? (
                       <div className="flex flex-wrap items-center gap-3">
                         {heroPrimaryCta ? (

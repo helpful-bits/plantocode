@@ -380,9 +380,15 @@
   },
   "technicalLanding": {
     "title": "PlanToCode：実装プランをレビューしてマージ",
-    "description": "PlanToCodeはタスクを構造化された実装プランに変換し、エージェントが実行する前に読んで比較し、編集できます。複数の下書きを生成し、最良のアプローチをマージして、Claude Codeや端末へコンテキストとログ付きで引き渡します。",
+    "description": "PlanToCodeはタスクを構造化された実装プランに変換し、エージェントが実行する前に読んで比較し、編集できます。複数の下書きを生成し、最良のアプローチをマージして、Claude Codeや端末へコンテキスト付きで引き渡します。",
     "note": "ホスト版は管理されたモデルアクセスを使用します。BYOKはセルフホストのみ対応です。",
     "noteLink": "セルフホストガイド",
+    "repo": {
+      "title": "GitHubでソース公開",
+      "description": "このサイトはPlanToCodeリポジトリのフロントページです。コード、ドキュメント、アーキテクチャをここから参照できます。",
+      "starsLabel": "GitHub スター",
+      "licenseLabel": "BSL 1.1"
+    },
     "walkthroughTitle": "ステップバイステップ：コンポーネントの連携方法",
     "walkthroughDescription": "デスクトップアプリ、Rust/Tauriバックエンド、SQLiteデータベース、LLMオーケストレーションパイプラインがどのようにタスクを調整し、結果をUIにストリーミングするかを完全に解説します。",
     "tags": [

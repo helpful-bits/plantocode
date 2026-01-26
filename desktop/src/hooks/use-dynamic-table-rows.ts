@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, RefObject } from 'react';
+import { useState, useEffect, useCallback, useRef, RefObject } from 'react';
 
 interface UseDynamicTableRowsOptions {
   rowHeight?: number;
@@ -23,6 +23,7 @@ export function useDynamicTableRows(
   } = options;
 
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const lastRowsRef = useRef<number>(itemsPerPage);
 
   const calculateOptimalRows = useCallback(() => {
     if (!containerRef.current) return minRows;
@@ -48,6 +49,8 @@ export function useDynamicTableRows(
     
     const updateRows = () => {
       const optimalRows = calculateOptimalRows();
+      if (optimalRows === lastRowsRef.current) return;
+      lastRowsRef.current = optimalRows;
       setItemsPerPage(optimalRows);
     };
 

@@ -11,12 +11,18 @@ function isTauriEventApiAvailable(): boolean {
 }
 
 const safeNoopUnlisten: UnlistenFn = () => {};
+const EVENT_NAME_PATTERN = /^[A-Za-z0-9:/_-]+$/;
 
 export async function safeListen<T>(
   event: EventName,
   handler: EventCallback<T>
 ): Promise<UnlistenFn> {
   if (!isTauriEventApiAvailable()) {
+    return Promise.resolve(safeNoopUnlisten);
+  }
+
+  if (typeof event === "string" && !EVENT_NAME_PATTERN.test(event)) {
+    console.warn(`[safeListen] Invalid event name "${event}". Skipping listener registration.`);
     return Promise.resolve(safeNoopUnlisten);
   }
 

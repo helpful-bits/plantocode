@@ -380,9 +380,15 @@
   },
   "technicalLanding": {
     "title": "PlanToCode : Revoir et fusionner des plans d'implementation",
-    "description": "PlanToCode transforme les taches en plans d'implementation structures que vous pouvez lire, comparer et modifier avant qu'un agent n'agisse. Generez plusieurs brouillons, fusionnez la meilleure approche et transferez vers Claude Code ou votre terminal avec tout le contexte et les logs.",
+    "description": "PlanToCode transforme les taches en plans d'implementation structures que vous pouvez lire, comparer et modifier avant qu'un agent n'agisse. Generez plusieurs brouillons, fusionnez la meilleure approche et transferez vers Claude Code ou votre terminal avec tout le contexte.",
     "note": "L'hebergement utilise un acces modele gere; BYOK est disponible uniquement en self-hosting.",
     "noteLink": "Guide de self-hosting",
+    "repo": {
+      "title": "Code source sur GitHub",
+      "description": "Ce site est la page d'accueil du dépôt PlanToCode. Consultez le code, la documentation et l'architecture ici.",
+      "starsLabel": "étoiles GitHub",
+      "licenseLabel": "BSL 1.1"
+    },
     "walkthroughTitle": "Étape par étape : comment les composants fonctionnent ensemble",
     "walkthroughDescription": "Suivez une présentation complète de la façon dont l'application de bureau, le backend Rust/Tauri, la base de données SQLite et le pipeline d'orchestration LLM coordonnent les tâches et renvoient les résultats à l'interface.",
     "tags": [

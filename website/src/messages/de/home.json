@@ -380,9 +380,15 @@
   },
   "technicalLanding": {
     "title": "PlanToCode: Implementierungspläne prüfen und zusammenführen",
-    "description": "PlanToCode verwandelt Aufgaben in strukturierte Implementierungspläne, die Sie vor jedem Agentenlauf lesen, vergleichen und bearbeiten können. Erstellen Sie mehrere Entwürfe, mergen Sie den besten Ansatz und geben Sie an Claude Code oder Ihr Terminal mit vollem Kontext und Logs weiter.",
+    "description": "PlanToCode verwandelt Aufgaben in strukturierte Implementierungspläne, die Sie vor jedem Agentenlauf lesen, vergleichen und bearbeiten können. Erstellen Sie mehrere Entwürfe, mergen Sie den besten Ansatz und geben Sie an Claude Code oder Ihr Terminal mit vollem Kontext weiter.",
     "note": "Gehostet nutzt verwalteten Modellzugang; BYOK ist nur beim Self-Hosting verfügbar.",
     "noteLink": "Self-Hosting Leitfaden",
+    "repo": {
+      "title": "Quellcode auf GitHub verfügbar",
+      "description": "Diese Seite ist die Frontpage des PlanToCode-Repos. Von hier aus gelangen Sie zu Code, Docs und Architektur.",
+      "starsLabel": "GitHub-Sterne",
+      "licenseLabel": "BSL 1.1"
+    },
     "walkthroughTitle": "Schritt für Schritt: Wie die Komponenten zusammenarbeiten",
     "walkthroughDescription": "Folgen Sie einer durchgehenden Anleitung, wie die Desktop-App, das Rust/Tauri-Backend, die SQLite-Datenbank und die LLM-Orchestrierungspipeline Aufgaben koordinieren und Ergebnisse an die Benutzeroberfläche zurückstreamen.",
     "tags": [

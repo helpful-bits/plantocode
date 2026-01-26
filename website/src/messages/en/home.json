@@ -1,9 +1,15 @@
 {
   "technicalLanding": {
     "title": "PlanToCode: Review and merge implementation plans",
-    "description": "PlanToCode turns tasks into structured implementation plans you can read, compare, and edit before any agent runs. Generate multiple drafts, merge the best approach, and hand off to Claude Code or your terminal with full context while logs stay in PlanToCode.",
+    "description": "PlanToCode turns tasks into structured implementation plans you can read, compare, and edit before any agent runs. Generate multiple drafts, merge the best approach, and hand off to Claude Code or your terminal with full context.",
     "note": "Hosted uses managed model access; BYOK is available only for self-hosting.",
     "noteLink": "Self-hosting guide",
+    "repo": {
+      "title": "Source available on GitHub",
+      "description": "This site is the front page for the PlanToCode repository. Browse the code, docs, and architecture from here.",
+      "starsLabel": "GitHub stars",
+      "licenseLabel": "BSL 1.1"
+    },
     "walkthroughTitle": "Step-by-step: how the pieces work together",
     "walkthroughDescription": "Follow an end-to-end walkthrough of how the desktop app, Rust/Tauri backend, SQLite database, and LLM orchestration pipeline coordinate tasks and stream results back to the UI.",
     "tags": [

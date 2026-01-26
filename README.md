@@ -3,7 +3,7 @@
 **AI-powered coding assistant that transforms voice, video, and text descriptions into detailed implementation plans.**
 
 [![License: BUSL-1.1](https://img.shields.io/badge/License-BUSL--1.1-blue.svg)](LICENSE)
-[![Platform: macOS | Windows | Linux | iOS](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20iOS-lightgrey.svg)]()
+[![Platform: macOS | Windows | iOS](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20iOS-lightgrey.svg)]()
 
 ---
 
@@ -48,15 +48,17 @@ This is the **complete source code** for PlanToCode - the same code that powers 
 
 **The one restriction:** You may not use this code to create a competing product or service. See the [Business Source License 1.1](./LICENSE) for details. Each version converts to Apache 2.0 four years after release.
 
-**~270,000 lines of code** across 5 components - 8 months of development, fully readable end-to-end:
+**~263,000 lines of source code** across 5 components (source-only; excludes vendored/third-party and generated files):
 
-| Component | Technology | Lines of Code |
+| Component | Technology | Approx. LOC |
 |-----------|------------|---------------|
-| Desktop App | TypeScript + Rust (Tauri) | 120,000 |
-| Backend Server | Rust (Actix-Web) | 47,000 |
-| iOS App | Swift (SwiftUI) | 51,000 |
-| Marketing Website | TypeScript (Next.js) | 46,000 |
-| Infrastructure | Ansible + SQL | 6,000 |
+| Desktop App | TypeScript + Rust (Tauri) | 124,000 |
+| Backend Server | Rust (Actix-Web) | 49,000 |
+| iOS App | Swift (SwiftUI) | 58,000 |
+| Marketing Website | TypeScript (Next.js) | 26,000 |
+| Infrastructure | Ansible + Bash | 5,000 |
+
+_Line counts are approximate and based on source files (TS/TSX/RS/Swift/JS and infra YAML/Jinja/Bash), excluding vendor and generated output._
 
 ---
 
@@ -102,7 +104,7 @@ PlanToCode creates **detailed architectural implementation plans** designed for 
 - **Background Jobs**  -  Track multiple AI operations simultaneously
 
 ### Cross-Platform
-- **Desktop**  -  Native apps for macOS, Windows, and Linux (Tauri)
+- **Desktop**  -  Native apps for macOS and Windows (Tauri)
 - **iOS Companion**  -  Remote control your desktop, dictate tasks, monitor jobs, and access terminal from anywhere
 - **Real-time Sync**  -  Changes sync instantly between mobile and desktop via relay connections
 
@@ -115,9 +117,7 @@ plantocode/
 │   └── ios/            # iOS app (Swift + SwiftUI)
 ├── server/             # Backend API (Rust + Actix-Web)
 ├── website/            # Marketing website (Next.js)
-├── marketing/          # Marketing tools and ad campaigns
-├── product-videos/     # Product video assets (Remotion)
-├── infrastructure/     # Deployment (Ansible) + database migrations
+├── infrastructure/     # Deployment (Ansible) + ops scripts
 └── docs/               # Documentation
 ```
 
@@ -151,19 +151,42 @@ cp .env.example .env    # Configure your environment
 cargo run
 ```
 
-**Required environment variables:**
+**Required environment variables (server startup):**
 
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `ANTHROPIC_API_KEY` | Anthropic Claude API access |
-| `OPENAI_API_KEY` | OpenAI API access |
-| `GOOGLE_API_KEYS` | Google Gemini API access |
+| `SERVER_AUTH0_CALLBACK_URL` | Auth0 callback URL for the server |
+| `SERVER_AUTH0_LOGGED_OUT_URL` | Auth0 logged-out redirect URL |
 | `AUTH0_DOMAIN` | Auth0 tenant domain |
 | `AUTH0_API_AUDIENCE` | Auth0 API identifier |
+| `JWT_SECRET` | JWT signing secret (min 32 chars) |
+| `API_KEY_HASH_SECRET` | API key hash secret (min 32 chars) |
+| `FEATUREBASE_SSO_SECRET` | Featurebase SSO signing secret |
+| `REFRESH_TOKEN_ENCRYPTION_KEY` | Refresh token encryption key (hex, min 32 chars) |
 | `REDIS_URL` | Redis connection for rate limiting |
+| `STRIPE_SECRET_KEY` | Stripe secret key |
+| `STRIPE_PUBLISHABLE_KEY` | Stripe publishable key |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook secret |
+| `STRIPE_CHECKOUT_SUCCESS_URL` | Stripe checkout success redirect |
+| `STRIPE_CHECKOUT_CANCEL_URL` | Stripe checkout cancel redirect |
+| `STRIPE_PORTAL_RETURN_URL` | Stripe billing portal return URL |
+| `WEBSITE_BASE_URL` | Base URL for the website |
+| `CDN_BASE_URL` | Base URL for CDN assets |
 
-See `server/.env.example` for the complete list.
+**Optional / feature-specific:**
+
+| Variable | Description |
+|----------|-------------|
+| `OPENAI_API_KEY` | OpenAI access (required for OpenAI models + transcription) |
+| `ANTHROPIC_API_KEY` | Anthropic Claude API access |
+| `GOOGLE_API_KEYS` | Google Gemini API access (comma-separated list) |
+| `XAI_API_KEY` | xAI Grok API access |
+| `OPENROUTER_API_KEY` | OpenRouter access (fallback + additional models) |
+| `AUTH0_SERVER_CLIENT_ID` | Auth0 M2M client ID (server-side refresh flow) |
+| `AUTH0_SERVER_CLIENT_SECRET` | Auth0 M2M client secret (server-side refresh flow) |
+
+See `server/.env.example` for the full list and defaults.
 
 ### Running the Desktop App
 
@@ -213,7 +236,7 @@ pnpm build
 │  │   Desktop   │     │     iOS     │      ┌─────────────┐    │
 │  │   (Tauri)   │     │   (Swift)   │      │   Website   │    │
 │  └──────┬──────┘     └──────┬──────┘      │  (Next.js)  │    │
-│         │                   │             │  static only│    │
+│         │                   │             │             │    │
 │         └─────────┬─────────┘             └─────────────┘    │
 └───────────────────┼──────────────────────────────────────────┘
                     │
@@ -275,7 +298,7 @@ See [infrastructure/README.md](./infrastructure/README.md) for detailed deployme
 | Component | Technology |
 |-----------|------------|
 | Desktop | Tauri 2.x, React 19, TypeScript, Vite |
-| Mobile | Swift, SwiftUI, iOS 15.4+ |
+| Mobile | Swift, SwiftUI, iOS 16.0+ |
 | Server | Rust, Actix-Web, SQLx |
 | Database | PostgreSQL, Redis |
 | Auth | Auth0 (PKCE OAuth) |
